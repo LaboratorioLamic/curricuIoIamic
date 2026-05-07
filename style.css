@@ -75,6 +75,29 @@ body {
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin 1s linear infinite; }
 
+.realtime-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    animation: pulse-green 2s ease-in-out infinite;
+}
+
+.realtime-badge i {
+    font-size: 10px;
+}
+
+@keyframes pulse-green {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+}
+
 .btn-add {
     background: var(--blue);
     color: white;

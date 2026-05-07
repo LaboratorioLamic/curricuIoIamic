@@ -20,7 +20,8 @@ const MASTER_PWD = "Lamic6530@";
 const FIREBASE_PATHS = {
     cards: 'curr_colab_cards',
     sheetData: 'curr_colab_sheet_data',
-    sheetHash: 'curr_colab_sheet_hash'
+    sheetHash: 'curr_colab_sheet_hash',
+    files: 'curr_colab_files'
 };
 
 let sheetData = [];      
@@ -43,7 +44,63 @@ window.onload = () => {
     
     // Adiciona listener para tecla ESC
     document.addEventListener('keydown', handleEscKey);
+    
+    // Adiciona listener para quando usuário volta para a página
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Adiciona listener para quando a janela ganha foco
+    window.addEventListener('focus', handleWindowFocus);
 };
+
+// Atualiza dados quando usuário volta para a página
+function handleVisibilityChange() {
+    if (!document.hidden) {
+        console.log('Usuário voltou para a página, verificando atualizações...');
+        // Força uma verificação rápida de atualizações
+        checkForUpdates();
+    }
+}
+
+// Atualiza dados quando janela ganha foco
+function handleWindowFocus() {
+    console.log('Janela ganhou foco, verificando atualizações...');
+    checkForUpdates();
+}
+
+// Verifica se há atualizações pendentes
+async function checkForUpdates() {
+    try {
+        // Verifica cards
+        const cardsSnapshot = await database.ref(FIREBASE_PATHS.cards).once('value');
+        const serverCards = cardsSnapshot.val();
+        if (serverCards) {
+            const serverCardsArray = Object.values(serverCards);
+            if (JSON.stringify(cards) !== JSON.stringify(serverCardsArray)) {
+                console.log('Detectadas atualizações de cards...');
+                cards = serverCardsArray;
+                sortCards();
+                renderCards();
+                showRealtimeUpdate('Cards sincronizados');
+            }
+        }
+        
+        // Verifica arquivos
+        const filesSnapshot = await database.ref(FIREBASE_PATHS.files).once('value');
+        const serverFiles = filesSnapshot.val();
+        if (serverFiles) {
+            const serverFilesArray = serverFiles.files || [];
+            if (JSON.stringify(allFiles) !== JSON.stringify(serverFilesArray)) {
+                console.log('Detectadas atualizações de arquivos...');
+                allFiles = serverFilesArray;
+                updateCardsWithNewFiles();
+                showRealtimeUpdate('Arquivos sincronizados');
+            }
+        }
+        
+    } catch (error) {
+        console.error('Erro ao verificar atualizações:', error);
+    }
+}
 
 function handleEscKey(event) {
     if (event.key === 'Escape') {
@@ -91,6 +148,169 @@ function setModalUploadingState(isUploading) {
     }
 }
 
+// ─── REALTIME SYNC ──────────────────────────────────────────────────
+function setupRealtimeListeners() {
+    // Mostra status de conexão
+    const realtimeBadge = document.getElementById('realtimeBadge');
+    if (realtimeBadge) {
+        realtimeBadge.style.display = 'flex';
+    }
+    
+    // Listener para cards em tempo real
+    database.ref(FIREBASE_PATHS.cards).on('value', (snapshot) => {
+        const newCardsData = snapshot.val();
+        if (newCardsData) {
+            const newCards = Object.values(newCardsData);
+            
+            // Verifica se houve mudanças significativas
+            if (JSON.stringify(cards) !== JSON.stringify(newCards)) {
+                console.log('Atualizando cards em tempo real...');
+                cards = newCards;
+                sortCards();
+                renderCards();
+                
+                // Mostra notificação sutil de atualização
+                showRealtimeUpdate('Cards atualizados');
+            }
+        }
+    });
+    
+    // Listener para dados da planilha em tempo real
+    database.ref(FIREBASE_PATHS.sheetData).on('value', (snapshot) => {
+        const newSheetData = snapshot.val();
+        if (newSheetData) {
+            // Verifica se houve mudanças
+            if (JSON.stringify(sheetData) !== JSON.stringify(newSheetData)) {
+                console.log('Atualizando dados da planilha em tempo real...');
+                sheetData = newSheetData;
+                populateDatalist();
+                
+                // Atualiza cards existentes com novos dados
+                updateCardsWithSheetData();
+                
+                showRealtimeUpdate('Dados da planilha atualizados');
+            }
+        }
+    });
+    
+    // Listener para arquivos em tempo real
+    database.ref(FIREBASE_PATHS.files).on('value', (snapshot) => {
+        const newFilesData = snapshot.val();
+        if (newFilesData) {
+            const newFiles = newFilesData.files || [];
+            
+            // Verifica se houve mudanças nos arquivos
+            if (JSON.stringify(allFiles) !== JSON.stringify(newFiles)) {
+                console.log('Atualizando arquivos em tempo real...');
+                allFiles = newFiles;
+                
+                // Atualiza cards com novos arquivos sem重建 completa
+                updateCardsWithNewFiles();
+                
+                showRealtimeUpdate('Arquivos atualizados');
+            }
+        }
+    });
+}
+
+// Atualiza cards com novos arquivos sem重建 completa
+function updateCardsWithNewFiles() {
+    const updatedCards = cards.map(card => {
+        const cardFiles = allFiles.filter(f => 
+            f.name && f.name.includes(`[CARD:${card.id}]`)
+        );
+        
+        // Se os arquivos do card mudaram, atualiza
+        if (JSON.stringify(card.files || []) !== JSON.stringify(cardFiles)) {
+            return {
+                ...card,
+                files: cardFiles,
+                _noFiles: !cardFiles.length
+            };
+        }
+        
+        return card;
+    });
+    
+    // Verifica se houve mudanças
+    if (JSON.stringify(cards) !== JSON.stringify(updatedCards)) {
+        cards = updatedCards;
+        renderCards();
+        
+        // Se houver card aberto, atualiza também
+        if (activeCardId) {
+            const activeCard = cards.find(c => c.id === activeCardId);
+            if (activeCard) {
+                fillEditPane(activeCard);
+            }
+        }
+    }
+}
+
+// Mostra notificação sutil de atualização em tempo real
+function showRealtimeUpdate(message) {
+    // Cria elemento de notificação
+    const notification = document.createElement('div');
+    notification.className = 'realtime-update';
+    notification.innerHTML = `
+        <div class="realtime-update-content">
+            <i class="fas fa-sync-alt"></i>
+            <span>${message}</span>
+        </div>
+    `;
+    
+    // Estilo inline para a notificação
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+        padding: 12px 16px;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+        z-index: 1000;
+        animation: slideInRight 0.3s ease, fadeOut 0.3s ease 2.7s forwards;
+        max-width: 300px;
+    `;
+    
+    // Adiciona CSS para animações
+    if (!document.getElementById('realtimeUpdateCSS')) {
+        const style = document.createElement('style');
+        style.id = 'realtimeUpdateCSS';
+        style.textContent = `
+            @keyframes slideInRight {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes fadeOut {
+                from { opacity: 1; }
+                to { opacity: 0; }
+            }
+            .realtime-update-content {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .realtime-update-content i {
+                animation: spin 1s linear infinite;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    document.body.appendChild(notification);
+    
+    // Remove após 3 segundos
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 3000);
+}
+
 // ─── SEARCH EXPANDIBLE ───────────────────────────────────────────────
 function toggleSearch() {
     const expandable = document.getElementById('searchExpandable');
@@ -136,10 +356,10 @@ document.addEventListener('click', function(event) {
     }
 });
 
-// Carrega dados persistidos do Firebase
+// Carrega dados persistidos do Firebase com listeners em tempo real
 async function loadLocalData() {
     try {
-        // Carrega cards do Firebase
+        // Carrega cards do Firebase (uma vez)
         const cardsSnapshot = await database.ref(FIREBASE_PATHS.cards).once('value');
         const cardsData = cardsSnapshot.val();
         if (cardsData) {
@@ -147,13 +367,17 @@ async function loadLocalData() {
             renderCards();
         }
         
-        // Carrega dados da planilha do Firebase se existir
+        // Carrega dados da planilha do Firebase se existir (uma vez)
         const sheetSnapshot = await database.ref(FIREBASE_PATHS.sheetData).once('value');
         const sheetDataFromFirebase = sheetSnapshot.val();
         if (sheetDataFromFirebase) {
             sheetData = sheetDataFromFirebase;
             populateDatalist();
         }
+        
+        // Adiciona listeners em tempo real para cards
+        setupRealtimeListeners();
+        
     } catch(e) {
         console.error('Erro ao carregar dados do Firebase:', e);
         // Fallback para localStorage se Firebase falhar
@@ -1354,26 +1578,44 @@ async function confirmDeleteFile(fileId, buttonElement) {
     toggleSync(true);
     
     try {
+        // Primeiro deleta o arquivo do Drive
         await fetch(DRIVE_API, { method:'POST', body: JSON.stringify({ action:'delete', id: fileId }) });
         
-        // Remove o arquivo deletado da lista local sem reconstruir tudo
+        // Remove o arquivo da lista local
         allFiles = allFiles.filter(f => f.id !== fileId);
         
-        // Atualiza apenas o card ativo removendo o arquivo
+        // Atualiza o Firebase com a nova lista de arquivos
+        await database.ref(FIREBASE_PATHS.files).set({ files: allFiles });
+        
+        // Atualiza o card ativo removendo o arquivo
         const card = cards.find(c => c.id === activeCardId);
-        if (card && card.files) {
+        
+        if (card) {
+            // Se o card não tiver array de files, cria um
+            if (!card.files) card.files = [];
+            
+            // Remove o arquivo do card
             card.files = card.files.filter(f => f.id !== fileId);
+            
+            // Atualiza o _noFiles
+            card._noFiles = !card.files.length;
+            
+            // Salva o card atualizado no Firebase
+            await database.ref(FIREBASE_PATHS.cards).set(
+                cards.reduce((acc, c) => { acc[c.id] = c; return acc; }, {})
+            );
         }
         
-        // Atualiza a interface sem reconstruir todos os cards
+        // Atualiza a interface
         if (card) fillEditPane(card);
         
-        // Salva as alterações localmente
+        // Salva localmente para consistência
         saveLocalCards();
         
         toast('Anexo removido permanentemente', 'success');
         closeDeleteFileModal();
     } catch(e) { 
+        console.error('Erro ao remover anexo:', e);
         toast('Erro ao remover anexo', 'error'); 
         // Restaura o botão em caso de erro
         deleteBtn.disabled = false;
