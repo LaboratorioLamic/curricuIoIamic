@@ -1,0 +1,1935 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Currículo do Colaborador</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+    <style>
+        :root {
+            --navy: #0a1628;
+            --navy-mid: #112240;
+            --navy-light: #1a3557;
+            --blue: #1d4ed8;
+            --blue-bright: #3b82f6;
+            --blue-pale: #dbeafe;
+            --blue-faint: #eff6ff;
+            --white: #ffffff;
+            --slate: #64748b;
+            --slate-light: #94a3b8;
+            --border: #e2e8f0;
+            --text: #0f172a;
+            --text-muted: #475569;
+            --whatsapp: #25D366;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--white);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        /* ─── HEADER ─── */
+        .topbar {
+            background: var(--navy);
+            padding: 0 2.5rem;
+            height: 68px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 1px 0 rgba(255,255,255,0.06);
+        }
+        .topbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .topbar-icon {
+            width: 36px; height: 36px;
+            background: var(--blue);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .topbar-icon svg { width: 18px; height: 18px; stroke: white; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .topbar-title {
+            font-family: 'Sora', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--white);
+            letter-spacing: -0.01em;
+        }
+        .topbar-subtitle { font-size: 0.7rem; color: rgba(255,255,255,0.45); font-weight: 300; }
+
+        .topbar-right { display: flex; align-items: center; gap: 12px; margin-right: 150px; }
+        .sync-badge {
+            display: none;
+            align-items: center;
+            gap: 6px;
+            background: rgba(59,130,246,0.18);
+            color: #93c5fd;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+        .sync-badge.visible { display: flex; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spin { animation: spin 1s linear infinite; }
+
+        .btn-add {
+            background: var(--blue);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 9px 18px;
+            font-family: 'Sora', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex; align-items: center; gap: 7px;
+            transition: background 0.2s, transform 0.15s;
+        }
+        .btn-add:hover { background: #1e40af; transform: translateY(-1px); }
+        .btn-add svg { width: 15px; height: 15px; stroke: white; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+
+        /* ─── SEARCH BAR ─── */
+        .search-section {
+            background: var(--navy-mid);
+            padding: 1.25rem 2.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .search-wrap {
+            max-width: 420px;
+            position: relative;
+        }
+        .search-wrap input {
+            width: 100%;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 10px;
+            padding: 9px 14px 9px 38px;
+            color: white;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.85rem;
+            outline: none;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .search-wrap input::placeholder { color: rgba(255,255,255,0.3); }
+        .search-wrap input:focus { border-color: var(--blue-bright); background: rgba(255,255,255,0.12); }
+        .search-icon {
+            position: absolute;
+            left: 11px; top: 50%;
+            transform: translateY(-50%);
+        }
+        .search-icon svg { width: 15px; height: 15px; stroke: rgba(255,255,255,0.35); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+        /* ─── MAIN ─── */
+        .main { padding: 2.5rem; max-width: 1400px; margin: 0 auto; }
+
+        .section-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 1.5rem;
+        }
+        .count-label {
+            font-family: 'Sora', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--slate);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        /* ─── CARDS GRID ─── */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.25rem;
+        }
+
+        .card {
+            background: white;
+            border: 1.5px solid var(--border);
+            border-radius: 18px;
+            overflow: hidden;
+            transition: box-shadow 0.25s, transform 0.2s, border-color 0.2s;
+            cursor: pointer;
+            position: relative;
+        }
+        .card:hover {
+            box-shadow: 0 12px 40px rgba(10,22,40,0.12);
+            transform: translateY(-3px);
+            border-color: #bfdbfe;
+        }
+        .card-accent {
+            height: 5px;
+            background: linear-gradient(90deg, var(--blue) 0%, #60a5fa 100%);
+        }
+        .card-body { padding: 1.4rem 1.4rem 1.1rem; cursor: default; }
+        .card-avatar {
+            width: 52px; height: 52px;
+            background: var(--navy);
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 1rem;
+        }
+        .card-avatar span {
+            font-family: 'Sora', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: white;
+            letter-spacing: -0.02em;
+        }
+        .card-name {
+            font-family: 'Sora', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .card-role {
+            font-size: 0.8rem;
+            color: var(--blue);
+            font-weight: 500;
+            margin-bottom: 1rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .card-meta { display: flex; flex-direction: column; gap: 5px; margin-bottom: 1.1rem; }
+        .card-meta-item {
+            display: flex; align-items: center; gap: 7px;
+            font-size: 0.77rem;
+            color: var(--text-muted);
+        }
+        .card-meta-item svg { width: 13px; height: 13px; stroke: var(--slate-light); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+        
+        .whatsapp-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 4px;
+            color: var(--whatsapp);
+            transition: transform 0.2s;
+        }
+        .whatsapp-link:hover { transform: scale(1.2); }
+        .whatsapp-link svg { width: 14px; height: 14px; fill: var(--whatsapp); stroke: none; }
+
+        .card-footer {
+            border-top: 1px solid var(--border);
+            padding: 0.9rem 1.4rem;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .card-attach-count {
+            display: flex; align-items: center; gap: 5px;
+            font-size: 0.75rem;
+            color: var(--slate);
+        }
+        .card-attach-count svg { width: 13px; height: 13px; stroke: var(--slate-light); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .card-actions { display: flex; gap: 6px; }
+        .card-actions button {
+            background: none;
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            width: 30px; height: 30px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .card-actions button svg { width: 13px; height: 13px; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .card-actions .btn-view { color: var(--blue); }
+        .card-actions .btn-view:hover { background: var(--blue-faint); border-color: #bfdbfe; }
+        .card-actions .btn-view svg { stroke: var(--blue); }
+        .card-actions .btn-edit { color: #d97706; }
+        .card-actions .btn-edit:hover { background: #fffbeb; border-color: #fde68a; }
+        .card-actions .btn-edit svg { stroke: #d97706; }
+        .card-actions .btn-delete { color: #dc2626; }
+        .card-actions .btn-delete:hover { background: #fef2f2; border-color: #fecaca; }
+        .card-actions .btn-delete svg { stroke: #dc2626; }
+
+        /* ─── EMPTY STATE ─── */
+        .empty-state {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 5rem 2rem;
+            color: var(--slate);
+        }
+        .empty-state .empty-icon {
+            width: 64px; height: 64px;
+            background: var(--blue-faint);
+            border-radius: 18px;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 1rem;
+        }
+        .empty-state .empty-icon svg { width: 28px; height: 28px; stroke: var(--blue); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+        .empty-state h3 { font-family: 'Sora', sans-serif; font-size: 1.1rem; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
+        .empty-state p { font-size: 0.85rem; }
+
+        /* ─── MODAL ─── */
+        .overlay {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(10,22,40,0.55);
+            backdrop-filter: blur(4px);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+        .overlay.open { display: flex; }
+
+        .modal {
+            background: white;
+            border-radius: 22px;
+            width: 100%;
+            max-width: 560px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 30px 80px rgba(10,22,40,0.3);
+            animation: modalIn 0.25s cubic-bezier(0.34,1.56,0.64,1);
+        }
+        @keyframes modalIn {
+            from { opacity: 0; transform: translateY(20px) scale(0.96); }
+            to   { opacity: 1; transform: translateY(0)   scale(1); }
+        }
+
+        .modal-header {
+            background: var(--navy);
+            padding: 1.6rem 1.8rem 1.4rem;
+            border-radius: 22px 22px 0 0;
+            display: flex; align-items: flex-start; justify-content: space-between;
+        }
+        .modal-avatar {
+            width: 56px; height: 56px;
+            background: rgba(59,130,246,0.22);
+            border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 10px;
+        }
+        .modal-avatar span {
+            font-family: 'Sora', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 800;
+            color: #93c5fd;
+        }
+        .modal-name { font-family: 'Sora', sans-serif; font-size: 1.2rem; font-weight: 800; color: white; }
+        .modal-role { font-size: 0.8rem; color: #93c5fd; font-weight: 500; margin-top: 2px; }
+        .modal-close {
+            background: rgba(255,255,255,0.1);
+            border: none; border-radius: 10px;
+            width: 34px; height: 34px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .modal-close:hover { background: rgba(255,255,255,0.2); }
+        .modal-close svg { width: 16px; height: 16px; stroke: rgba(255,255,255,0.7); fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+
+        .modal-tabs {
+            display: flex;
+            border-bottom: 1.5px solid var(--border);
+            padding: 0 1.8rem;
+        }
+        .modal-tab {
+            padding: 0.9rem 1rem 0.8rem;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--slate);
+            border: none;
+            background: none;
+            border-bottom: 2.5px solid transparent;
+            margin-bottom: -1.5px;
+            cursor: pointer;
+            transition: color 0.15s, border-color 0.15s;
+            font-family: 'Sora', sans-serif;
+        }
+        .modal-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+        .modal-tab.locked { display: none; }
+
+        .modal-body { padding: 1.5rem 1.8rem; }
+
+        /* VIEW mode */
+        .field-row { display: flex; gap: 1rem; margin-bottom: 1rem; }
+        .field-item { flex: 1; }
+        .field-label {
+            font-size: 0.68rem;
+            font-weight: 600;
+            color: var(--slate-light);
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            margin-bottom: 4px;
+        }
+        .field-value {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--navy);
+            background: var(--blue-faint);
+            padding: 8px 12px;
+            border-radius: 10px;
+            min-height: 36px;
+        }
+
+        .attachments-section { margin-top: 1.2rem; }
+        .attachments-title {
+            font-family: 'Sora', sans-serif;
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: var(--navy);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 10px;
+            display: flex; align-items: center; gap: 7px;
+        }
+        .attachments-title svg { width: 14px; height: 14px; stroke: var(--blue); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .attach-list { display: flex; flex-direction: column; gap: 7px; }
+        .attach-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 12px;
+            background: var(--blue-faint);
+            border: 1px solid #bfdbfe;
+            border-radius: 10px;
+            text-decoration: none;
+            color: var(--blue);
+            font-size: 0.82rem;
+            font-weight: 500;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .attach-item:hover { background: #dbeafe; border-color: #93c5fd; }
+        .attach-item svg { width: 14px; height: 14px; stroke: var(--blue); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+        .attach-item .attach-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .attach-item .attach-open svg { stroke: #60a5fa; }
+
+        .no-attach {
+            text-align: center;
+            padding: 1.2rem;
+            color: var(--slate-light);
+            font-size: 0.82rem;
+            background: var(--blue-faint);
+            border-radius: 10px;
+        }
+
+        /* EDIT mode */
+        .edit-field { margin-bottom: 1rem; }
+        .edit-label {
+            display: block;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--slate);
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            margin-bottom: 5px;
+        }
+        .edit-input, .edit-select {
+            width: 100%;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            padding: 9px 12px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.88rem;
+            color: var(--text);
+            background: white;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .edit-input:focus, .edit-select:focus {
+            border-color: var(--blue-bright);
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+        }
+        .edit-input[disabled] {
+            background: var(--blue-faint);
+            color: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        .upload-divider {
+            border: none;
+            border-top: 1.5px dashed var(--border);
+            margin: 1.5rem 0 1.2rem;
+        }
+        .upload-zone {
+            border: 2px dashed #bfdbfe;
+            border-radius: 14px;
+            padding: 1.5rem;
+            text-align: center;
+            background: var(--blue-faint);
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .upload-zone:hover { border-color: var(--blue-bright); background: #dbeafe; }
+        .upload-zone svg { width: 28px; height: 28px; stroke: #93c5fd; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; margin-bottom: 8px; }
+        .upload-zone p { font-size: 0.82rem; color: var(--slate); font-weight: 500; }
+        .upload-zone p strong { color: var(--blue); }
+        input[type=file]#editFileInput { display: none; }
+
+        .upload-progress {
+            display: none;
+            margin-top: 12px;
+        }
+        .upload-progress.visible { display: block; }
+        .upload-progress .prog-meta { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .upload-progress .prog-label { font-size: 0.72rem; font-weight: 600; color: var(--blue); }
+        .upload-progress .prog-value { font-size: 0.72rem; font-weight: 600; color: var(--blue); }
+        .prog-track { background: #dbeafe; border-radius: 99px; height: 5px; }
+        .prog-fill { background: var(--blue); height: 5px; border-radius: 99px; transition: width 0.4s ease; }
+
+        .modal-footer {
+            padding: 1rem 1.8rem 1.5rem;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        .btn-cancel {
+            background: none;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            padding: 9px 18px;
+            font-family: 'Sora', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--slate);
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .btn-cancel:hover { background: #f8fafc; border-color: #cbd5e1; }
+        .btn-save {
+            background: var(--blue);
+            border: none;
+            border-radius: 10px;
+            padding: 9px 20px;
+            font-family: 'Sora', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: white;
+            cursor: pointer;
+            display: flex; align-items: center; gap: 6px;
+            transition: background 0.15s, transform 0.12s;
+        }
+        .btn-save:hover { background: #1e40af; transform: translateY(-1px); }
+        .btn-save svg { width: 14px; height: 14px; stroke: white; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+
+        /* DELETE CONFIRM modal */
+        .modal-sm { max-width: 380px; }
+        .modal-sm .modal-body { text-align: center; padding: 2rem 1.8rem 0.5rem; }
+        .danger-icon {
+            width: 56px; height: 56px;
+            background: #fef2f2;
+            border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 1rem;
+        }
+        .danger-icon svg { width: 26px; height: 26px; stroke: #ef4444; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+        .modal-sm h3 { font-family: 'Sora', sans-serif; font-size: 1rem; font-weight: 800; color: var(--navy); margin-bottom: 7px; }
+        .modal-sm p { font-size: 0.83rem; color: var(--slate); }
+        .btn-danger {
+            background: #ef4444;
+            border: none; border-radius: 10px;
+            padding: 9px 20px;
+            font-family: 'Sora', sans-serif;
+            font-size: 0.8rem; font-weight: 700;
+            color: white; cursor: pointer;
+            transition: background 0.15s;
+        }
+        .btn-danger:hover { background: #dc2626; }
+
+        /* Toast */
+        .toast-wrap {
+            position: fixed;
+            bottom: 2rem; right: 2rem;
+            z-index: 999;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .toast {
+            background: var(--navy);
+            color: white;
+            padding: 11px 18px;
+            border-radius: 12px;
+            font-size: 0.82rem;
+            font-weight: 500;
+            display: flex; align-items: center; gap: 8px;
+            box-shadow: 0 8px 24px rgba(10,22,40,0.25);
+            animation: toastIn 0.3s ease;
+        }
+        .toast.success { border-left: 3px solid #22c55e; }
+        .toast.error   { border-left: 3px solid #ef4444; }
+        .toast svg { width: 15px; height: 15px; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+        .toast.success svg { stroke: #22c55e; }
+        .toast.error   svg { stroke: #ef4444; }
+        @keyframes toastIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+
+        /* PASSWORD MODAL */
+        .pwd-field { margin: 1.5rem 0; text-align: center; }
+        .pwd-input {
+            width: 80%;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 1.2rem;
+            text-align: center;
+            letter-spacing: 0.3em;
+            outline: none;
+        }
+        .pwd-input:focus { border-color: var(--blue-bright); }
+
+        /* Responsive */
+        @media (max-width: 640px) {
+            .topbar { padding: 0 1.2rem; }
+            .topbar-right { margin-right: 0; }
+            .search-section { padding: 1rem 1.2rem; }
+            .main { padding: 1.5rem 1.2rem; }
+            .modal-body, .modal-footer { padding-left: 1.2rem; padding-right: 1.2rem; }
+            .modal-header { padding: 1.2rem 1.2rem 1rem; }
+            .modal-tabs { padding: 0 1.2rem; }
+        }
+    </style>
+</head>
+<body>
+
+<header class="topbar">
+    <div class="topbar-brand">
+        <div class="topbar-icon">
+            <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <div>
+            <div class="topbar-title">Currículo do Colaborador</div>
+            <div class="topbar-subtitle">Gestão de fichas e documentos</div>
+        </div>
+    </div>
+    <div class="topbar-right">
+        <div class="sync-badge" id="syncBadge">
+            <svg class="spin" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            SINCRONIZANDO
+        </div>
+        <button class="btn-add" onclick="checkAuth('add')">
+            <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Novo Colaborador
+        </button>
+    </div>
+</header>
+
+<div class="search-section">
+    <div class="search-wrap">
+        <div class="search-icon">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </div>
+        <input type="text" id="searchInput" placeholder="Buscar colaborador por nome ou função..." oninput="renderCards()">
+    </div>
+</div>
+
+<main class="main">
+    <div class="section-header">
+        <span class="count-label" id="countLabel">Carregando...</span>
+    </div>
+    <div class="cards-grid" id="cardsGrid"></div>
+</main>
+
+<div class="overlay" id="mainOverlay">
+    <div class="modal" id="mainModal">
+        <div class="modal-header" id="modalHeader">
+            <div>
+                <div class="modal-avatar" id="modalAvatarView"><span id="modalInitials">–</span></div>
+                <div class="modal-name" id="modalNameDisp">–</div>
+                <div class="modal-role" id="modalRoleDisp">–</div>
+            </div>
+            <button class="modal-close" onclick="closeModal()">
+                <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="modal-tabs">
+            <button class="modal-tab active" id="tabViewBtn" onclick="switchModalTab('view')">Visualização</button>
+            <button class="modal-tab locked" id="tabEditBtn" onclick="switchModalTab('edit')">Editar</button>
+        </div>
+
+        <div id="viewPane" class="modal-body">
+            <div class="field-row">
+                <div class="field-item">
+                    <div class="field-label">Nome</div>
+                    <div class="field-value" id="vNome">–</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-label">Telefone</div>
+                    <div class="field-value" id="vTelefone">–</div>
+                </div>
+            </div>
+            <div class="field-row">
+                <div class="field-item">
+                    <div class="field-label">Gênero</div>
+                    <div class="field-value" id="vGenero">–</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-label">Principal UC</div>
+                    <div class="field-value" id="vUC">–</div>
+                </div>
+            </div>
+            <div class="field-row">
+                <div class="field-item">
+                    <div class="field-label">Função</div>
+                    <div class="field-value" id="vFuncao">–</div>
+                </div>
+            </div>
+            <div class="attachments-section">
+                <div class="attachments-title">
+                    <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                    Anexos
+                </div>
+                <div class="attach-list" id="viewAttachList"></div>
+            </div>
+        </div>
+
+        <div id="editPane" class="modal-body" style="display:none;">
+            <input type="hidden" id="editCardId">
+            <div class="edit-field">
+                <label class="edit-label">Nome</label>
+                <input type="text" list="nameDatalist" class="edit-input" id="editNome" placeholder="Selecione ou digite um nome...">
+                <datalist id="nameDatalist"></datalist>
+            </div>
+            <div class="field-row" style="gap:1rem">
+                <div class="edit-field" style="flex:1;margin-bottom:0">
+                    <label class="edit-label">Telefone</label>
+                    <input type="text" class="edit-input" id="editTelefone" disabled>
+                </div>
+                <div class="edit-field" style="flex:1;margin-bottom:0">
+                    <label class="edit-label">Gênero</label>
+                    <input type="text" class="edit-input" id="editGenero" disabled>
+                </div>
+            </div>
+            <br>
+            <div class="field-row" style="gap:1rem">
+                <div class="edit-field" style="flex:1;margin-bottom:0">
+                    <label class="edit-label">Principal UC</label>
+                    <input type="text" class="edit-input" id="editUC" disabled>
+                </div>
+                <div class="edit-field" style="flex:1;margin-bottom:0">
+                    <label class="edit-label">Função</label>
+                    <input type="text" class="edit-input" id="editFuncao" disabled>
+                </div>
+            </div>
+            <hr class="upload-divider">
+            <div class="attachments-title">
+                <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                Anexos do Colaborador
+            </div>
+            <div class="attach-list" id="editAttachList" style="margin-bottom:12px;"></div>
+            <label for="editFileInput">
+                <div class="upload-zone" id="uploadZone">
+                    <svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+                    <p>Arraste um arquivo ou <strong>clique para selecionar</strong></p>
+                </div>
+            </label>
+            <input type="file" id="editFileInput" onchange="handleEditUpload(event)">
+            <div class="upload-progress" id="editUploadProg">
+                <div class="prog-meta">
+                    <span class="prog-label" id="editProgLabel">Enviando...</span>
+                    <span class="prog-value" id="editProgValue">0%</span>
+                </div>
+                <div class="prog-track"><div class="prog-fill" id="editProgFill" style="width:0%"></div></div>
+            </div>
+        </div>
+
+        <div class="modal-footer" id="editFooter" style="display:none;">
+            <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+            <button class="btn-save" onclick="saveCard()">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Salvar
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="overlay" id="passwordOverlay">
+    <div class="modal modal-sm">
+        <div class="modal-body">
+            <div class="topbar-icon" style="margin: 0 auto 1rem; width: 48px; height: 48px;">
+                <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <h3>Acesso Restrito</h3>
+            <p>Digite a senha para habilitar edições.</p>
+            <div class="pwd-field">
+                <input type="password" id="authPassword" class="pwd-input" placeholder="••••">
+            </div>
+        </div>
+        <div class="modal-footer" style="justify-content:center; padding-bottom: 2rem;">
+            <button class="btn-cancel" onclick="closePasswordModal()">Cancelar</button>
+            <button class="btn-save" onclick="validatePassword()">Acessar</button>
+        </div>
+    </div>
+</div>
+
+<div class="overlay" id="deleteOverlay">
+    <div class="modal" style="max-width: 420px;">
+        <div class="modal-body">
+            <div class="danger-icon">
+                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </div>
+            <h3>Remover Colaborador?</h3>
+            <p style="margin-bottom: 20px; color: #6b7280;">Esta ação é <strong>irreversível</strong> e removerá permanentemente o colaborador e todos os seus anexos.</p>
+            
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <div style="font-weight: 600; color: #991b1b; margin-bottom: 8px; font-size: 14px;">
+                    Para confirmar, digite o nome completo:
+                </div>
+                <div style="background: white; border: 2px solid #e5e7eb; border-radius: 6px; padding: 12px; margin-bottom: 8px; font-family: monospace; font-size: 16px; color: #1f2937; text-align: center; font-weight: 600;">
+                    <span id="deleteCardName">CARREGANDO...</span>
+                </div>
+                <input type="text" 
+                       id="deleteConfirmInput" 
+                       placeholder="Digite o nome exato para confirmar" 
+                       style="width: 100%; padding: 12px; border: 2px solid #d1d5db; border-radius: 6px; font-size: 14px; transition: border-color 0.2s;"
+                       oninput="validateDeleteConfirmation()"
+                       autocomplete="off">
+                <div id="deleteError" style="color: #dc2626; font-size: 13px; margin-top: 8px; display: none;">
+                    ⚠️ Nome não corresponde. Digite exatamente: <strong id="deleteErrorName"></strong>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer" style="justify-content:center;gap:12px;padding-top:1.5rem;">
+            <button class="btn-cancel" onclick="closeDeleteModal()">Cancelar</button>
+            <button id="deleteConfirmBtn" class="btn-danger" disabled onclick="confirmDelete()">
+                <svg viewBox="0 0 24 24" style="width:16px;height:16px;margin-right:6px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                Confirmar Exclusão
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="overlay" id="addOverlay">
+    <div class="modal">
+        <div class="modal-header" style="border-radius:22px 22px 0 0;">
+            <div>
+                <div class="modal-avatar"><span>+</span></div>
+                <div class="modal-name">Novo Colaborador</div>
+                <div class="modal-role">Preencha o nome para importar os dados</div>
+            </div>
+            <button class="modal-close" onclick="closeAddModal()">
+                <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="edit-field">
+                <label class="edit-label">Nome</label>
+                <input type="text" list="addNameDatalist" class="edit-input" id="addNome" placeholder="Selecione ou digite um nome..." oninput="fillAddFields()">
+                <datalist id="addNameDatalist"></datalist>
+            </div>
+            <div class="field-row" style="gap:1rem">
+                <div class="edit-field" style="flex:1;margin-bottom:0">
+                    <label class="edit-label">Telefone</label>
+                    <input type="text" class="edit-input" id="addTelefone" disabled>
+                </div>
+                <div class="edit-field" style="flex:1;margin-bottom:0">
+                    <label class="edit-label">Gênero</label>
+                    <input type="text" class="edit-input" id="addGenero" disabled>
+                </div>
+            </div>
+            <br>
+            <div class="field-row" style="gap:1rem">
+                <div class="edit-field" style="flex:1;margin-bottom:0">
+                    <label class="edit-label">Principal UC</label>
+                    <input type="text" class="edit-input" id="addUC" disabled>
+                </div>
+                <div class="edit-field" style="flex:1;margin-bottom:0">
+                    <label class="edit-label">Função</label>
+                    <input type="text" class="edit-input" id="addFuncao" disabled>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeAddModal()">Cancelar</button>
+            <button class="btn-save" onclick="saveNewCard()">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Criar Colaborador
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+// Initialize Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyBo8RHN7GfVk7g8SMISlzzYIkY5KCcrtUg",
+  authDomain: "curriculolamic.firebaseapp.com",
+  databaseURL: "https://curriculolamic-default-rtdb.firebaseio.com",
+  projectId: "curriculolamic",
+  storageBucket: "curriculolamic.firebasestorage.app",
+  messagingSenderId: "325255911078",
+  appId: "1:325255911078:web:126cc8b86537b5fcebc667"
+};
+
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+
+const DRIVE_API = "https://script.google.com/macros/s/AKfycbzzqR-O-ViBpkcNtNccer2O-8PlWuFVgKd1MdJEEs94nYEfL25mMyt-fmfpmnNHXurURA/exec";
+const SHEET_API = "https://script.google.com/macros/s/AKfycbwzlnsjXywhXMq1jErG0BiMfMH7Wrv8GQWzwq65xlaxKXEGvPHs5z2WZbXnbio5bDFFlQ/exec";
+const MASTER_PWD = "Lamic6530@";
+
+// Firebase paths
+const FIREBASE_PATHS = {
+    cards: 'curr_colab_cards',
+    sheetData: 'curr_colab_sheet_data',
+    sheetHash: 'curr_colab_sheet_hash'
+};
+
+let sheetData = [];      
+let cards = [];          
+let allFiles = [];       
+let deletingCardId = null;
+let activeCardId = null;
+let modalMode = 'view';  
+let isAuthenticated = false;
+let pendingAction = null; 
+let pendingId = null;
+
+// ─── INIT ───────────────────────────────────────────────────────
+window.onload = () => { 
+    loadLocalData(); // Primeiro carrega o que estiver no cache local
+    loadSheet(); 
+    loadDriveFiles(); 
+};
+
+// Carrega dados persistidos do Firebase
+async function loadLocalData() {
+    try {
+        // Carrega cards do Firebase
+        const cardsSnapshot = await database.ref(FIREBASE_PATHS.cards).once('value');
+        const cardsData = cardsSnapshot.val();
+        if (cardsData) {
+            cards = Object.values(cardsData);
+            renderCards();
+        }
+        
+        // Carrega dados da planilha do Firebase se existir
+        const sheetSnapshot = await database.ref(FIREBASE_PATHS.sheetData).once('value');
+        const sheetDataFromFirebase = sheetSnapshot.val();
+        if (sheetDataFromFirebase) {
+            sheetData = sheetDataFromFirebase;
+            populateDatalist();
+        }
+    } catch(e) {
+        console.error('Erro ao carregar dados do Firebase:', e);
+        // Fallback para localStorage se Firebase falhar
+        const savedCards = localStorage.getItem('curr_colab_cards_fallback');
+        if (savedCards) {
+            cards = JSON.parse(savedCards);
+            renderCards();
+        }
+    }
+    
+    // Não carrega mais o estado de autenticação do localStorage
+    // para exigir senha sempre que a página for atualizada
+    isAuthenticated = false;
+}
+
+// Salva a lista de cards no Firebase
+async function saveLocalCards() {
+    try {
+        // Salva no Firebase
+        await database.ref(FIREBASE_PATHS.cards).set(cards);
+        console.log('Cards salvos no Firebase');
+    } catch(e) {
+        console.error('Erro ao salvar no Firebase:', e);
+        // Fallback para localStorage
+        localStorage.setItem('curr_colab_cards_fallback', JSON.stringify(cards));
+        console.log('Cards salvos no localStorage (fallback)');
+    }
+}
+
+// Gera hash simples para detectar mudanças nos dados
+function generateDataHash(data) {
+    const str = JSON.stringify(data);
+    let hash = 0;
+    for (let i = 0; i <str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return hash.toString();
+}
+
+async function loadSheet() {
+    try {
+        const res = await fetch(SHEET_API);
+        const rows = await res.json();
+        const newSheetData = rows.map(row => ({
+            nome:     row.colunaB || row[0] || '',
+            telefone: row.colunaC || row[1] || '',
+            genero:   row.colunaD || row[2] || '',
+            uc:       row.colunaE || row[3] || '',
+            funcao:   row.colunaF || row[4] || ''
+        }));
+        
+        // Gera hash dos novos dados
+        const newHash = generateDataHash(newSheetData);
+        const savedHash = await database.ref(FIREBASE_PATHS.sheetHash).once('value').then(s => s.val());
+        
+        // Verifica se houve mudança
+        if (newHash !== savedHash) {
+            console.log('Dados da planilha atualizados');
+            sheetData = newSheetData;
+            
+            // Salva no Firebase
+            try {
+                await database.ref(FIREBASE_PATHS.sheetData).set(sheetData);
+                await database.ref(FIREBASE_PATHS.sheetHash).set(newHash);
+                console.log('Dados da planilha salvos no Firebase');
+            } catch(e) {
+                console.error('Erro ao salvar no Firebase:', e);
+                // Fallback para localStorage
+                localStorage.setItem('curr_colab_sheet_data_fallback', JSON.stringify(sheetData));
+                localStorage.setItem('curr_colab_sheet_hash_fallback', newHash);
+            }
+            
+            populateDatalist();
+            
+            // Recarrega os cards para refletir possíveis mudanças
+            if (allFiles.length > 0) {
+                rebuildCards();
+            }
+        } else {
+            console.log('Dados da planilha inalterados, usando cache');
+        }
+    } catch(e) { 
+        console.error('Erro ao carregar planilha:', e);
+        toast('Erro ao carregar planilha', 'error'); 
+    }
+}
+
+function populateDatalist() {
+    ['nameDatalist','addNameDatalist'].forEach(id => {
+        const dl = document.getElementById(id);
+        if (!dl) return;
+        dl.innerHTML = '';
+        sheetData.forEach(r => {
+            if (!r.nome) return;
+            const opt = document.createElement('option');
+            opt.value = r.nome;
+            dl.appendChild(opt);
+        });
+    });
+}
+
+async function loadDriveFiles() {
+    toggleSync(true);
+    try {
+        const res = await fetch(`${DRIVE_API}?action=list`);
+        allFiles = await res.json();
+        rebuildCards();
+    } catch(e) { toast('Erro ao carregar arquivos', 'error'); }
+    finally { toggleSync(false); }
+}
+
+function rebuildCards() {
+    const cardMap = {};
+    
+    // Processa arquivos do Drive para vincular aos cards existentes ou novos
+    allFiles.forEach(f => {
+        const m = f.name.match(/\[CARD:([^\]]+)\]/);
+        if (!m) return;
+        const cid = m[1];
+        if (!cardMap[cid]) {
+            const nameMatch = f.name.match(/^(.+?)\s*\[CARD:/);
+            const storedName = nameMatch ? nameMatch[1].replace(/\s*\[.*/, '').trim() : '';
+            const sheetRow = sheetData.find(r => r.nome.trim().toLowerCase() === storedName.trim().toLowerCase()) || {};
+            cardMap[cid] = {
+                id: cid,
+                nome: storedName,
+                telefone: sheetRow.telefone || '',
+                genero: sheetRow.genero || '',
+                uc: sheetRow.uc || '',
+                funcao: sheetRow.funcao || '',
+                files: []
+            };
+        }
+        cardMap[cid].files.push(f);
+    });
+
+    // Mantém cards que foram criados manualmente (standalone) e ainda não têm arquivos
+    const existingStandalone = cards.filter(c => !cardMap[c.id] && c._noFiles);
+    
+    // Atualiza a lista global de cards
+    cards = [...Object.values(cardMap), ...existingStandalone];
+    
+    // Ordenação: primeiro por UC (ordem crescente), depois por nome
+    cards.sort((a, b) => {
+        const ucA = (a.uc || '').trim().toLowerCase();
+        const ucB = (b.uc || '').trim().toLowerCase();
+        
+        // Compara por UC primeiro
+        if (ucA < ucB) return -1;
+        if (ucA > ucB) return 1;
+        
+        // Se UC for igual, compara por nome
+        const nameA = (a.nome || '').trim().toLowerCase();
+        const nameB = (b.nome || '').trim().toLowerCase();
+        
+        if (nameA < nameB) return -1;
+        if (nameA > nameB) return 1;
+        
+        return 0;
+    });
+    
+    saveLocalCards(); // Persiste no LocalStorage
+    renderCards();
+}
+
+// ─── AUTH SYSTEM ────────────────────────────────────────────────
+function checkAuth(action, id = null) {
+    if (isAuthenticated) {
+        executeSecureAction(action, id);
+    } else {
+        pendingAction = action;
+        pendingId = id;
+        document.getElementById('passwordOverlay').classList.add('open');
+        document.getElementById('authPassword').value = '';
+        document.getElementById('authPassword').focus();
+    }
+}
+
+function closePasswordModal() {
+    document.getElementById('passwordOverlay').classList.remove('open');
+    pendingAction = null;
+    pendingId = null;
+}
+
+function validatePassword() {
+    const pwd = document.getElementById('authPassword').value;
+    if (pwd === MASTER_PWD) {
+        isAuthenticated = true;
+        // Não persiste mais o estado de login para exigir senha ao atualizar a página
+        document.getElementById('tabEditBtn').classList.remove('locked');
+        document.getElementById('passwordOverlay').classList.remove('open');
+        toast('Acesso autorizado', 'success');
+        if (pendingAction) executeSecureAction(pendingAction, pendingId);
+    } else {
+        toast('Senha incorreta', 'error');
+        document.getElementById('authPassword').value = '';
+    }
+}
+
+// Adiciona evento Enter para o campo de senha
+document.addEventListener('DOMContentLoaded', function() {
+    const authPassword = document.getElementById('authPassword');
+    if (authPassword) {
+        authPassword.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                validatePassword();
+            }
+        });
+    }
+});
+
+function executeSecureAction(action, id) {
+    if (action === 'add') openAddModal();
+    if (action === 'edit') openEditModal(id);
+    if (action === 'delete') askDelete(id);
+}
+
+// ─── RENDER ─────────────────────────────────────────────────────
+function formatGenero(val) {
+    if (!val) return '—';
+    const clean = val.toString().toUpperCase().trim();
+    if (clean === 'F') return 'Feminino';
+    if (clean === 'M') return 'Masculino';
+    return val;
+}
+
+function renderCards() {
+    const query = document.getElementById('searchInput').value.toLowerCase();
+    const grid  = document.getElementById('cardsGrid');
+    grid.innerHTML = '';
+
+    const filtered = cards.filter(c =>
+        c.nome.toLowerCase().includes(query) ||
+        (c.funcao || '').toLowerCase().includes(query) ||
+        (c.uc || '').toLowerCase().includes(query)
+    );
+
+    document.getElementById('countLabel').textContent = `${filtered.length} colaborador${filtered.length !== 1 ? 'es' : ''}`;
+
+    if (!filtered.length) {
+        grid.innerHTML = `<div class="empty-state">
+            <div class="empty-icon"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+            <h3>Nenhum colaborador encontrado</h3>
+            <p>Adicione um novo colaborador ou ajuste a busca.</p>
+        </div>`;
+        return;
+    }
+
+    filtered.forEach(c => grid.appendChild(buildCard(c)));
+}
+
+function buildCard(c) {
+    const initials = (c.nome || '?').split(' ').slice(0,2).map(w => w[0]).join('').toUpperCase();
+    const cleanPhone = (c.telefone || '').replace(/\D/g, '');
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.setAttribute('data-card-id', c.id); // Adiciona ID para referência
+    div.innerHTML = `
+        <div class="card-accent"></div>
+        <div class="card-body">
+            <div class="card-avatar"><span>${initials}</span></div>
+            <div class="card-name">${c.nome || '—'}</div>
+            <div class="card-role">${c.funcao || 'Sem função'}</div>
+            <div class="card-meta">
+                <div class="card-meta-item">
+                    <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13 19.79 19.79 0 0 1 1.61 4.38 2 2 0 0 1 3.6 2.18h3a2 2 0 0 1 2 1.72c.127.96.36 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.29 6.29l.95-.95a2 2 0 0 1 2.11-.45c.907.34 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                    ${c.telefone || '—'}
+                    ${cleanPhone ? `<a href="https://wa.me/55${cleanPhone}" target="_blank" class="whatsapp-link" onclick="event.stopPropagation()">
+                        <svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.414 0 .004 5.412.001 12.04c0 2.123.554 4.197 1.607 6.037L0 24l6.105-1.602a11.834 11.834 0 005.937 1.61h.005c6.637 0 12.05-5.414 12.053-12.04a11.83 11.83 0 00-3.51-8.413z"/></svg>
+                    </a>` : ''}
+                </div>
+                <div class="card-meta-item">
+                    <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                    ${c.uc || '—'}
+                </div>
+            </div>
+        </div>
+        <div class="card-footer">
+            <div class="card-attach-count">
+                <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                ${c.files ? c.files.length : 0} anexo${c.files && c.files.length !== 1 ? 's' : ''}
+            </div>
+            <div class="card-actions">
+                <button class="btn-view" title="Visualizar" onclick="openViewModal('${c.id}')">
+                    <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+                <button class="btn-edit" title="Editar" onclick="checkAuth('edit', '${c.id}')">
+                    <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button class="btn-delete" title="Remover" onclick="checkAuth('delete', '${c.id}')">
+                    <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </button>
+            </div>
+        </div>`;
+    return div;
+}
+
+// ─── MODALS ──────────────────────────────────────────────────────
+function openViewModal(id) {
+    activeCardId = id;
+    const c = cards.find(x => x.id === id);
+    if (!c) return;
+    fillModalHeader(c);
+    fillViewPane(c);
+    
+    // Esconde as abas e mostra apenas o conteúdo de visualização
+    document.querySelector('.modal-tabs').style.display = 'none';
+    document.getElementById('viewPane').style.display = '';
+    document.getElementById('editPane').style.display = 'none';
+    document.getElementById('editFooter').style.display = 'none';
+    
+    document.getElementById('mainOverlay').classList.add('open');
+}
+
+function openEditModal(id) {
+    activeCardId = id;
+    const c = cards.find(x => x.id === id);
+    if (!c) return;
+    
+    // Primeiro preenche todos os dados
+    fillModalHeader(c);
+    fillEditPane(c);
+    
+    // Esconde completamente a aba de visualização
+    document.getElementById('tabViewBtn').style.display = 'none';
+    document.getElementById('tabEditBtn').style.display = '';
+    
+    // Mostra as abas e abre o modal
+    document.querySelector('.modal-tabs').style.display = '';
+    document.getElementById('mainOverlay').classList.add('open');
+    
+    // Depois ativa a aba de edição com delay
+    setTimeout(() => {
+        switchModalTab('edit');
+    }, 50);
+}
+
+function fillModalHeader(c) {
+    const initials = (c.nome || '?').split(' ').slice(0,2).map(w => w[0]).join('').toUpperCase();
+    document.getElementById('modalInitials').textContent = initials;
+    document.getElementById('modalNameDisp').textContent = c.nome || '—';
+    document.getElementById('modalRoleDisp').textContent = c.funcao || 'Sem função';
+}
+
+function fillViewPane(c) {
+    document.getElementById('vNome').textContent     = c.nome     || '—';
+    document.getElementById('vTelefone').textContent = c.telefone || '—';
+    document.getElementById('vGenero').textContent   = formatGenero(c.genero);
+    document.getElementById('vUC').textContent       = c.uc       || '—';
+    document.getElementById('vFuncao').textContent   = c.funcao   || '—';
+
+    const list = document.getElementById('viewAttachList');
+    list.innerHTML = '';
+    if (!c.files || !c.files.length) {
+        list.innerHTML = '<div class="no-attach">Nenhum anexo cadastrado.</div>';
+        return;
+    }
+    c.files.forEach(f => {
+        // Remove o nome do colaborador e o tag CARD do nome do arquivo
+        let cleanName = f.name.replace(/^[^\[]*\s*\[CARD:[^\]]+\]\s*/, '').trim();
+        const a = document.createElement('a');
+        a.href = f.url; a.target = '_blank'; a.className = 'attach-item';
+        a.innerHTML = `
+            <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            <span class="attach-name" title="${cleanName}" id="viewFileName_${f.id}">${cleanName}</span>
+            <span class="attach-open"><svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></span>`;
+        list.appendChild(a);
+    });
+}
+
+function fillEditPane(c) {
+    document.getElementById('editCardId').value = c.id;
+    document.getElementById('editNome').value     = c.nome     || '';
+    document.getElementById('editTelefone').value = c.telefone || '';
+    document.getElementById('editGenero').value   = formatGenero(c.genero);
+    document.getElementById('editUC').value       = c.uc       || '';
+    document.getElementById('editFuncao').value   = c.funcao   || '';
+
+    const list = document.getElementById('editAttachList');
+    list.innerHTML = '';
+    if (c.files) {
+        c.files.forEach(f => {
+            // Remove o nome do colaborador e o tag CARD do nome do arquivo
+            let cleanName = f.name.replace(/^[^\[]*\s*\[CARD:[^\]]+\]\s*/, '').trim();
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;margin-bottom:6px;';
+            row.innerHTML = `
+                <svg style="width:13px;height:13px;stroke:#3b82f6;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                <input type="text" value="${cleanName}" 
+                       id="fileName_${f.id}"
+                       style="flex:1;font-size:0.8rem;font-weight:500;color:#1d4ed8;background:transparent;border:1px solid transparent;padding:2px 4px;border-radius:4px;" 
+                       onfocus="startEditingFileName('${f.id}', this)" 
+                       onblur="finishEditingFileName('${f.id}', this, '${c.id}')" 
+                       title="Clique para editar o nome do arquivo">
+                <button onclick="deleteFile('${f.id}')" style="background:none;border:none;cursor:pointer;padding:2px;" title="Remover">
+                    <svg style="width:14px;height:14px;stroke:#ef4444;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>`;
+            list.appendChild(row);
+        });
+    }
+    document.getElementById('editUploadProg').classList.remove('visible');
+}
+
+document.getElementById('editNome').addEventListener('input', function() {
+    const name = this.value.trim();
+    const row = sheetData.find(r => r.nome.trim().toLowerCase() === name.toLowerCase());
+    if (row) {
+        document.getElementById('editTelefone').value = row.telefone || '';
+        document.getElementById('editGenero').value   = formatGenero(row.genero);
+        document.getElementById('editUC').value       = row.uc       || '';
+        document.getElementById('editFuncao').value   = row.funcao   || '';
+    }
+});
+
+function switchModalTab(tab) {
+    modalMode = tab;
+    document.getElementById('viewPane').style.display   = tab === 'view' ? '' : 'none';
+    document.getElementById('editPane').style.display   = tab === 'edit' ? '' : 'none';
+    document.getElementById('editFooter').style.display = tab === 'edit' ? '' : 'none';
+    document.getElementById('tabViewBtn').classList.toggle('active', tab === 'view');
+    document.getElementById('tabEditBtn').classList.toggle('active', tab === 'edit');
+}
+
+function closeModal() { 
+    document.getElementById('mainOverlay').classList.remove('open');
+    // Restaura as abas ao estado normal
+    document.getElementById('tabViewBtn').style.display = '';
+    document.getElementById('tabEditBtn').style.display = '';
+}
+
+// ─── SAVE CARD ───────────────────────────────────────────────────
+function saveCard() {
+    const id   = document.getElementById('editCardId').value;
+    const name = document.getElementById('editNome').value.trim();
+    if (!name) { toast('Informe o nome do colaborador', 'error'); return; }
+
+    const row = sheetData.find(r => r.nome.trim().toLowerCase() === name.toLowerCase());
+    if (!row && name) { toast('Nome não encontrado na planilha', 'error'); return; }
+
+    const idx = cards.findIndex(c => c.id === id);
+    if (idx === -1) return;
+    cards[idx].nome     = name;
+    cards[idx].telefone = row?.telefone || '';
+    cards[idx].genero   = row?.genero   || '';
+    cards[idx].uc       = row?.uc       || '';
+    cards[idx].funcao   = row?.funcao   || '';
+
+    // Verifica se há upload em andamento
+    const uploadProg = document.getElementById('editUploadProg');
+    if (uploadProg && uploadProg.classList.contains('visible')) {
+        // Mostra aviso que o upload está em andamento
+        showUploadInProgressWarning();
+        return;
+    }
+
+    toast('Colaborador atualizado!', 'success');
+    closeModal();
+    saveLocalCards(); // Persiste no LocalStorage
+    rebuildCards();   // Reaplica ordenação
+}
+
+// Função para mostrar aviso de upload em andamento
+function showUploadInProgressWarning() {
+    const existingWarning = document.getElementById('uploadInProgressWarning');
+    if (existingWarning) return; // Evita duplicação
+    
+    const warning = document.createElement('div');
+    warning.id = 'uploadInProgressWarning';
+    warning.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        border: 2px solid #f59e0b;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        z-index: 1000;
+        min-width: 300px;
+        text-align: center;
+    `;
+    
+    warning.innerHTML = `
+        <div style="color: #f59e0b; font-size: 24px; margin-bottom: 10px;">⏳</div>
+        <h3 style="color: #1f2937; margin-bottom: 10px;">Upload em Andamento</h3>
+        <p style="color: #6b7280; margin-bottom: 15px;">Aguarde o upload do arquivo concluir para salvar o colaborador.</p>
+        <div id="uploadProgressBar" style="background: #e5e7eb; border-radius: 8px; height: 8px; margin-bottom: 10px; overflow: hidden;">
+            <div id="uploadProgressFill" style="background: #f59e0b; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+        </div>
+        <div id="uploadProgressText" style="color: #6b7280; font-size: 14px;">Aguardando...</div>
+        <button onclick="closeUploadWarning()" style="background: #f59e0b; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; margin-top: 10px;">OK</button>
+    `;
+    
+    document.body.appendChild(warning);
+    
+    // Monitora o progresso do upload
+    monitorUploadProgress();
+}
+
+function closeUploadWarning() {
+    const warning = document.getElementById('uploadInProgressWarning');
+    if (warning) {
+        warning.remove();
+    }
+}
+
+function monitorUploadProgress() {
+    const checkProgress = () => {
+        const prog = document.getElementById('editUploadProg');
+        const warning = document.getElementById('uploadInProgressWarning');
+        
+        if (!warning) return; // Warning foi fechado
+        
+        if (prog && prog.classList.contains('visible')) {
+            const fill = document.getElementById('editProgFill');
+            const value = document.getElementById('editProgValue');
+            const label = document.getElementById('editProgLabel');
+            
+            if (fill && value && label) {
+                const progressWidth = fill.style.width;
+                const progressValue = value.textContent;
+                const progressLabel = label.textContent;
+                
+                // Atualiza o warning
+                const warningFill = document.getElementById('uploadProgressFill');
+                const warningText = document.getElementById('uploadProgressText');
+                
+                if (warningFill && warningText) {
+                    warningFill.style.width = progressWidth;
+                    warningText.textContent = `${progressLabel} - ${progressValue}`;
+                }
+            }
+            
+            // Continua monitorando
+            setTimeout(checkProgress, 500);
+        } else {
+            // Upload concluído, fecha o warning e salva
+            closeUploadWarning();
+            saveCard();
+        }
+    };
+    
+    checkProgress();
+}
+
+// ─── ADD CARD ────────────────────────────────────────────────────
+function openAddModal() { document.getElementById('addOverlay').classList.add('open'); }
+function closeAddModal() { document.getElementById('addOverlay').classList.remove('open'); }
+
+function fillAddFields() {
+    const name = document.getElementById('addNome').value.trim();
+    const row = sheetData.find(r => r.nome.trim().toLowerCase() === name.toLowerCase());
+    if (row) {
+        // Preenche apenas se o campo estiver vazio ou com "-"
+        const telefoneField = document.getElementById('addTelefone');
+        const generoField = document.getElementById('addGenero');
+        const ucField = document.getElementById('addUC');
+        const funcaoField = document.getElementById('addFuncao');
+        
+        if (!telefoneField.value || telefoneField.value.trim() === '-' || telefoneField.value.trim() === '—') {
+            telefoneField.value = row.telefone || '';
+        }
+        if (!generoField.value || generoField.value.trim() === '-' || generoField.value.trim() === '—') {
+            generoField.value = formatGenero(row.genero);
+        }
+        if (!ucField.value || ucField.value.trim() === '-' || ucField.value.trim() === '—') {
+            ucField.value = row.uc || '';
+        }
+        if (!funcaoField.value || funcaoField.value.trim() === '-' || funcaoField.value.trim() === '—') {
+            funcaoField.value = row.funcao || '';
+        }
+    }
+}
+
+function saveNewCard() {
+    const name = document.getElementById('addNome').value.trim();
+    if (!name) { toast('Informe o nome do colaborador', 'error'); return; }
+    const row = sheetData.find(r => r.nome.trim().toLowerCase() === name.toLowerCase());
+    if (!row) { toast('Nome não encontrado na planilha', 'error'); return; }
+
+    const newCard = {
+        id:       crypto.randomUUID(),
+        nome:     name,
+        telefone: row.telefone || '',
+        genero:   row.genero   || '',
+        uc:       row.uc       || '',
+        funcao:   row.funcao   || '',
+        files:    [],
+        _noFiles: true
+    };
+    cards.push(newCard);
+    closeAddModal();
+    document.getElementById('addNome').value = '';
+    ['addTelefone','addGenero','addUC','addFuncao'].forEach(i => document.getElementById(i).value = '');
+    
+    saveLocalCards(); // Persiste no LocalStorage
+    rebuildCards();   // Reaplica ordenação
+    toast(`Colaborador ${name} adicionado!`, 'success');
+}
+
+// ─── DELETE ──────────────────────────────────────────────────────
+function askDelete(id) { 
+    deletingCardId = id; 
+    const card = cards.find(c => c.id === id);
+    if (!card) return;
+    
+    // Preenche o modal de deleção com os dados do colaborador
+    document.getElementById('deleteCardName').textContent = card.nome || 'Colaborador';
+    document.getElementById('deleteConfirmInput').value = '';
+    document.getElementById('deleteConfirmInput').disabled = false;
+    document.getElementById('deleteConfirmBtn').disabled = true;
+    document.getElementById('deleteError').style.display = 'none';
+    
+    document.getElementById('deleteOverlay').classList.add('open'); 
+    document.getElementById('deleteConfirmInput').focus();
+}
+
+function closeDeleteModal() { 
+    document.getElementById('deleteOverlay').classList.remove('open'); 
+    deletingCardId = null; 
+}
+
+function validateDeleteConfirmation() {
+    const card = cards.find(c => c.id === deletingCardId);
+    if (!card) return;
+    
+    const input = document.getElementById('deleteConfirmInput').value.trim();
+    const expectedName = (card.nome || '').trim();
+    
+    // Habilita/desabilita o botão conforme a digitação
+    const confirmBtn = document.getElementById('deleteConfirmBtn');
+    const errorMsg = document.getElementById('deleteError');
+    const errorName = document.getElementById('deleteErrorName');
+    
+    if (input === expectedName) {
+        confirmBtn.disabled = false;
+        errorMsg.style.display = 'none';
+        document.getElementById('deleteConfirmInput').style.borderColor = '#10b981';
+    } else if (input.length > 0) {
+        confirmBtn.disabled = true;
+        errorMsg.style.display = 'block';
+        errorName.textContent = expectedName;
+        document.getElementById('deleteConfirmInput').style.borderColor = '#ef4444';
+    } else {
+        confirmBtn.disabled = true;
+        errorMsg.style.display = 'none';
+        document.getElementById('deleteConfirmInput').style.borderColor = '#d1d5db';
+    }
+}
+
+async function confirmDelete() {
+    const c = cards.find(x => x.id === deletingCardId);
+    if (!c) { closeDeleteModal(); return; }
+
+    // Remove visualmente imediatamente usando o data-attribute
+    const cardElement = document.querySelector(`[data-card-id="${deletingCardId}"]`);
+    if (cardElement) {
+        cardElement.style.opacity = '0.3';
+        cardElement.style.pointerEvents = 'none';
+        cardElement.style.transform = 'scale(0.95)';
+        cardElement.style.transition = 'all 0.3s ease';
+        
+        // Adiciona animação de "apagando"
+        const deletingOverlay = document.createElement('div');
+        deletingOverlay.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            z-index: 10;
+            backdrop-filter: blur(4px);
+        `;
+        deletingOverlay.innerHTML = `
+            <div style="animation: pulse 1.5s ease-in-out infinite;">
+                <svg style="width:32px;height:32px;margin-bottom:8px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18"/>
+                    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                    <path d="M10 11v6"/>
+                    <path d="M14 11v6"/>
+                </svg>
+            </div>
+            <div style="font-weight:600;font-size:14px;text-align:center;">
+                APAGANDO
+            </div>
+            <div style="font-size:12px;opacity:0.9;text-align:center;">
+                Aguarde...
+            </div>
+        `;
+        
+        // Adiciona animação CSS
+        if (!document.getElementById('deletingAnimationCSS')) {
+            const style = document.createElement('style');
+            style.id = 'deletingAnimationCSS';
+            style.textContent = `
+                @keyframes pulse {
+                    0%, 100% { opacity: 1; transform: scale(1); }
+                    50% { opacity: 0.7; transform: scale(0.95); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        cardElement.style.position = 'relative';
+        cardElement.appendChild(deletingOverlay);
+    }
+    
+    // Fecha o modal mas mantém o ID para uso posterior
+    document.getElementById('deleteOverlay').classList.remove('open');
+    toggleSync(true);
+
+    try {
+        // Primeiro deleta todos os arquivos do Drive
+        if (c.files && c.files.length > 0) {
+            for (const f of c.files) {
+                try {
+                    await fetch(DRIVE_API, { 
+                        method:'POST', 
+                        body: JSON.stringify({ 
+                            action:'delete', 
+                            id: f.id 
+                        }) 
+                    });
+                } catch(e) {
+                    console.error('Erro ao deletar arquivo:', e);
+                }
+            }
+        }
+        
+        // Remove o card da lista local
+        cards = cards.filter(x => x.id !== deletingCardId);
+        
+        // Atualiza a UI
+        saveLocalCards();
+        renderCards();
+        
+        toast('Colaborador e todos os seus arquivos foram removidos permanentemente', 'success');
+    } catch(e) {
+        toast('Erro ao processar remoção', 'error');
+        // Restaura visualmente em caso de erro
+        if (cardElement) {
+            cardElement.style.opacity = '1';
+            cardElement.style.pointerEvents = 'auto';
+            cardElement.style.transform = 'scale(1)';
+            
+            // Remove a overlay de deleção
+            const deletingOverlay = cardElement.querySelector('div[style*="position: absolute"]');
+            if (deletingOverlay) {
+                deletingOverlay.remove();
+            }
+        }
+    }
+    finally {
+        toggleSync(false);
+        // Limpa a variável apenas no final
+        deletingCardId = null;
+    }
+}
+
+// ─── FILE UPLOAD ──────────────────────────────────────────────────
+async function handleEditUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const cardId = document.getElementById('editCardId').value;
+    if (!cardId) { toast('Salve o colaborador primeiro', 'error'); return; }
+
+    const prog = document.getElementById('editUploadProg');
+    prog.classList.add('visible');
+    setEditProg(20, 'Lendo arquivo...');
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        const card = cards.find(c => c.id === cardId);
+        const taggedName = `${card ? card.nome : 'Colaborador'} [CARD:${cardId}] ${file.name}`;
+        setEditProg(50, 'Enviando...');
+        try {
+            await fetch(DRIVE_API, {
+                method: 'POST',
+                body: JSON.stringify({ action:'upload', filename: taggedName, data: e.target.result })
+            });
+            setEditProg(100, 'Concluído!');
+            toast('Arquivo enviado!', 'success');
+            setTimeout(async () => {
+                prog.classList.remove('visible');
+                await loadDriveFiles();
+                const updatedCard = cards.find(c => c.id === cardId);
+                if (updatedCard) fillEditPane(updatedCard);
+            }, 700);
+        } catch(err) {
+            toast('Erro no upload', 'error');
+            prog.classList.remove('visible');
+        }
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+}
+
+function setEditProg(p, label) {
+    document.getElementById('editProgFill').style.width  = p + '%';
+    document.getElementById('editProgValue').textContent = p + '%';
+    document.getElementById('editProgLabel').textContent = label;
+}
+
+function startEditingFileName(fileId, inputElement) {
+    inputElement.style.borderColor = '#3b82f6';
+    inputElement.style.background = 'white';
+    inputElement.style.boxShadow = '0 0 0 2px rgba(59,130,246,0.1)';
+    // Salva o valor original para possível restauração
+    inputElement.setAttribute('data-original-value', inputElement.value);
+}
+
+async function finishEditingFileName(fileId, inputElement, cardId) {
+    const newName = inputElement.value;
+    const originalValue = inputElement.getAttribute('data-original-value');
+    
+    // Se não houve mudança, apenas restaura o estilo
+    if (newName === originalValue) {
+        inputElement.style.borderColor = 'transparent';
+        inputElement.style.background = 'transparent';
+        inputElement.style.boxShadow = 'none';
+        return;
+    }
+    
+    if (!newName || newName.trim() === '') {
+        toast('Nome do arquivo não pode estar vazio', 'error');
+        inputElement.value = originalValue;
+        inputElement.style.borderColor = '#ef4444';
+        inputElement.style.background = '#fef2f2';
+        inputElement.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.2)';
+        return;
+    }
+    
+    const file = allFiles.find(f => f.id === fileId);
+    if (!file) return;
+    
+    // Extrai o nome do colaborador e o ID do card do nome original
+    const cardMatch = file.name.match(/^(.+?)\s*\[CARD:([^\]]+)\]\s*(.*)$/);
+    if (!cardMatch) return;
+    
+    const collaboratorName = cardMatch[1];
+    const cardIdFromName = cardMatch[2];
+    const originalFileName = cardMatch[3];
+    
+    // Constrói o novo nome mantendo a estrutura original
+    const newFullName = `${collaboratorName} [CARD:${cardIdFromName}] ${newName.trim()}`;
+    
+    // Mostra indicador de carregamento e feedback visual
+    inputElement.style.borderColor = '#f59e0b';
+    inputElement.style.background = '#fef3c7';
+    inputElement.style.boxShadow = '0 0 0 2px rgba(245,158,11,0.2)';
+    
+    // Atualiza imediatamente na visualização com o novo nome
+    const viewElement = document.getElementById(`viewFileName_${fileId}`);
+    if (viewElement) {
+        viewElement.style.color = '#f59e0b';
+        viewElement.style.fontStyle = 'italic';
+        viewElement.textContent = newName;
+        
+        // Adiciona indicador visual de carregamento
+        const loadingIndicator = document.createElement('span');
+        loadingIndicator.style.cssText = `
+            margin-left: 6px;
+            font-size: 11px;
+            color: #f59e0b;
+            animation: pulse 1.5s ease-in-out infinite;
+        `;
+        loadingIndicator.innerHTML = '⟳ salvando...';
+        viewElement.appendChild(loadingIndicator);
+    }
+    
+    toggleSync(true);
+    
+    try {
+        await fetch(DRIVE_API, { 
+            method:'POST', 
+            body: JSON.stringify({ 
+                action:'rename', 
+                id: fileId, 
+                newName: newFullName 
+            }) 
+        });
+        await loadDriveFiles();
+        const card = cards.find(c => c.id === cardId);
+        if (card) fillEditPane(card);
+        toast('Nome do arquivo atualizado!', 'success');
+    } catch(e) { 
+        toast('Erro ao atualizar nome', 'error'); 
+        // Restaura o valor original em caso de erro
+        inputElement.value = originalValue;
+        inputElement.style.borderColor = '#ef4444';
+        inputElement.style.background = '#fef2f2';
+        inputElement.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.2)';
+        
+        // Restaura na visualização também
+        if (viewElement) {
+            viewElement.style.color = '';
+            viewElement.style.fontStyle = '';
+            viewElement.textContent = originalValue;
+        }
+    }
+    finally { 
+        toggleSync(false); 
+        // Restaura o estilo normal após um breve delay
+        setTimeout(() => {
+            inputElement.style.borderColor = 'transparent';
+            inputElement.style.background = 'transparent';
+            inputElement.style.boxShadow = 'none';
+            
+            // Restaura na visualização também
+            if (viewElement) {
+                viewElement.style.color = '';
+                viewElement.style.fontStyle = '';
+                // Remove o indicador de carregamento se existir
+                const loadingIndicator = viewElement.querySelector('span');
+                if (loadingIndicator) {
+                    loadingIndicator.remove();
+                }
+            }
+        }, 1000);
+    }
+}
+
+async function updateFileName(fileId, newName, cardId) {
+    if (!newName || newName.trim() === '') {
+        toast('Nome do arquivo não pode estar vazio', 'error');
+        return;
+    }
+    
+    const file = allFiles.find(f => f.id === fileId);
+    if (!file) return;
+    
+    // Extrai o nome do colaborador e o ID do card do nome original
+    const cardMatch = file.name.match(/^(.+?)\s*\[CARD:([^\]]+)\]\s*(.*)$/);
+    if (!cardMatch) return;
+    
+    const collaboratorName = cardMatch[1];
+    const cardIdFromName = cardMatch[2];
+    const originalFileName = cardMatch[3];
+    
+    // Constrói o novo nome mantendo a estrutura original
+    const newFullName = `${collaboratorName} [CARD:${cardIdFromName}] ${newName.trim()}`;
+    
+    // Mostra indicador de carregamento
+    toggleSync(true);
+    
+    try {
+        await fetch(DRIVE_API, { 
+            method:'POST', 
+            body: JSON.stringify({ 
+                action:'rename', 
+                id: fileId, 
+                newName: newFullName 
+            }) 
+        });
+        await loadDriveFiles();
+        const card = cards.find(c => c.id === cardId);
+        if (card) fillEditPane(card);
+        toast('Nome do arquivo atualizado!', 'success');
+    } catch(e) { 
+        toast('Erro ao atualizar nome', 'error'); 
+    }
+    finally { 
+        toggleSync(false); 
+    }
+}
+
+async function deleteFile(fileId) {
+    if (!confirm('Remover este anexo?')) return;
+    
+    // Mostra indicador de carregamento
+    toggleSync(true);
+    
+    try {
+        await fetch(DRIVE_API, { method:'POST', body: JSON.stringify({ action:'delete', id: fileId }) });
+        await loadDriveFiles();
+        const card = cards.find(c => c.id === activeCardId);
+        if (card) fillEditPane(card);
+        toast('Anexo removido', 'success');
+    } catch(e) { 
+        toast('Erro ao remover anexo', 'error'); 
+    }
+    finally { 
+        toggleSync(false); 
+    }
+}
+
+// ─── UTILS ────────────────────────────────────────────────────────
+function toggleSync(show) {
+    const badge = document.getElementById('syncBadge');
+    if (badge) badge.classList.toggle('visible', show);
+}
+
+function toast(msg, type='success') {
+    const wrap = document.getElementById('toastWrap');
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    const icon = type === 'success'
+        ? '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>'
+        : '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+    el.innerHTML = icon + msg;
+    wrap.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+}
+</script>
+</body>
+</html>
