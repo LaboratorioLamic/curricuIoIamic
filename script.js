@@ -262,7 +262,7 @@ function showRealtimeUpdate(message) {
     // Estilo inline para a notificação
     notification.style.cssText = `
         position: fixed;
-        top: 20px;
+        bottom: 20px;
         right: 20px;
         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
         color: white;
