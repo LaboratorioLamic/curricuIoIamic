@@ -6,6 +6,8 @@
     <title>Currículo do Colaborador</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
@@ -36,11 +38,18 @@
 </header>
 
 <div class="search-section">
-    <div class="search-wrap">
-        <div class="search-icon">
-            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <div class="search-container" id="searchContainer">
+        <button class="search-toggle" id="searchToggle" onclick="toggleSearch()">
+            <i class="fas fa-search"></i>
+        </button>
+        <div class="search-expandable" id="searchExpandable">
+            <div class="search-wrap">
+                <input type="text" id="searchInput" placeholder="Buscar por nome, função ou UC..." oninput="renderCards()" autocomplete="off" spellcheck="false">
+                <button class="search-close" id="searchClose" onclick="closeSearch()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
         </div>
-        <input type="text" id="searchInput" placeholder="Buscar colaborador por nome ou função..." oninput="renderCards()" autocomplete="off" spellcheck="false">
     </div>
 </div>
 
