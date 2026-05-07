@@ -40,7 +40,56 @@ window.onload = () => {
         // Após carregar a planilha, carrega os arquivos para garantir sincronização
         loadDriveFiles(); 
     });
+    
+    // Adiciona listener para tecla ESC
+    document.addEventListener('keydown', handleEscKey);
 };
+
+function handleEscKey(event) {
+    if (event.key === 'Escape') {
+        // Verifica se o modal está aberto
+        const overlay = document.getElementById('mainOverlay');
+        if (overlay && overlay.classList.contains('open')) {
+            // Verifica se há upload em andamento
+            const uploadProg = document.getElementById('editUploadProg');
+            if (uploadProg && uploadProg.classList.contains('visible')) {
+                toast('Não é possível fechar enquanto há upload em andamento', 'error');
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+            
+            // Se não há upload, fecha o modal
+            closeModal();
+        }
+    }
+}
+
+// Gerencia o estado visual do modal durante upload
+function setModalUploadingState(isUploading) {
+    const overlay = document.getElementById('mainOverlay');
+    const modal = document.getElementById('mainModal');
+    
+    if (isUploading) {
+        overlay.classList.add('uploading');
+        
+        // Adiciona indicador visual de upload
+        if (!modal.querySelector('.upload-indicator')) {
+            const indicator = document.createElement('div');
+            indicator.className = 'upload-indicator';
+            indicator.innerHTML = 'UPLOAD';
+            modal.appendChild(indicator);
+        }
+    } else {
+        overlay.classList.remove('uploading');
+        
+        // Remove indicador visual
+        const indicator = modal.querySelector('.upload-indicator');
+        if (indicator) {
+            indicator.remove();
+        }
+    }
+}
 
 // Carrega dados persistidos do Firebase
 async function loadLocalData() {
@@ -590,6 +639,13 @@ document.getElementById('editNome').addEventListener('input', function() {
 });
 
 function switchModalTab(tab) {
+    // Verifica se há upload em andamento
+    const uploadProg = document.getElementById('editUploadProg');
+    if (uploadProg && uploadProg.classList.contains('visible')) {
+        toast('Não é possível trocar de aba enquanto há upload em andamento', 'error');
+        return;
+    }
+    
     modalMode = tab;
     document.getElementById('viewPane').style.display   = tab === 'view' ? '' : 'none';
     document.getElementById('editPane').style.display   = tab === 'edit' ? '' : 'none';
@@ -599,10 +655,20 @@ function switchModalTab(tab) {
 }
 
 function closeModal() { 
+    // Verifica se há upload em andamento
+    const uploadProg = document.getElementById('editUploadProg');
+    if (uploadProg && uploadProg.classList.contains('visible')) {
+        toast('Não é possível fechar enquanto há upload em andamento', 'error');
+        return;
+    }
+    
     document.getElementById('mainOverlay').classList.remove('open');
     // Restaura as abas ao estado normal
     document.getElementById('tabViewBtn').style.display = '';
     document.getElementById('tabEditBtn').style.display = '';
+    
+    // Garante que o estado de upload seja desativado
+    setModalUploadingState(false);
 }
 
 // ─── SAVE CARD ───────────────────────────────────────────────────
@@ -954,6 +1020,9 @@ async function handleEditUpload(event) {
     const prog = document.getElementById('editUploadProg');
     prog.classList.add('visible');
     setEditProg(20, 'Lendo arquivo...');
+    
+    // Ativa o estado de upload no modal
+    setModalUploadingState(true);
 
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -969,6 +1038,8 @@ async function handleEditUpload(event) {
             toast('Arquivo enviado!', 'success');
             setTimeout(async () => {
                 prog.classList.remove('visible');
+                // Desativa o estado de upload no modal
+                setModalUploadingState(false);
                 await loadDriveFiles();
                 const updatedCard = cards.find(c => c.id === cardId);
                 if (updatedCard) fillEditPane(updatedCard);
@@ -976,6 +1047,8 @@ async function handleEditUpload(event) {
         } catch(err) {
             toast('Erro no upload', 'error');
             prog.classList.remove('visible');
+            // Desativa o estado de upload no modal em caso de erro
+            setModalUploadingState(false);
         }
     };
     reader.readAsDataURL(file);
