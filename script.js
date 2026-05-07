@@ -36,8 +36,10 @@ let pendingId = null;
 // ─── INIT ───────────────────────────────────────────────────────
 window.onload = () => { 
     loadLocalData(); // Primeiro carrega o que estiver no cache local
-    loadSheet(); 
-    loadDriveFiles(); 
+    loadSheet().then(() => {
+        // Após carregar a planilha, carrega os arquivos para garantir sincronização
+        loadDriveFiles(); 
+    });
 };
 
 // Carrega dados persistidos do Firebase
@@ -134,12 +136,28 @@ async function loadSheet() {
             
             populateDatalist();
             
-            // Recarrega os cards para refletir possíveis mudanças
+            // SEMPRE reconstrói os cards quando a planilha é atualizada
+            // Isso garante que TODAS as alterações sejam aplicadas automaticamente
             if (allFiles.length > 0) {
                 rebuildCards();
+            } else {
+                // Mesmo sem arquivos, atualiza os cards existentes
+                updateCardsWithSheetData();
             }
+            
+            // Força uma atualização completa para garantir sincronização
+            setTimeout(() => {
+                if (allFiles.length > 0) {
+                    rebuildCards();
+                } else {
+                    updateCardsWithSheetData();
+                }
+            }, 1000);
+            
         } else {
             console.log('Dados da planilha inalterados, usando cache');
+            // Mesmo sem mudanças, verifica se há inconsistências para corrigir
+            updateCardsWithSheetData();
         }
     } catch(e) { 
         console.error('Erro ao carregar planilha:', e);
@@ -159,6 +177,40 @@ function populateDatalist() {
             dl.appendChild(opt);
         });
     });
+}
+
+// Atualiza cards existentes com novos dados da planilha
+function updateCardsWithSheetData() {
+    let hasChanges = false;
+    
+    cards.forEach(card => {
+        const sheetRow = sheetData.find(r => 
+            r.nome.trim().toLowerCase() === card.nome.trim().toLowerCase()
+        );
+        
+        if (sheetRow) {
+            // Verifica se houve mudanças nos dados
+            if (card.telefone !== sheetRow.telefone ||
+                card.genero !== sheetRow.genero ||
+                card.uc !== sheetRow.uc ||
+                card.funcao !== sheetRow.funcao) {
+                
+                // Atualiza os dados do card
+                card.telefone = sheetRow.telefone || '';
+                card.genero = sheetRow.genero || '';
+                card.uc = sheetRow.uc || '';
+                card.funcao = sheetRow.funcao || '';
+                hasChanges = true;
+            }
+        }
+    });
+    
+    if (hasChanges) {
+        saveLocalCards();
+        sortCards();  // Ordena os cards atualizados
+        renderCards();
+        console.log('Cards atualizados com novos dados da planilha');
+    }
 }
 
 async function loadDriveFiles() {
@@ -182,6 +234,7 @@ function rebuildCards() {
         if (!cardMap[cid]) {
             const nameMatch = f.name.match(/^(.+?)\s*\[CARD:/);
             const storedName = nameMatch ? nameMatch[1].replace(/\s*\[.*/, '').trim() : '';
+            // Sempre busca os dados mais recentes da planilha
             const sheetRow = sheetData.find(r => r.nome.trim().toLowerCase() === storedName.trim().toLowerCase()) || {};
             cardMap[cid] = {
                 id: cid,
@@ -197,7 +250,26 @@ function rebuildCards() {
     });
 
     // Mantém cards que foram criados manualmente (standalone) e ainda não têm arquivos
-    const existingStandalone = cards.filter(c => !cardMap[c.id] && c._noFiles);
+    let existingStandalone = cards.filter(c => !cardMap[c.id] && c._noFiles);
+    
+    // Atualiza os cards standalone com dados mais recentes da planilha
+    existingStandalone = existingStandalone.map(card => {
+        const sheetRow = sheetData.find(r => 
+            r.nome.trim().toLowerCase() === card.nome.trim().toLowerCase()
+        );
+        
+        if (sheetRow) {
+            // Atualiza com os dados mais recentes da planilha
+            return {
+                ...card,
+                telefone: sheetRow.telefone || '',
+                genero: sheetRow.genero || '',
+                uc: sheetRow.uc || '',
+                funcao: sheetRow.funcao || ''
+            };
+        }
+        return card;
+    });
     
     // Atualiza a lista global de cards
     cards = [...Object.values(cardMap), ...existingStandalone];
@@ -286,6 +358,27 @@ function formatGenero(val) {
     return val;
 }
 
+// Ordena os cards sem reconstruir
+function sortCards() {
+    cards.sort((a, b) => {
+        const ucA = (a.uc || '').trim().toLowerCase();
+        const ucB = (b.uc || '').trim().toLowerCase();
+        
+        // Compara por UC primeiro
+        if (ucA < ucB) return -1;
+        if (ucA > ucB) return 1;
+        
+        // Se UC for igual, compara por nome
+        const nameA = (a.nome || '').trim().toLowerCase();
+        const nameB = (b.nome || '').trim().toLowerCase();
+        
+        if (nameA < nameB) return -1;
+        if (nameA > nameB) return 1;
+        
+        return 0;
+    });
+}
+
 function renderCards() {
     const query = document.getElementById('searchInput').value.toLowerCase();
     const grid  = document.getElementById('cardsGrid');
@@ -309,6 +402,28 @@ function renderCards() {
     }
 
     filtered.forEach(c => grid.appendChild(buildCard(c)));
+}
+
+// Função segura para atualizar cards sem perder dados
+function safeUpdateCards(callback) {
+    try {
+        // Salva estado atual dos cards
+        const currentCards = [...cards];
+        
+        // Executa a operação
+        const result = callback();
+        
+        // Verifica se algum card foi perdido
+        if (cards.length < currentCards.length) {
+            console.warn('Cards foram perdidos durante a operação, restaurando...');
+            cards = currentCards;
+        }
+        
+        return result;
+    } catch (error) {
+        console.error('Erro na operação de cards:', error);
+        return null;
+    }
 }
 
 function buildCard(c) {
@@ -518,7 +633,8 @@ function saveCard() {
     toast('Colaborador atualizado!', 'success');
     closeModal();
     saveLocalCards(); // Persiste no LocalStorage
-    rebuildCards();   // Reaplica ordenação
+    sortCards();      // Apenas ordena os cards
+    renderCards();   // Renderiza os cards
 }
 
 // Função para mostrar aviso de upload em andamento
@@ -657,7 +773,8 @@ function saveNewCard() {
     ['addTelefone','addGenero','addUC','addFuncao'].forEach(i => document.getElementById(i).value = '');
     
     saveLocalCards(); // Persiste no LocalStorage
-    rebuildCards();   // Reaplica ordenação
+    sortCards();      // Apenas ordena os cards
+    renderCards();   // Renderiza os cards
     toast(`Colaborador ${name} adicionado!`, 'success');
 }
 
@@ -1035,19 +1152,117 @@ async function updateFileName(fileId, newName, cardId) {
 }
 
 async function deleteFile(fileId) {
-    if (!confirm('Remover este anexo?')) return;
+    showDeleteFileConfirmation(fileId);
+}
+
+// Mostra janela de confirmação moderna para deletar anexo
+function showDeleteFileConfirmation(fileId) {
+    const file = allFiles.find(f => f.id === fileId);
+    if (!file) return;
+    
+    // Remove o nome do colaborador e o tag CARD do nome do arquivo
+    const fileName = file.name.replace(/^[^\[]*\s*\[CARD:[^\]]+\]\s*/, '').trim();
+    
+    // Cria o overlay de confirmação
+    const overlay = document.createElement('div');
+    overlay.id = 'deleteFileOverlay';
+    overlay.className = 'overlay open';
+    overlay.innerHTML = `
+        <div class="modal modal-sm">
+            <div class="modal-body">
+                <div class="danger-icon">
+                    <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                </div>
+                <h3>Remover Anexo?</h3>
+                <p>O anexo <strong>${fileName}</strong> será removido permanentemente.</p>
+                <p style="color: #6b7280; font-size: 14px; margin-bottom: 20px;">Esta ação não pode ser desfeita.</p>
+                <div style="display: flex; gap: 12px; justify-content: center;">
+                    <button class="btn-cancel" onclick="closeDeleteFileModal()">Cancelar</button>
+                    <button class="btn-danger" onclick="confirmDeleteFile('${fileId}', this)">
+                        <svg viewBox="0 0 24 24" style="width:16px;height:16px;margin-right:6px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                        Remover Anexo
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
+    
+    // Impede fechamento acidental
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    });
+    
+    // Impede ESC key
+    const handleEsc = function(e) {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    };
+    document.addEventListener('keydown', handleEsc);
+    
+    // Salva referência para remover depois
+    overlay._handleEsc = handleEsc;
+}
+
+function closeDeleteFileModal() {
+    const overlay = document.getElementById('deleteFileOverlay');
+    if (overlay) {
+        if (overlay._handleEsc) {
+            document.removeEventListener('keydown', overlay._handleEsc);
+        }
+        overlay.remove();
+    }
+}
+
+async function confirmDeleteFile(fileId, buttonElement) {
+    const file = allFiles.find(f => f.id === fileId);
+    if (!file) return;
+    
+    // Adiciona animação de "apagando" no botão
+    const deleteBtn = buttonElement;
+    deleteBtn.disabled = true;
+    deleteBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" style="width:16px;height:16px;margin-right:6px;animation:spin 1s linear infinite"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        Apagando...
+    `;
     
     // Mostra indicador de carregamento
     toggleSync(true);
     
     try {
         await fetch(DRIVE_API, { method:'POST', body: JSON.stringify({ action:'delete', id: fileId }) });
-        await loadDriveFiles();
+        
+        // Remove o arquivo deletado da lista local sem reconstruir tudo
+        allFiles = allFiles.filter(f => f.id !== fileId);
+        
+        // Atualiza apenas o card ativo removendo o arquivo
         const card = cards.find(c => c.id === activeCardId);
+        if (card && card.files) {
+            card.files = card.files.filter(f => f.id !== fileId);
+        }
+        
+        // Atualiza a interface sem reconstruir todos os cards
         if (card) fillEditPane(card);
-        toast('Anexo removido', 'success');
+        
+        // Salva as alterações localmente
+        saveLocalCards();
+        
+        toast('Anexo removido permanentemente', 'success');
+        closeDeleteFileModal();
     } catch(e) { 
         toast('Erro ao remover anexo', 'error'); 
+        // Restaura o botão em caso de erro
+        deleteBtn.disabled = false;
+        deleteBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" style="width:16px;height:16px;margin-right:6px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            Remover Anexo
+        `;
     }
     finally { 
         toggleSync(false); 
