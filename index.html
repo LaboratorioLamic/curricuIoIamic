@@ -37,6 +37,9 @@
             <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Novo Colaborador
         </button>
+        <button class="btn-settings" onclick="checkAuth('backup')" title="Backup e Restauração">
+            <i class="fas fa-cog"></i>
+        </button>
     </div>
 </header>
 
@@ -278,6 +281,99 @@
                 <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
                 Criar Colaborador
             </button>
+        </div>
+    </div>
+</div>
+
+<div class="overlay" id="backupOverlay">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <div>
+                <div class="modal-avatar" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+                </div>
+                <div class="modal-name">Backup e Restauração</div>
+                <div class="modal-role">Gerencie os dados do sistema</div>
+            </div>
+            <button class="modal-close" onclick="closeBackupModal()">
+                <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="backup-sections">
+                <div class="backup-section">
+                    <div class="backup-section-header">
+                        <div class="backup-icon backup-download">
+                            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        </div>
+                        <div>
+                            <h3>Exportar Dados</h3>
+                            <p>Baixe todos os colaboradores e arquivos em um único arquivo JSON</p>
+                        </div>
+                    </div>
+                    <div class="backup-info">
+                        <div class="info-item">
+                            <span class="info-label">Total de Colaboradores:</span>
+                            <span class="info-value" id="backupCardCount">0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Total de Arquivos:</span>
+                            <span class="info-value" id="backupFileCount">0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Última Atualização:</span>
+                            <span class="info-value" id="backupLastUpdate">—</span>
+                        </div>
+                    </div>
+                    <button class="btn-primary" onclick="performBackup()">
+                        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Baixar Backup
+                    </button>
+                </div>
+
+                <div class="backup-divider"></div>
+
+                <div class="backup-section">
+                    <div class="backup-section-header">
+                        <div class="backup-icon backup-upload">
+                            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        </div>
+                        <div>
+                            <h3>Importar Dados</h3>
+                            <p>Carregue um arquivo JSON para restaurar todos os dados do sistema</p>
+                        </div>
+                    </div>
+                    
+                    <div class="upload-zone-backup" id="backupUploadZone">
+                        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        <p>Arraste um arquivo JSON ou <strong>clique para selecionar</strong></p>
+                    </div>
+                    <input type="file" id="backupFileInput" accept=".json" onchange="handleBackupUpload(event)">
+
+                    <div class="backup-warning" id="backupWarning" style="display: none;">
+                        <div class="warning-icon">
+                            <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        </div>
+                        <div class="warning-content">
+                            <h4>⚠️ ATENÇÃO</h4>
+                            <p>Esta ação irá <strong>substituir TODOS os dados atuais</strong> do sistema, incluindo colaboradores e arquivos.</p>
+                            <p>Para confirmar, digite <strong>"SIM"</strong> no campo abaixo:</p>
+                            <input type="text" id="restoreConfirmInput" placeholder="Digite SIM para continuar" oninput="validateRestoreConfirmation()">
+                            <div id="restoreError" style="color: #dc2626; font-size: 13px; margin-top: 8px; display: none;">
+                                Digite exatamente "SIM" para continuar
+                            </div>
+                        </div>
+                    </div>
+
+                    <button id="restoreBtn" class="btn-danger" disabled onclick="performRestore()">
+                        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        Restaurar Dados
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeBackupModal()">Fechar</button>
         </div>
     </div>
 </div>
