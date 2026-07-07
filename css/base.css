@@ -1,0 +1,26 @@
+:root {
+    --navy: #0a1628;
+    --navy-mid: #112240;
+    --navy-light: #1a3557;
+    --blue: #1d4ed8;
+    --blue-bright: #3b82f6;
+    --blue-pale: #dbeafe;
+    --blue-faint: #eff6ff;
+    --white: #ffffff;
+    --slate: #64748b;
+    --slate-light: #94a3b8;
+    --border: #e2e8f0;
+    --text: #0f172a;
+    --text-muted: #475569;
+    --whatsapp: #25D366;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--white);
+    color: var(--text);
+    min-height: 100vh;
+}
+

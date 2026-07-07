@@ -1,0 +1,16 @@
+/* ─── MAIN ─── */
+.main { padding: 2.5rem; max-width: 1400px; margin: 0 auto; }
+
+.section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1.5rem;
+}
+.count-label {
+    font-family: 'Sora', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--slate);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+

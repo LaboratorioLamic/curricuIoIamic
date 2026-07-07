@@ -1,0 +1,128 @@
+/* ─── CARDS GRID ─── */
+.cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.25rem;
+}
+
+.card {
+    background: white;
+    border: 1.5px solid var(--border);
+    border-radius: 18px;
+    overflow: hidden;
+    transition: box-shadow 0.25s, transform 0.2s, border-color 0.2s;
+    cursor: pointer;
+    position: relative;
+}
+.card:hover {
+    box-shadow: 0 12px 40px rgba(10,22,40,0.12);
+    transform: translateY(-3px);
+    border-color: #bfdbfe;
+}
+.card-accent {
+    height: 5px;
+    background: linear-gradient(90deg, var(--blue) 0%, #60a5fa 100%);
+}
+.card-body { padding: 1.4rem 1.4rem 1.1rem; cursor: default; }
+.card-avatar {
+    width: 52px; height: 52px;
+    background: var(--navy);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 1rem;
+}
+.card-avatar span {
+    font-family: 'Sora', sans-serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: white;
+    letter-spacing: -0.02em;
+}
+.card-name {
+    font-family: 'Sora', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.card-role {
+    font-size: 0.8rem;
+    color: var(--blue);
+    font-weight: 500;
+    margin-bottom: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.card-meta { display: flex; flex-direction: column; gap: 5px; margin-bottom: 1.1rem; }
+.card-meta-item {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 0.77rem;
+    color: var(--text-muted);
+}
+.card-meta-item svg { width: 13px; height: 13px; stroke: var(--slate-light); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+.whatsapp-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 4px;
+    color: var(--whatsapp);
+    transition: transform 0.2s;
+}
+.whatsapp-link:hover { transform: scale(1.2); }
+.whatsapp-link svg { width: 14px; height: 14px; fill: var(--whatsapp); stroke: none; }
+
+.card-footer {
+    border-top: 1px solid var(--border);
+    padding: 0.9rem 1.4rem;
+    display: flex; align-items: center; justify-content: space-between;
+}
+.card-attach-count {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 0.75rem;
+    color: var(--slate);
+}
+.card-attach-count svg { width: 13px; height: 13px; stroke: var(--slate-light); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.card-actions { display: flex; gap: 6px; }
+.card-actions button {
+    background: none;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    width: 30px; height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.card-actions button svg { width: 13px; height: 13px; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.card-actions .btn-view { color: var(--blue); }
+.card-actions .btn-view:hover { background: var(--blue-faint); border-color: #bfdbfe; }
+.card-actions .btn-view svg { stroke: var(--blue); }
+.card-actions .btn-edit { color: #d97706; }
+.card-actions .btn-edit:hover { background: #fffbeb; border-color: #fde68a; }
+.card-actions .btn-edit svg { stroke: #d97706; }
+.card-actions .btn-delete { color: #dc2626; }
+.card-actions .btn-delete:hover { background: #fef2f2; border-color: #fecaca; }
+.card-actions .btn-delete svg { stroke: #dc2626; }
+
+/* ─── EMPTY STATE ─── */
+.empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 5rem 2rem;
+    color: var(--slate);
+}
+.empty-state .empty-icon {
+    width: 64px; height: 64px;
+    background: var(--blue-faint);
+    border-radius: 18px;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 1rem;
+}
+.empty-state .empty-icon svg { width: 28px; height: 28px; stroke: var(--blue); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.empty-state h3 { font-family: 'Sora', sans-serif; font-size: 1.1rem; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
+.empty-state p { font-size: 0.85rem; }
+
