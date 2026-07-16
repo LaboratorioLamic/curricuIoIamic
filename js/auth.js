@@ -171,7 +171,7 @@ function showApp() {
     if (can('ver_dashboard') && typeof refreshNotificacoes === 'function') refreshNotificacoes();
     // Parâmetros globais (alerta de prazo de férias, vencimento de ASO, ciclo de banco de
     // horas) antes da primeira página renderizar
-    DB.getObj(PATHS.parametros).then(p => { setFeriasParams(p || {}); setAsoParams(p || {}); setBhParams(p || {}); initRouter(); })
+    DB.getObj(PATHS.parametros).then(p => { setFeriasParams(p || {}); setAsoParams(p || {}); setBhParams(p || {}); setDecimoParams(p || {}); initRouter(); })
         .catch(() => initRouter());
 }
 

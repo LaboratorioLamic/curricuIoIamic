@@ -21,7 +21,8 @@ async function gerarDadosExemplo() {
     // Parâmetros (só preenche se vazios)
     const params = (await DB.getObj(PATHS.parametros)) || {};
     await DB.set(PATHS.parametros, {
-        encargosPct: params.encargosPct ?? 28,
+        fgtsPct: params.fgtsPct ?? 8,
+        encargosPct: params.encargosPct ?? 20,
         diasExperiencia: params.diasExperiencia ?? 90,
         salarioMinimo: params.salarioMinimo || 1518,
         insalubridadeBase: params.insalubridadeBase || 'salario',
@@ -245,7 +246,8 @@ async function gerarDadosExemplo() {
                 linha.salario = sal;
                 const base = (paramsNow.insalubridadeBase || 'salario') === 'minimo' ? (paramsNow.salarioMinimo || 0) : sal;
                 linha.insalubridade = Number(((cargo.insalubridade || 0) / 100 * base).toFixed(2));
-                linha.encargos = Number(((sal + linha.insalubridade) * (paramsNow.encargosPct || 0) / 100).toFixed(2));
+                const pctEncTotalSeed = (paramsNow.fgtsPct || 0) + (paramsNow.encargosPct || 0);
+                linha.encargos = Number(((sal + linha.insalubridade) * pctEncTotalSeed / 100).toFixed(2));
             }
             // Hora extra não é semeada na folha: a coluna manual foi aposentada pelo banco de
             // horas. A HE dos dados de exemplo vem dos fechamentos/quitações e do Extra

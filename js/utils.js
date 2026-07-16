@@ -26,6 +26,7 @@ const ICONS = {
     alert: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
     info: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
     lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    unlock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-2"/>',
     eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
     eyeOff: '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
     dots: '<circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>',
@@ -1020,6 +1021,392 @@ function calculoHoraExtra(f, cargo, params, minutos, adicionalPct, jornadaMes) {
         valorHoraExtra: Number(valorHoraExtra.toFixed(4)),
         horas, adicionalPct: pct,
         total: Number(total.toFixed(2))
+    };
+}
+
+// ============ 13º SALÁRIO (Lei 4.090/62, Lei 4.749/65, CF art. 7º VIII) ============
+//
+// A competência do 13º é o ANO CIVIL, não o aniversário de admissão — diferente das férias.
+// Por isso a régua aqui é `ano`, e não `admissão + 12 meses`: quem entrou em março tem 10
+// avos em dezembro, e em 1º de janeiro a competência recomeça do zero para todo mundo.
+//
+// Mesma decisão de arquitetura do banco de horas e das férias: **competência DERIVADA, nunca
+// gravada**. Os avos são recalculados a cada render a partir da admissão, dos afastamentos e
+// da demissão. Gravar o número de avos apodrece: uma licença lançada com atraso, uma
+// admissão corrigida ou uma demissão em dezembro mudariam o direito, e o valor gravado
+// continuaria mentindo. O que se grava é o PAGAMENTO (a parcela), nunca o direito.
+
+const DECIMO_PARAMS_PADRAO = {
+    // Lei 4.749 art. 2º: 1ª parcela entre 1º/fev e 30/nov; 2ª até 20/dez.
+    prazo1Mes: 11, prazo1Dia: 30,
+    prazo2Mes: 12, prazo2Dia: 20,
+    // Avos: mês com ≥15 dias trabalhados conta integral (Lei 4.090 art. 1º §2º).
+    diasParaAvo: 15,
+    // Faltas INJUSTIFICADAS acima de 15 no mês descontam o avo. Parametrizável porque
+    // convenção coletiva pode ser mais generosa, nunca menos.
+    descontarFaltas: true,
+    alertaDias: 30
+};
+let decimoParams = { ...DECIMO_PARAMS_PADRAO };
+// Recebe o conjunto INTEIRO de parâmetros, não só o card salvo — mesmo motivo de
+// setFeriasParams: salvar um card zerava os demais campos até o próximo reload.
+const setDecimoParams = p => {
+    const num = (v, d) => (v == null || v === '' || isNaN(Number(v)) ? d : Number(v));
+    decimoParams = {
+        prazo1Mes: num(p?.decimoPrazo1Mes, DECIMO_PARAMS_PADRAO.prazo1Mes),
+        prazo1Dia: num(p?.decimoPrazo1Dia, DECIMO_PARAMS_PADRAO.prazo1Dia),
+        prazo2Mes: num(p?.decimoPrazo2Mes, DECIMO_PARAMS_PADRAO.prazo2Mes),
+        prazo2Dia: num(p?.decimoPrazo2Dia, DECIMO_PARAMS_PADRAO.prazo2Dia),
+        diasParaAvo: num(p?.decimoDiasParaAvo, DECIMO_PARAMS_PADRAO.diasParaAvo),
+        // Checkbox: `??` e não `||` — false é escolha, não ausência.
+        descontarFaltas: p?.decimoDescontarFaltas ?? DECIMO_PARAMS_PADRAO.descontarFaltas,
+        alertaDias: num(p?.decimoAlertaDias, DECIMO_PARAMS_PADRAO.alertaDias)
+    };
+};
+
+// Justa causa não gera direito a 13º proporcional (Súmula 14 TST + Lei 4.090 art. 3º).
+// Os demais motivos — inclusive pedido de demissão e término de experiência — geram.
+const DECIMO_SEM_DIREITO = ['Dispensa com justa causa'];
+const demissaoGera13 = motivo => !DECIMO_SEM_DIREITO.includes(motivo || '');
+
+// Tipos de parcela. A distinção não é cosmética: ela decide se há encargo.
+//
+// A 1ª parcela é ADIANTAMENTO (Lei 4.749 art. 2º §2º): sai sem INSS e sem IRRF. Os encargos
+// incidem integralmente na 2ª, sobre o valor TOTAL do 13º. Tratar as duas igual cobraria
+// encargo duas vezes sobre a mesma base e inflaria o custo da empresa em ~20% do 13º inteiro.
+const DECIMO_TIPOS = [
+    { id: 'primeira', label: '1ª parcela', desc: 'Adiantamento — só FGTS (Lei 4.749 art. 2º §2º); os demais encargos ficam para a 2ª', encargos: false },
+    { id: 'segunda', label: '2ª parcela', desc: 'FGTS + demais encargos sobre o total do 13º', encargos: true },
+    { id: 'integral', label: 'Parcela única', desc: 'Pagamento integral — FGTS + demais encargos sobre o total', encargos: true },
+    { id: 'rescisao', label: 'Rescisão', desc: 'Proporcional no desligamento', encargos: true }
+];
+const decimoTipo = id => DECIMO_TIPOS.find(t => t.id === id) || DECIMO_TIPOS[0];
+
+// ---- AVOS: quantos doze-avos o funcionário tem no ano ----
+//
+// Regra (Lei 4.090 art. 1º §2º): conta o mês em que trabalhou ≥15 dias. Fração igual ou
+// superior a 15 dias = avo integral; abaixo disso, o mês não conta.
+//
+// A janela é a interseção entre o ano civil e o vínculo (admissão → demissão). Um mês só é
+// avaliado se existir de fato: quem foi admitido em 20/03 tem 12 dias em março (não conta) e
+// avos cheios de abril em diante.
+//
+// `ref` limita a projeção ao presente: em julho, o direito ACUMULADO é 7/12, não 12/12. Quem
+// chama para efeito de PAGAMENTO em dezembro passa ref = 31/12 e recebe a competência cheia.
+function avos13(f, ano, ausencias, ref) {
+    if (!f?.admissao) return { avos: 0, meses: [], inicio: null, fim: null };
+    const iniAno = `${ano}-01-01`;
+    const fimAno = `${ano}-12-31`;
+    const h = ref || hoje();
+
+    // Vínculo dentro do ano: começa na admissão (ou 1º/jan) e termina na demissão (ou 31/dez).
+    const inicio = f.admissao > iniAno ? f.admissao : iniAno;
+    const fimVinculo = f.demissao && f.demissao < fimAno ? f.demissao : fimAno;
+    // Nunca projeta além de hoje: 12 avos em julho seria direito que ainda não existe.
+    const fim = fimVinculo > h ? h : fimVinculo;
+    if (inicio > fim) return { avos: 0, meses: [], inicio, fim };
+
+    // Faltas injustificadas por mês — só elas descontam o avo. Falta justificada, licença
+    // médica (até 15 dias) e férias NÃO interrompem o cômputo: o mês é tempo de serviço.
+    const faltas = {};
+    if (decimoParams.descontarFaltas) {
+        (ausencias || [])
+            .filter(a => a.funcionarioId === f.id && a.tipo === 'Falta injustificada')
+            .forEach(a => {
+                // Uma ausência pode atravessar meses: distribui dia a dia no mês certo.
+                //
+                // `retorno` é o dia de VOLTA ao trabalho, não o último dia ausente — é a
+                // convenção do resto do sistema (formAusencia calcula dias = diasEntre(inicio,
+                // retorno), e 01/07→31/07 dá 30 dias, não 31). Por isso o limite é exclusivo:
+                // contar o retorno inflaria toda ausência em um dia, e uma falta de 14 dias
+                // viraria 15 — exatamente o limiar que destrói o avo.
+                let d = a.inicio;
+                const ate = a.retorno || addDias(a.inicio, 1);
+                let guard = 0;
+                while (d < ate && guard++ < 400) {
+                    if (d.slice(0, 4) === String(ano)) faltas[mesDe(d)] = (faltas[mesDe(d)] || 0) + 1;
+                    d = addDias(d, 1);
+                }
+            });
+    }
+
+    const meses = [];
+    for (let m = 0; m < 12; m++) {
+        const mk = `${ano}-${String(m + 1).padStart(2, '0')}`;
+        const primeiroDia = `${mk}-01`;
+        const ultimoDia = `${mk}-${String(new Date(ano, m + 1, 0).getDate()).padStart(2, '0')}`;
+        // Dias do mês dentro do vínculo E já decorridos.
+        const de = primeiroDia > inicio ? primeiroDia : inicio;
+        const ate = ultimoDia < fim ? ultimoDia : fim;
+        if (de > ate) { meses.push({ mes: m, mesKey: mk, dias: 0, faltas: 0, conta: false }); continue; }
+        const dias = diasEntre(de, ate) + 1;
+        const flt = faltas[mk] || 0;
+        // Dias efetivos = dias do vínculo no mês − faltas injustificadas.
+        const efetivos = Math.max(0, dias - flt);
+        const conta = efetivos >= decimoParams.diasParaAvo;
+        meses.push({ mes: m, mesKey: mk, dias, faltas: flt, efetivos, conta });
+    }
+    return { avos: meses.filter(x => x.conta).length, meses, inicio, fim };
+}
+
+// ---- CÁLCULO DO 13º ----
+//
+// Base = salário + insalubridade + média de HE habitual (Súmula 45 TST — a mesma regra das
+// férias, e lendo a MESMA fonte via ctx.mediaHe, para não existirem duas verdades sobre
+// quanto de extra a pessoa recebeu).
+//
+// Bolsa de estágio não entra: estagiário não tem 13º (Lei 11.788 — bolsa não é salário).
+// Pró-labore também não: é remuneração de sócio, não gera 13º.
+function calculo13(f, cargo, params, avos, opts) {
+    const o = opts || {};
+    const salario = salarioDe(f, cargo, params);
+    // Estagiário não tem direito a 13º. `remuneracaoCargo` respeita o perfil do cargo.
+    const perfil = perfilCargo(cargo);
+    if (perfil === 'estagiario') {
+        return { semDireito: 'estagiario', salario: 0, base: 0, avos: 0, integral: 0, total: 0, bruto: 0, encargos: 0 };
+    }
+    const grau = Number(cargo?.insalubridade) || 0;
+    const baseInsal = (params?.insalubridadeBase || 'salario') === 'minimo'
+        ? (Number(params?.salarioMinimo) || 0) : salario;
+    const insalubridade = Number((grau / 100 * baseInsal).toFixed(2));
+    const mediaHe = Number(o.mediaHe) || 0;
+
+    const base = salario + insalubridade + mediaHe;
+    const a = Math.max(0, Math.min(12, Number(avos) || 0));
+    // Valor cheio do 13º pelos avos: base ÷ 12 × avos.
+    const integral = Number((base / 12 * a).toFixed(2));
+
+    // Quanto já foi pago/adiantado — inclusive o adiantamento junto das férias.
+    const jaPago = Number(o.jaPago) || 0;
+    const tipo = o.tipo || 'primeira';
+
+    // ---- Valor SUGERIDO da parcela ----
+    //
+    // A 1ª parcela é dimensionada em AVOS (`avosParcela` = metade do art. 2º da Lei 4.749).
+    // Avos e não um percentual porque é assim que a folha raciocina: "paguei 5 dos 10 avos
+    // dele". A metade é sempre relativa ao DIREITO do funcionário na competência (`a`), não a
+    // uma constante de 12 — quem tem 10 avos (admitido em março) recebe metade de 10 = 5, não
+    // metade de um ano cheio que ele não tem. A régua é sempre visual e não é mais escolha do
+    // RH, então não existe mais um padrão fixo configurável.
+    //
+    // O adiantamento das férias NÃO consome avos: ele abate em REAIS, depois. Os avos dizem o
+    // tamanho da parcela; o abatimento evita o pagamento em dobro. Converter o adiantamento em
+    // avos quebraria quando ele não fosse múltiplo exato de um avo, ou quando houvesse
+    // promoção entre as férias e novembro (o avo de julho não vale o mesmo que o de novembro).
+    //
+    // 2ª parcela: os avos RESTANTES (integral − avos já pagos na 1ª), que é o complemento.
+    // Parcela única e rescisão pagam tudo: escolher avos nelas seria escolher pagar menos que
+    // o devido, sem base legal.
+    const valorAvo = base / 12;
+    // Avos DESTA parcela. Só a 1ª é dimensionável; as demais fecham o que falta.
+    // Teto nos avos do direito: ninguém antecipa 8 avos de quem só tem 7.
+    const avosParcela = tipo === 'primeira'
+        ? Math.max(0, Math.min(a, Number(o.avosParcela ?? Math.floor(a / 2))))
+        : a;
+    const bruto = tipo === 'primeira'
+        ? Math.max(0, Number((valorAvo * avosParcela - jaPago).toFixed(2)))
+        : Math.max(0, Number((integral - jaPago).toFixed(2)));
+
+    // ---- FGTS: incide em TODA parcela, inclusive a 1ª (Lei 8.036 art. 15 — o depósito é
+    // devido sobre qualquer remuneração paga, e o adiantamento do 13º é remuneração). Base é
+    // o valor PAGO nesta parcela (`bruto`), não o integral: cada depósito de FGTS acompanha o
+    // dinheiro que realmente saiu naquele mês, e somar os dois depósitos (1ª + 2ª) fecha no
+    // mesmo total de "FGTS sobre o integral" sem exigir recolhimento antecipado sobre o que
+    // ainda não foi pago.
+    const pctFgts = Number(params?.fgtsPct) || 0;
+    const fgts = Number((bruto * pctFgts / 100).toFixed(2));
+
+    // Outros encargos (INSS etc.): só nas parcelas que os têm — a 1ª é adiantamento puro,
+    // sem incidência (Lei 4.749 art. 2º §2º). A base é o 13º INTEGRAL, não a parcela: o fato
+    // gerador é o 13º inteiro, recolhido de uma vez na segunda parcela. Calcular sobre a
+    // parcela recolheria a menor.
+    const pctEnc = Number(params?.encargosPct) || 0;
+    const outrosEncargos = decimoTipo(tipo).encargos
+        ? Number((integral * pctEnc / 100).toFixed(2))
+        : 0;
+    const encargos = Number((fgts + outrosEncargos).toFixed(2));
+
+    return {
+        salario, insalubridade, mediaHe, base,
+        avos: a,
+        integral,
+        // `avosParcela` = quantos avos ESTA parcela paga; `valorAvo` = quanto vale cada um.
+        // A tela mostra os dois na memória de cálculo — "6 × R$ 250" se confere, "R$ 1.500" não.
+        avosParcela, valorAvo: Number(valorAvo.toFixed(2)),
+        jaPago,
+        tipo,
+        bruto,
+        // `encargos` = total (FGTS + outros) para quem só quer o número de baixo. `fgts` e
+        // `outrosEncargos` existem à parte para a memória de cálculo mostrar as duas origens
+        // sem o RH ter que refazer a conta.
+        fgts, fgtsPct: pctFgts,
+        outrosEncargos, encargosPct: pctEnc,
+        encargos,
+        // Custo da empresa nesta parcela: o que sai de caixa + encargos (FGTS sempre, outros
+        // quando incidem).
+        total: Number((bruto + encargos).toFixed(2))
+    };
+}
+
+// ---- Adiantamento de 13º já pago nas FÉRIAS, no ano ----
+//
+// A ponte que liga os dois módulos. Lê a MESMA fonte que a folha lê (`ausencias` com
+// `adiantar13`) — nunca uma cópia gravada: se o RH corrigir o lançamento de férias, o
+// abatimento da 1ª parcela acompanha sozinho.
+//
+// Mês de referência = INÍCIO das férias (art. 145), idêntico a feriasDoMes: o adiantamento
+// sai no mesmo recibo das férias.
+function adiantamentos13Ferias(fid, ano, ausencias, funcionarios, cargos, params, ctx) {
+    const c = ctx || {};
+    const itens = [];
+    (ausencias || [])
+        .filter(a => a.funcionarioId === fid && a.tipo === 'Férias' && a.adiantar13
+            && (a.inicio || '').slice(0, 4) === String(ano))
+        .forEach(a => {
+            const f = (funcionarios || []).find(x => x.id === fid);
+            if (!f) return;
+            const cargo = (cargos || []).find(x => x.id === f.cargoId);
+            // Valor congelado no lançamento vence o recálculo — mesma regra de feriasDoMes.
+            const calc = a.calculo && a.calculo.total != null
+                ? a.calculo
+                : calculoFerias(f, cargo, params, a.dias, a.abonoDias, {
+                    mediaHe: c.mediaHe ? c.mediaHe(f, a) : 0,
+                    adiantar13: true
+                });
+            const v = Number(calc.adiantamento13) || 0;
+            if (v > 0) itens.push({ id: a.id, valor: v, data: a.inicio, mesKey: mesDe(a.inicio) });
+        });
+    return { itens, total: Number(itens.reduce((s, i) => s + i.valor, 0).toFixed(2)) };
+}
+
+// ---- SITUAÇÃO DO 13º de um funcionário no ano ----
+//
+// Consolida numa estrutura só: direito (avos), o que já foi adiantado nas férias, quais
+// parcelas foram lançadas e o que falta pagar. É o que a aba renderiza e o que o lembrete lê.
+function situacao13Func(f, ano, ctx) {
+    const c = ctx || {};
+    const h = c.ref || hoje();
+    if (!f?.admissao) return null;
+    if (f.admissao.slice(0, 4) > String(ano)) return null;          // admitido depois do ano
+    if (f.demissao && f.demissao.slice(0, 4) < String(ano)) return null; // saiu antes do ano
+
+    const cargo = (c.cargos || []).find(x => x.id === f.cargoId);
+    // Estagiário não tem 13º — não entra na fila (Lei 11.788).
+    if (perfilCargo(cargo) === 'estagiario') return null;
+
+    // Demitido por justa causa perde o 13º proporcional (Súmula 14 TST).
+    const dem = (c.demissoes || []).find(d => d.funcionarioId === f.id
+        && (d.data || '').slice(0, 4) === String(ano));
+    const semDireito = dem && !demissaoGera13(dem.motivo);
+
+    const fimAno = `${ano}-12-31`;
+
+    // ---- O DIREITO É O DO ANO INTEIRO, não o acumulado até hoje ----
+    //
+    // Fracionar em avos pelo tempo já decorrido só faz sentido na RESCISÃO. Quem está
+    // empregado tem direito ao 13º da competência inteira: contratado em ano anterior recebe
+    // os 12 meses cheios, independentemente de quantos já se cumpriram — pagar "7/12 porque
+    // estamos em julho" seria antecipação parcial de um direito que já é integral, e a 1ª
+    // parcela (metade do 13º) sairia menor do que a lei manda.
+    //
+    // A régua de avos continua sendo a mesma; o que muda é ATÉ ONDE ela conta:
+    //   - demitido        → até a demissão (proporcional real, art. 3º da Lei 4.090)
+    //   - admitido no ano → até 31/12, e `avos13` já começa na admissão (março → 10/12)
+    //   - admitido antes  → até 31/12 = 12/12
+    // Faltas injustificadas seguem derrubando o avo em qualquer caso (art. 1º §2º) — é a
+    // única exceção aos 12 meses cheios de quem é da casa.
+    const refAvos = f.demissao && f.demissao <= fimAno ? f.demissao : fimAno;
+    const av = avos13(f, ano, c.ausencias, refAvos);
+
+    // Provisão CONTÁBIL: o quanto do 13º já "venceu" até hoje, para dimensionar a reserva mês
+    // a mês. Não é o que se paga — para isso existe `av` acima. Um funcionário antigo aparece
+    // com 7/12 provisionados em julho e 12/12 devidos: os dois números são corretos e
+    // respondem perguntas diferentes.
+    const avAcum = avos13(f, ano, c.ausencias, refAvos < h ? refAvos : h);
+
+    const adiant = adiantamentos13Ferias(f.id, ano, c.ausencias, c.funcionarios, c.cargos, c.params, c);
+    // `ignorarParcela` = a parcela em edição. Sem isso, reabrir um lançamento faria a própria
+    // parcela entrar em `jaPago`: o sugerido cairia a zero e o alerta de "valor acima do
+    // saldo" dispararia num registro que não mudou de valor.
+    const parcelas = (c.decimos || [])
+        .filter(d => d.funcionarioId === f.id && Number(d.ano) === Number(ano)
+            && (!c.ignorarParcela || d.id !== c.ignorarParcela))
+        .sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+
+    const pagoParcelas = parcelas.reduce((s, p) => s + (Number(p.bruto) || 0), 0);
+    // O que já saiu de caixa a título de 13º: parcelas lançadas + adiantamento das férias.
+    const pagoTotal = Number((pagoParcelas + adiant.total).toFixed(2));
+
+    const mediaHe = c.mediaHe13 ? c.mediaHe13(f, ano) : 0;
+    const calcDireito = calculo13(f, cargo, c.params, av.avos, { mediaHe });
+    const calcAcum = calculo13(f, cargo, c.params, avAcum.avos, { mediaHe });
+
+    const devido = semDireito ? 0 : calcDireito.integral;
+    const saldo = Number((devido - pagoTotal).toFixed(2));
+
+    // Estado da competência do ano.
+    const temPrimeira = parcelas.some(p => p.tipo === 'primeira');
+    const quitado = Math.abs(saldo) < 0.01 || saldo < 0;
+    const estado = semDireito ? 'sem_direito'
+        : quitado && (parcelas.length > 0 || adiant.total > 0) ? 'quitado'
+        : f.demissao && f.demissao <= fimAno ? 'rescisao'
+        : pagoTotal > 0 ? 'parcial'
+        : 'aberto';
+
+    return {
+        funcionario: f, cargo, ano,
+        // `avos` = os que geram o pagamento (ano inteiro, ou até a demissão).
+        // `avosAcumulados` = os já vencidos até hoje, só para a provisão contábil.
+        avos: av.avos, meses: av.meses, avosAcumulados: avAcum.avos,
+        base: calcDireito.base, salario: calcDireito.salario,
+        insalubridade: calcDireito.insalubridade, mediaHe,
+        devido, provisao: semDireito ? 0 : calcAcum.integral,
+        adiantamentoFerias: adiant.total, adiantamentoItens: adiant.itens,
+        parcelas, pagoParcelas, pagoTotal, saldo,
+        temPrimeira, semDireito, motivoSemDireito: semDireito ? dem?.motivo : null,
+        demissao: dem || null,
+        estado
+    };
+}
+
+// ---- Prazos legais do ano (Lei 4.749 art. 2º) ----
+// Derivados do ano + parâmetros, nunca gravados: mudar o parâmetro corrige todos os anos.
+function prazos13(ano) {
+    const p = decimoParams;
+    const d = (mes, dia) => `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+    return {
+        primeira: d(p.prazo1Mes, p.prazo1Dia),
+        segunda: d(p.prazo2Mes, p.prazo2Dia)
+    };
+}
+
+// ============ PONTE 13º → FOLHA ============
+//
+// Mesma arquitetura do `heBanco` e do `feriasCalc`: coluna DERIVADA (`decimoCalc`),
+// recalculada a cada render a partir das parcelas lançadas. A coluna `decimo` manual continua
+// editável e intocada — convenção coletiva muda o cálculo, e o RH precisa de um lugar para o
+// ajuste que o próximo render não apague.
+//
+// Somar o lançamento na célula manual faria a primeira correção do RH apagar o que o sistema
+// postou; gravar o derivado o faria apodrecer na primeira promoção. Por isso: coluna própria,
+// read-only, viva.
+//
+// Mês de referência = data do PAGAMENTO da parcela, não o fim da competência: é quando o
+// dinheiro sai do caixa, e é o que o recibo mostra.
+function decimoDoMes(fid, mesKey, decimos) {
+    const itens = (decimos || [])
+        .filter(d => d.funcionarioId === fid && mesDe(d.data) === mesKey)
+        .map(d => ({
+            id: d.id, tipo: d.tipo,
+            valor: Number(d.bruto) || 0,
+            encargos: Number(d.encargos) || 0,
+            desc: `${decimoTipo(d.tipo).label} do 13º/${d.ano}${d.avos ? ` — ${d.avos}/12 avos` : ''}`,
+            data: d.data
+        }));
+    return {
+        itens,
+        total: Number(itens.reduce((s, i) => s + i.valor, 0).toFixed(2)),
+        encargos: Number(itens.reduce((s, i) => s + i.encargos, 0).toFixed(2))
     };
 }
 

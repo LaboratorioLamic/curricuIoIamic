@@ -6,6 +6,9 @@ const VESTIMENTAS = ['PP', 'P', 'M', 'G', 'GG'];
 
 const funcState = {
     funcionarios: [], cargos: [], unidades: [], beneficios: [], treinamentos: [], ausencias: [],
+    // `params` alimenta salarioDe: sem ele, cargo marcado com "usa salário mínimo" resolveria
+    // para zero na ficha, enquanto a folha mostraria o valor certo.
+    params: {},
     filtro: { q: '', unidade: '', cargo: '', status: 'ativos' }
 };
 
@@ -48,7 +51,12 @@ const fdDocTipoDe = doc => {
 
 const cargoDe = f => funcState.cargos.find(c => c.id === f.cargoId);
 // Salário efetivo: individual (definido na ficha ou por promoção/ajuste) ou base do cargo
-const salarioDe = (f, cargos) => f.salario ?? (cargos || funcState.cargos).find(c => c.id === f.cargoId)?.salario ?? 0;
+// `salarioDe` vive em utils.js e é o ponto único de resolução (funcionário → cargo → mínimo).
+// Havia aqui uma segunda declaração, com a assinatura antiga (f, cargos) e lendo o campo
+// legado `cargo.salario`: além de ignorar `usaSalarioMinimo` e `salarioBase`, duas `const` de
+// mesmo nome no escopo global são SyntaxError — este arquivo inteiro deixava de carregar, e
+// com ele a página de Funcionários. Resolve pelo cargo do funcionário; params vem do state.
+const funcSalarioDe = f => salarioDe(f, funcState.cargos.find(c => c.id === f?.cargoId), funcState.params);
 const unidadeDe = f => funcState.unidades.find(u => u.id === f.unidadeId);
 const funcAtivo = f => !f.demissao;
 
@@ -60,12 +68,14 @@ registerPage({
     perm: 'ver_funcionarios',
     async render(el) {
         el.innerHTML = '<div class="loading-center"><div class="spinner-dark"></div></div>';
-        const [funcionarios, cargos, unidades, beneficios, treinamentos, ausencias] = await Promise.all([
+        const [funcionarios, cargos, unidades, beneficios, treinamentos, ausencias, params] = await Promise.all([
             DB.getAll(PATHS.funcionarios), DB.getAll(PATHS.cargos),
             DB.getAll(PATHS.unidades), DB.getAll(PATHS.beneficios), DB.getAll(PATHS.treinamentos),
-            DB.getAll(PATHS.ausencias)
+            DB.getAll(PATHS.ausencias),
+            // Necessário para salarioDe resolver cargos marcados com "usa salário mínimo".
+            DB.getObj(PATHS.parametros)
         ]);
-        Object.assign(funcState, { funcionarios, cargos, unidades, beneficios, treinamentos, ausencias });
+        Object.assign(funcState, { funcionarios, cargos, unidades, beneficios, treinamentos, ausencias, params: params || {} });
 
         el.innerHTML = `
             <div class="page-header">
@@ -290,7 +300,7 @@ function fdDados(f, cont) {
         ]}
     ];
     if (fin) secoes.push({ titulo: 'Financeiro', icon: 'money', itens: [
-        ['Salário', `${fmtBRL(salarioDe(f))}${f.salario == null ? ' · base do cargo' : ''}`]
+        ['Salário', `${fmtBRL(funcSalarioDe(f))}${f.salario == null ? ' · base do cargo' : ''}`]
     ]});
 
     cont.innerHTML = secoes.map(s => `

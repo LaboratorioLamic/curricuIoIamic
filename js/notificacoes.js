@@ -5,7 +5,7 @@
 // alerta. Agora vivem no sino do topbar: contagem no badge, detalhe completo no clique.
 // O cálculo (diagnosticoUnidade/diagnosticoCobertura) não mudou, só o container visual.
 
-const notifState = { alertas: [], coberturas: [], asos: [], bancos: [], cargos: [] };
+const notifState = { alertas: [], coberturas: [], asos: [], bancos: [], decimos: [], cargos: [] };
 
 // Chamado pelo Dashboard (reaproveita o payload já buscado) ou, na ausência de um,
 // busca o mínimo necessário sozinho — assim o sino funciona mesmo antes de entrar no Dashboard.
@@ -28,6 +28,25 @@ async function refreshNotificacoes(dadosOpt) {
     notifState.coberturas = dados.unidades.map(u => diagnosticoCobertura(u, dados.funcionarios, dados.ausencias)).filter(Boolean);
     notifState.asos = dados.unidades.map(u => diagnosticoAso(u, dados.funcionarios, asos, dados.cargos)).filter(Boolean);
     notifState.bancos = dados.unidades.map(u => diagnosticoBh(u, dados.funcionarios, banco || {}, bhFechs, null, bhQuits)).filter(Boolean);
+
+    // 13º: prazo legal com multa administrativa (Lei 4.749 art. 2º). O contexto lê as mesmas
+    // fontes da aba — inclusive o adiantamento pago nas férias, senão quem já adiantou seria
+    // cobrado de novo pelo sino.
+    const [decimos, cargos13, params13] = await Promise.all([
+        dados.decimos ? Promise.resolve(dados.decimos) : DB.getAll(PATHS.decimos),
+        Promise.resolve(dados.cargos || []),
+        dados.params ? Promise.resolve(dados.params) : DB.getObj(PATHS.parametros)
+    ]);
+    const ctx13 = {
+        funcionarios: dados.funcionarios, cargos: cargos13, ausencias: dados.ausencias,
+        demissoes: dados.demissoes || await DB.getAll(PATHS.demissoes),
+        decimos, params: params13 || {},
+        // A média de HE exige as fontes do banco; o sino não as tem sempre. Sem ela o valor
+        // sai um pouco menor — aceitável aqui: o sino alerta sobre PRAZO, e o valor exato
+        // está na aba. Nunca o contrário: um sino que não abre é pior que um valor redondo.
+        mediaHe13: () => 0
+    };
+    notifState.decimos = dados.unidades.map(u => diagnosticoDecimo(u, dados.funcionarios, ctx13)).filter(Boolean);
     notifState.cargos = dados.cargos || [];
     renderBellIcon();
 }
@@ -35,7 +54,8 @@ async function refreshNotificacoes(dadosOpt) {
 function renderBellIcon() {
     const box = document.getElementById('topbarActions');
     if (!box) return;
-    const total = notifState.alertas.length + notifState.coberturas.length + notifState.asos.length + notifState.bancos.length;
+    const total = notifState.alertas.length + notifState.coberturas.length + notifState.asos.length
+        + notifState.bancos.length + notifState.decimos.length;
 
     let btn = box.querySelector('#btnSino');
     if (!btn) {
@@ -54,18 +74,26 @@ function renderBellIcon() {
 // só aparece no clique — a lista em si precisa ser lida de relance, não estudada.
 function abrirNotificacoes() {
     closePopover();
-    const { alertas, coberturas, asos, bancos } = notifState;
+    const { alertas, coberturas, asos, bancos, decimos } = notifState;
     const btn = document.getElementById('btnSino');
     if (!btn) return;
 
-    // Ordem = custo de ignorar. ASO vencido é autuação e afastamento imediato; banco de
-    // horas vencido é dinheiro devido com data; quadro incompleto é problema de operação.
+    // Ordem = custo de ignorar. ASO vencido é autuação e afastamento imediato; 13º e banco de
+    // horas vencidos são dinheiro devido com data legal; quadro incompleto é problema de
+    // operação. O 13º entra logo após o ASO nos meses de prazo: ao contrário do banco, a data
+    // é a mesma para a empresa inteira, e perdê-la é multa administrativa de uma vez só.
     const linhas = [
         ...asos.map(a => ({ tipo: 'aso', item: a,
             resumo: [
                 a.vencidos ? `${a.vencidos} vencido(s)` : '',
                 a.semHistorico ? `${a.semHistorico} sem ASO` : '',
                 a.criticos ? `${a.criticos} vencendo` : ''
+            ].filter(Boolean).join(' · ') })),
+        ...decimos.map(d => ({ tipo: 'decimo', item: d,
+            resumo: [
+                d.vencidos ? `${d.vencidos} parcela(s) vencida(s)` : '',
+                d.rescisoes ? `${d.rescisoes} rescisão(ões) a pagar` : '',
+                d.criticos ? `${d.criticos} a vencer` : ''
             ].filter(Boolean).join(' · ') })),
         ...bancos.map(b => ({ tipo: 'banco', item: b,
             resumo: [
@@ -85,7 +113,7 @@ function abrirNotificacoes() {
         ? `<div class="pop-notif-empty">${icon('check')}<span>Tudo em dia</span></div>`
         : `<div class="pop-list" data-pop-list>${linhas.map((l, i) => `
             <div class="pop-item pop-notif-row" data-i="${i}">
-                <span class="alert-ico-sm${l.tipo === 'cobertura' ? ' alert-ico-sm-ferias' : ''}${l.tipo === 'aso' ? ' alert-ico-sm-aso' : ''}${l.tipo === 'banco' ? ' alert-ico-sm-bh' : ''}">${icon(l.tipo === 'cobertura' ? 'sun' : l.tipo === 'aso' ? 'medical' : l.tipo === 'banco' ? 'clock' : 'alert')}</span>
+                <span class="alert-ico-sm${l.tipo === 'cobertura' ? ' alert-ico-sm-ferias' : ''}${l.tipo === 'aso' ? ' alert-ico-sm-aso' : ''}${l.tipo === 'banco' ? ' alert-ico-sm-bh' : ''}${l.tipo === 'decimo' ? ' alert-ico-sm-decimo' : ''}">${icon(l.tipo === 'cobertura' ? 'sun' : l.tipo === 'aso' ? 'medical' : l.tipo === 'banco' ? 'clock' : l.tipo === 'decimo' ? 'gift' : 'alert')}</span>
                 <div class="grow">
                     <strong>${escapeHtml(l.item.nome)}</strong>
                     <div class="muted">${escapeHtml(l.resumo)}</div>
@@ -141,6 +169,38 @@ function abrirDetalheNotificacao({ tipo, item }) {
                         <div class="alert-list">
                             <div class="alert-row">
                                 <span class="alert-uni">${icon('building')} ${escapeHtml(item.nome)}</span>
+                            </div>
+                            <div class="aso-notif-lista">${item.pessoas.map(linhaPessoa).join('')}</div>
+                        </div>
+                    </div>
+                </div>`,
+            footer: ''
+        });
+    }
+
+    // 13º: individual e sobre prazo, como ASO e banco. Mostra o valor porque é ele que
+    // dimensiona a urgência — e porque a multa por atraso não depende do valor devido.
+    if (tipo === 'decimo') {
+        const linhaPessoa = p => `
+            <div class="aso-notif-row">
+                <span class="prog-dot ${DECIMO_STATUS[p.status].dot}"></span>
+                <span class="grow">${escapeHtml(p.nome)}</span>
+                <span class="num" style="font-variant-numeric:tabular-nums;margin-right:8px">${fmtBRL(p.valor)}</span>
+                <span class="badge ${DECIMO_STATUS[p.status].cls}">${escapeHtml(p.label)}</span>
+            </div>`;
+        return openModal({
+            title: '13º salário — parcelas a pagar',
+            size: '',
+            body: `
+                <div class="alert-card alert-decimo">
+                    <span class="alert-ico">${icon('gift')}</span>
+                    <div class="grow">
+                        <strong>Parcelas do 13º vencidas ou próximas do prazo</strong>
+                        <div class="alert-sub">A 1ª parcela vence em 30/11 e a 2ª em 20/12 (Lei 4.749 art. 2º). Atraso é multa administrativa por empregado. Quem já recebeu o adiantamento junto das férias não aparece aqui — ele já teve a 1ª parcela.</div>
+                        <div class="alert-list">
+                            <div class="alert-row">
+                                <span class="alert-uni">${icon('building')} ${escapeHtml(item.nome)}</span>
+                                <span class="alert-detail"><span class="alert-gap">total <b>${fmtBRL(item.total)}</b></span></span>
                             </div>
                             <div class="aso-notif-lista">${item.pessoas.map(linhaPessoa).join('')}</div>
                         </div>

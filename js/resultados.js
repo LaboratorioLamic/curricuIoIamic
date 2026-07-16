@@ -24,15 +24,18 @@ registerPage({
     wide: true,     // tabelas Jan–Dez + Média + Total: 15 colunas
     async render(el) {
         el.innerHTML = '<div class="loading-center"><div class="spinner-dark"></div></div>';
-        const [funcionarios, cargos, unidades, beneficios, ausencias, demissoes, treinamentos, promocoes, folha, params, banco, bhFechamentos, bhQuitacoes, extras] = await Promise.all([
+        const [funcionarios, cargos, unidades, beneficios, ausencias, demissoes, treinamentos, promocoes, folha, params, banco, bhFechamentos, bhQuitacoes, extras, decimos] = await Promise.all([
             DB.getAll(PATHS.funcionarios), DB.getAll(PATHS.cargos), DB.getAll(PATHS.unidades),
             DB.getAll(PATHS.beneficios), DB.getAll(PATHS.ausencias), DB.getAll(PATHS.demissoes),
             DB.getAll(PATHS.treinamentos), DB.getAll(PATHS.promocoes),
             DB.getObj(PATHS.folha), DB.getObj(PATHS.parametros),
             DB.getObj(PATHS.bancoHoras), DB.getAll(PATHS.bancoHorasFechamentos), DB.getAll(PATHS.bancoHorasQuitacoes),
-            DB.getAll(PATHS.extraBanco)
+            DB.getAll(PATHS.extraBanco),
+            // Origem da coluna derivada "13º (calc)": sem ela o relatório anual leria a folha
+            // sem as parcelas do 13º e mostraria um custo menor que o da tela de Folha mensal.
+            DB.getAll(PATHS.decimos)
         ]);
-        resState.dados = { funcionarios, cargos, unidades, beneficios, ausencias, demissoes, treinamentos, promocoes, folha: folha || {}, params: params || {}, banco: banco || {}, bhFechamentos, bhQuitacoes, extras };
+        resState.dados = { funcionarios, cargos, unidades, beneficios, ausencias, demissoes, treinamentos, promocoes, folha: folha || {}, params: params || {}, banco: banco || {}, bhFechamentos, bhQuitacoes, extras, decimos };
 
         const anos = new Set([new Date().getFullYear()]);
         funcionarios.forEach(f => { if (f.admissao) anos.add(Number(f.admissao.slice(0, 4))); });
@@ -714,7 +717,9 @@ function resEventos(cont) {
     // Tipos zerados no ano viram cards vazios que só ocupam espaço: no modo gráfico
     // ficam de fora (a tabela continua mostrando todos os tipos, inclusive os zeros).
     const temDado = li => li.vals.some(v => v);
-    const tiposAus = linhasAus.filter(li => li.label !== 'Total de ocorrências' && temDado(li));
+    // "Férias" fica fora do empilhado/ranking — são eventos de calendário, não ausências
+    // no sentido de imprevisto/afastamento, e distorcem a comparação entre os demais tipos.
+    const tiposAus = linhasAus.filter(li => li.label !== 'Total de ocorrências' && !li.label.startsWith('Férias ') && temDado(li));
     const cardsAus = linhasAus.filter(temDado);
     const empilharAus = tiposAus.length > 1;
 

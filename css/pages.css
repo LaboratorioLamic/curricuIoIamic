@@ -734,6 +734,7 @@
 /* Banco de horas em âmbar, não vermelho: ASO vencido impede a pessoa de trabalhar hoje;
    ciclo vencido custa dinheiro. Grave, mas de outra natureza — a cor separa as duas. */
 .alert-ico-sm-bh { background: var(--warning-soft); color: var(--warning); }
+.alert-ico-sm-decimo { background: var(--warning-soft); color: var(--warning); }
 
 /* Situação do ASO no topo da aba Documentos da ficha — responde de relance a única
    pergunta que a ficha precisa responder: pode exercer a função hoje? */
@@ -756,6 +757,11 @@
 .alert-card.alert-bh { background: var(--warning-soft); border-left-color: var(--warning); }
 .alert-bh .alert-ico { background: rgba(217,119,6,.14); color: var(--warning); }
 .alert-bh .alert-uni svg.icon { color: var(--warning); }
+/* 13º em âmbar pelo mesmo critério do banco de horas: o prazo custa dinheiro (multa), não
+   impede ninguém de trabalhar hoje. Vermelho fica reservado para o que para a operação. */
+.alert-card.alert-decimo { background: var(--warning-soft); border-left-color: var(--warning); }
+.alert-decimo .alert-ico { background: rgba(217,119,6,.14); color: var(--warning); }
+.alert-decimo .alert-uni svg.icon { color: var(--warning); }
 .aso-notif-lista { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 2px; }
 .aso-notif-row {
     display: flex; align-items: center; gap: 8px;
@@ -1340,6 +1346,22 @@
 }
 .folha-legado svg { width: 11px; height: 11px; opacity: .6; }
 
+/* Variante destravável (Benefícios/Desconto benef.): o cadeado é um botão de verdade. */
+.folha-legado-lock { cursor: default; }
+.folha-legado-lock [data-unlock-benef-btn] {
+    width: 18px; height: 18px; padding: 0; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.folha-legado-lock [data-unlock-benef-btn]:hover svg { opacity: 1; color: var(--accent); }
+
+.folha-unlock-wrap { display: inline-flex; align-items: center; gap: 4px; }
+.folha-unlock-wrap [data-relock-benef-btn] {
+    width: 18px; height: 18px; padding: 0; flex: none; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.folha-unlock-wrap [data-relock-benef-btn] svg { width: 12px; height: 12px; opacity: .7; }
+.folha-unlock-wrap [data-relock-benef-btn]:hover svg { opacity: 1; color: var(--accent); }
+
 /* ---- Janela do ciclo: abas Situação × Histórico ---- */
 .dc-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
 .dc-tab {
@@ -1602,4 +1624,223 @@
     .bh-fech-resumo { grid-template-columns: 1fr; }
     .bh-mapa-eixo { margin-left: 110px; }
     .bh-mapa-nome { width: 110px; font-size: 11px; }
+}
+
+/* ============ 13º SALÁRIO (Lançamentos → 13º Salário) ============
+   Reaproveita o máximo do que já existe: .bh-kpi-row para os indicadores, .tabs.tabs-sub
+   para as sub-abas, .bx-calc para a memória de cálculo, .table para as grades. O que está
+   aqui é só o que a aba tem de próprio: os cards de prazo, a régua de avos e o lote. */
+
+/* ---- Cards de prazo legal (30/11 e 20/12) ----
+   Duas datas fixas em lei, iguais para a empresa inteira — por isso card, e não coluna:
+   é o único lugar do sistema onde o prazo não é individual. A barra mostra progresso de
+   COBERTURA (quantos já receberam), que é a pergunta real: "posso fechar novembro?" */
+.dc-prazos {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px; margin-bottom: 18px;
+}
+.dc-prazo {
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--border-strong);
+    border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 13px 15px;
+}
+.dc-prazo.is-warn { border-left-color: var(--warning); background: var(--warning-soft); }
+.dc-prazo.is-late { border-left-color: var(--danger); background: var(--danger-soft); }
+.dc-prazo.is-ok { border-left-color: var(--success); }
+.dc-prazo-top {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+    font-size: 12px; color: var(--text-2); margin-bottom: 9px;
+}
+.dc-prazo-top strong { font-size: 13.5px; color: var(--text); font-variant-numeric: tabular-nums; }
+.dc-prazo-bar {
+    height: 6px; background: var(--surface-3); border-radius: 3px; overflow: hidden;
+}
+.dc-prazo-fill {
+    height: 100%; background: var(--accent); border-radius: 3px;
+    transition: width .3s ease;
+}
+.dc-prazo.is-ok .dc-prazo-fill { background: var(--success); }
+.dc-prazo.is-late .dc-prazo-fill { background: var(--danger); }
+.dc-prazo-nums {
+    display: flex; justify-content: space-between; gap: 8px;
+    font-size: 11px; color: var(--muted); margin-top: 6px;
+}
+
+/* ---- Tabela da competência ---- */
+.dc-func strong { display: block; font-size: 13px; }
+.dc-func .muted { font-size: 11px; }
+.dc-avos {
+    font-variant-numeric: tabular-nums; font-weight: 700;
+    background: var(--surface-3); border-radius: var(--radius-sm);
+    padding: 2px 7px; font-size: 12px;
+}
+.dc-avos em { font-style: normal; color: var(--muted); font-weight: 500; font-size: 11px; }
+/* Adiantamento em destaque: é a coluna que explica por que a 1ª parcela de alguém veio
+   menor — sem marcá-la, o RH acha que o sistema errou a conta. */
+.dc-adiant { color: var(--ferias-strong); font-weight: 600; }
+
+/* ---- Régua de avos (janela do funcionário) ----
+   O gráfico que justifica o número. 12 quadrados, um por mês: cheio = avo integral,
+   listrado = mês existiu mas não fechou 15 dias, vazio = fora do vínculo. Sem isto o
+   "7/12" é um total que ninguém confere. */
+.dc-meses {
+    display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px;
+}
+.dc-mes {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 7px 2px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--surface-2);
+    font-size: 10px; color: var(--muted); cursor: default;
+}
+.dc-mes span { font-weight: 600; }
+.dc-mes em { font-style: normal; font-variant-numeric: tabular-nums; font-size: 9.5px; }
+.dc-mes.is-on {
+    background: var(--accent-soft); border-color: var(--accent-soft-2); color: var(--accent);
+}
+.dc-mes.is-on em { font-weight: 700; }
+.dc-mes.is-parcial {
+    background: repeating-linear-gradient(45deg, var(--warning-soft) 0 4px, var(--surface-2) 4px 8px);
+    border-color: var(--warning); color: var(--warning);
+}
+.dc-mes.is-off { opacity: .45; }
+/* Nota abaixo da régua: explica POR QUE o número de avos é o que é (ano completo, admissão
+   no meio do ano, rescisão) — sem ela, "10/12" é um total que o RH não consegue conferir. */
+.dc-nota {
+    display: flex; align-items: flex-start; gap: 7px; margin-top: 9px;
+    font-size: 11.5px; color: var(--muted); line-height: 1.5;
+}
+.dc-nota .icon { width: 13px; height: 13px; flex-shrink: 0; margin-top: 2px; }
+.dc-nota strong { color: var(--text-2); }
+
+/* ---- Janela do funcionário ---- */
+.dc-jan-head { margin-bottom: 14px; }
+.dc-jan-nums {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 10px; margin-bottom: 18px;
+}
+.dc-jan-nums > div {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 2px;
+}
+.dc-jan-nums span { font-size: 10.5px; color: var(--muted); font-weight: 600; }
+.dc-jan-nums strong { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.dc-sec { margin-bottom: 18px; }
+.dc-sec:last-child { margin-bottom: 0; }
+.dc-sec-tit {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--muted); margin-bottom: 9px;
+}
+.dc-sec-tit .icon { width: 13px; height: 13px; }
+.dc-alerta {
+    display: flex; align-items: flex-start; gap: 9px;
+    border-radius: var(--radius); padding: 10px 13px;
+    font-size: 12.5px; color: var(--text-2);
+}
+.dc-alerta.is-danger { background: var(--danger-soft); border: 1px solid var(--danger); }
+.dc-alerta .icon { width: 15px; height: 15px; flex-shrink: 0; color: var(--danger); margin-top: 1px; }
+.dc-alerta strong { display: block; color: var(--text); }
+.dc-alerta .muted { font-size: 11.5px; }
+
+/* ---- Listas (parcelas, adiantamentos) ---- */
+.dc-lista { display: flex; flex-direction: column; gap: 6px; }
+.dc-item {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 9px 12px;
+}
+.dc-item.is-link { cursor: pointer; transition: background .15s, border-color .15s; }
+.dc-item.is-link:hover { background: var(--surface-3); border-color: var(--border-strong); }
+.dc-item strong { font-size: 12.5px; }
+.dc-item .muted { font-size: 11px; }
+.dc-item .num { font-variant-numeric: tabular-nums; }
+.dc-item-ico {
+    width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+    display: grid; place-items: center;
+    background: var(--accent-soft); color: var(--accent);
+}
+.dc-item-ico .icon { width: 14px; height: 14px; }
+.dc-vazio {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 22px; color: var(--muted); font-size: 12.5px;
+}
+.dc-vazio .icon { width: 16px; height: 16px; }
+
+/* ---- Lançamento em lote ---- */
+.dc-lote-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0 10px; border-bottom: 1px solid var(--border);
+    font-size: 12.5px; margin-bottom: 4px;
+}
+.dc-lote-tot { font-size: 12px; color: var(--muted); }
+.dc-lote-tot strong { color: var(--text); font-size: 14px; font-variant-numeric: tabular-nums; }
+.dc-lote-tot em { font-style: normal; }
+.dc-lote { display: flex; flex-direction: column; gap: 5px; max-height: 340px; overflow-y: auto; padding: 2px; }
+.dc-lote-item {
+    display: flex; align-items: center; gap: 10px; cursor: pointer;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 9px 12px;
+    transition: background .15s, border-color .15s;
+}
+.dc-lote-item:hover { background: var(--surface-3); border-color: var(--border-strong); }
+.dc-lote-item strong { font-size: 12.5px; }
+.dc-lote-item .muted { font-size: 11px; }
+.dc-lote-val { text-align: right; }
+.dc-lote-val strong { display: block; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.dc-lote-val em { font-style: normal; font-size: 10.5px; color: var(--muted); }
+
+@media (max-width: 900px) {
+    .dc-meses { grid-template-columns: repeat(6, 1fr); }
+    .dc-prazos { grid-template-columns: 1fr; }
+}
+
+/* ---- Seletor de avos (botão + popover) ----
+   Avos são uma FRAÇÃO do direito, e um <select> com "6 de 9 avos" obriga a abrir a lista para
+   entender a proporção. Aqui a régua de 12 quadrados mostra o corte de relance: cheios = os
+   que entram na parcela, vazios = os que sobram para a 2ª, riscados = os que a pessoa não tem
+   (admitida no meio do ano). Mesma ideia da régua da janela do funcionário. */
+.avos-btn {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 9px 11px; cursor: pointer;
+    font: inherit; color: var(--text); text-align: left;
+    transition: border-color .15s, box-shadow .15s;
+}
+.avos-btn:hover { border-color: var(--border-strong); }
+.avos-btn:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
+/* Variante somente-visual: avos da 1ª parcela são fixos (metade do direito), sem escolha do
+   RH — mesma régua do botão clicável, mas sem cursor de interação nem foco. */
+.avos-btn.is-static { cursor: default; }
+.avos-btn.is-static:hover { border-color: var(--border); }
+.avos-btn > .icon { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; }
+.avos-btn-lbl { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.avos-btn-lbl em { font-style: normal; font-weight: 500; color: var(--muted); font-size: 11.5px; }
+.avos-btn-val {
+    margin-left: auto; font-size: 13px; font-weight: 700;
+    color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+
+/* A régua: 12 marcas proporcionais — só visual, os avos da 1ª parcela são fixos (metade do
+   direito, Lei 4.749 art. 2º), sem escolha do RH. */
+.avos-regua { display: flex; gap: 2px; flex-shrink: 0; }
+.avos-regua i {
+    width: 7px; height: 16px; border-radius: 2px; display: block;
+    background: var(--surface-3); transition: background .15s;
+}
+.avos-regua i.is-on { background: var(--accent); }
+.avos-regua i.is-resto { background: var(--surface-3); }
+/* Fora do direito: quem entrou em março não tem os avos de jan/fev — não é "não escolhido",
+   é "não existe". A hachura separa as duas coisas. */
+.avos-regua i.is-fora {
+    background: repeating-linear-gradient(45deg, var(--border) 0 2px, transparent 2px 4px);
+    opacity: .6;
+}
+
+/* "metade": marca o padrão legal (6 de 12, Lei 4.749 art. 2º) — a única proporção que a
+   1ª parcela usa. */
+.avos-tag {
+    margin-left: 6px; padding: 1px 5px; border-radius: 999px;
+    background: var(--surface-3); color: var(--muted);
+    font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
 }

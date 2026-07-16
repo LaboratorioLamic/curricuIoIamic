@@ -6,8 +6,6 @@ const FOLHA_COLS = [
     ['insalubridade', 'Insalubridade'],
     ['bolsa', 'Bolsa estágio'],
     ['prolabore', 'Pró-labore'],
-    ['ferias', 'Férias'],
-    ['decimo', '13º salário'],
     ['encargos', 'Encargos'],
     ['outros', 'Outros custos'],
     ['beneficios', 'Benefícios']
@@ -35,15 +33,22 @@ const folhaTemHeManual = dados =>
     Object.values(dados || {}).some(l => Number(l?.[FOLHA_HE_MANUAL]) > 0);
 
 // Coluna DERIVADA: remuneração de férias dos lançamentos do mês (gozo + 1/3 + abono).
-// Fica ao lado da coluna "Férias" manual, que segue editável: convenção coletiva muda o
-// cálculo, e o RH precisa de um lugar para o ajuste sem que o próximo render o apague.
+// Única fonte de "Férias" na grade — a coluna manual foi removida: convenção coletiva que
+// mude o cálculo se ajusta na aba Férias (onde o lançamento vive), não numa célula solta na
+// folha que divergia do que a aba dizia.
 const FOLHA_FERIAS_CALC = 'feriasCalc';
+
+// Coluna DERIVADA: parcelas do 13º lançadas na aba 13º Salário (1ª, 2ª, única, rescisão) +
+// o adiantamento pago junto das férias. Única fonte de "13º" na grade — a coluna manual foi
+// removida pelo mesmo motivo da de férias: o lançamento vive na aba própria, e uma célula
+// solta na folha só divergia do que a aba já sabia.
+const FOLHA_DECIMO_CALC = 'decimoCalc';
 
 // ---- Grupos de colunas (ocultar/mostrar categorias) ----
 // cols = chaves de FOLHA_COLS/FOLHA_DESC. "aberto padrão" = Remuneração; Custo empresa é sempre fixo.
 const FOLHA_GRUPOS = [
     { id: 'remuneracao', label: 'Remuneração', cols: ['salario', 'insalubridade', 'bolsa', 'prolabore'], def: true },
-    { id: 'feriasDecimo', label: 'Férias e 13º', cols: ['ferias', FOLHA_FERIAS_CALC, 'decimo'], def: false },
+    { id: 'feriasDecimo', label: 'Férias e 13º', cols: [FOLHA_FERIAS_CALC, FOLHA_DECIMO_CALC], def: false },
     { id: 'encargos', label: 'Encargos', cols: ['encargos'], def: false },
     { id: 'beneficios', label: 'Benefícios', cols: ['beneficios', FOLHA_DESC], def: false },
     { id: 'extras', label: 'Extras', cols: [FOLHA_HE_BANCO, FOLHA_HE_MANUAL, 'outros'], def: false }
@@ -53,7 +58,8 @@ const FOLHA_COL_LABEL = Object.fromEntries([
     [FOLHA_DESC, 'Desconto benef.'],
     [FOLHA_HE_BANCO, 'HE (banco)'],
     [FOLHA_HE_MANUAL, 'Hora extra (legado)'],
-    [FOLHA_FERIAS_CALC, 'Férias (calc)']
+    [FOLHA_FERIAS_CALC, 'Férias (calc)'],
+    [FOLHA_DECIMO_CALC, '13º (calc)']
 ]);
 // Estado de grupos visíveis (compartilhado entre folha mensal e detalhamento)
 const folhaGruposVis = new Set(FOLHA_GRUPOS.filter(g => g.def).map(g => g.id));
@@ -83,20 +89,22 @@ const folhaState = {
     mes: _hj.getMonth(),          // 0–11
     visao: 'mensal',
     funcionarios: [], cargos: [], beneficios: [], treinamentos: [], params: {},
-    bhFechamentos: [], bhQuitacoes: [], extras: [], carregado: false
+    bhFechamentos: [], bhQuitacoes: [], extras: [], decimos: [], carregado: false
 };
 
 async function loadFolhaBase(force) {
     if (folhaState.carregado && !force) return;
-    const [funcionarios, cargos, beneficios, treinamentos, params, bhFechamentos, bhQuitacoes, extras, ausencias] = await Promise.all([
+    const [funcionarios, cargos, beneficios, treinamentos, params, bhFechamentos, bhQuitacoes, extras, ausencias, decimos] = await Promise.all([
         DB.getAll(PATHS.funcionarios), DB.getAll(PATHS.cargos),
         DB.getAll(PATHS.beneficios), DB.getAll(PATHS.treinamentos), DB.getObj(PATHS.parametros),
         // Origens da coluna derivada "HE (banco)" — ver folhaComHeBanco
         DB.getAll(PATHS.bancoHorasFechamentos), DB.getAll(PATHS.bancoHorasQuitacoes), DB.getAll(PATHS.extraBanco),
         // Origem da coluna derivada "Férias (calc)" — os lançamentos de férias do mês
-        DB.getAll(PATHS.ausencias)
+        DB.getAll(PATHS.ausencias),
+        // Origem da coluna derivada "13º (calc)" — as parcelas pagas do 13º
+        DB.getAll(PATHS.decimos)
     ]);
-    Object.assign(folhaState, { funcionarios, cargos, beneficios, treinamentos, params: params || {}, bhFechamentos, bhQuitacoes, extras, ausencias, carregado: true });
+    Object.assign(folhaState, { funcionarios, cargos, beneficios, treinamentos, params: params || {}, bhFechamentos, bhQuitacoes, extras, ausencias, decimos, carregado: true });
 }
 
 // Custo bruto (todas as colunas + a HE derivada do banco) e custo da empresa (bruto −
@@ -111,7 +119,8 @@ async function loadFolhaBase(force) {
 const brutoLinha = l => FOLHA_COLS.reduce((s, [k]) => s + (Number(l?.[k]) || 0), 0)
     + (Number(l?.[FOLHA_HE_BANCO]) || 0)
     + (Number(l?.[FOLHA_HE_MANUAL]) || 0)
-    + (Number(l?.[FOLHA_FERIAS_CALC]) || 0);
+    + (Number(l?.[FOLHA_FERIAS_CALC]) || 0)
+    + (Number(l?.[FOLHA_DECIMO_CALC]) || 0);
 // Coparticipação lançada: o que o funcionário paga do próprio benefício.
 const descontoLinha = l => Number(l?.[FOLHA_DESC]) || 0;
 
@@ -139,6 +148,8 @@ const feriasCtx = (o) => ({
     funcionarios: o.funcionarios || [],
     cargos: o.cargos || [],
     params: o.params || {},
+    // Origem da coluna derivada "13º (calc)" — ver decimoDoMes.
+    decimos: o.decimos || [],
     mediaHe: (f, a) => {
         if (!feriasParams.mediaHe) return 0;
         const sit = situacaoFeriasFunc(f, (o.ausencias || []).filter(x => x.id !== a.id), a.inicio);
@@ -159,13 +170,22 @@ function folhaComHeBanco(dados, mesKey, fechamentos, extras, quitacoes, ctx) {
         const fe = c.ausencias
             ? feriasDoMes(fid, mesKey, c.ausencias, c.funcionarios, c.cargos, c.params, c)
             : { total: 0, total13: 0 };
-        if (!he.total && !fe.total && !fe.total13) { out[fid] = linha; return; }
+        // 13º: parcelas lançadas na aba própria. Coluna derivada, mesma regra das outras duas.
+        const de = c.decimos ? decimoDoMes(fid, mesKey, c.decimos) : { total: 0, encargos: 0 };
+        if (!he.total && !fe.total && !fe.total13 && !de.total && !de.encargos) { out[fid] = linha; return; }
         const nova = { ...linha };
         if (he.total) nova[FOLHA_HE_BANCO] = he.total;
         if (fe.total) nova[FOLHA_FERIAS_CALC] = fe.total;
-        // O adiantamento entra somando ao 13º já lançado — não substitui: o RH pode ter
-        // digitado outra parcela no mesmo mês.
-        if (fe.total13) nova.decimo = (Number(linha.decimo) || 0) + fe.total13;
+        // O adiantamento de 13º pago junto das férias soma na MESMA coluna derivada das
+        // parcelas — a coluna manual "13º salário" não existe mais, e o adiantamento não
+        // deixa de ser dinheiro que saiu só porque não passou pela aba 13º Salário.
+        const decimoCalcTotal = (de.total || 0) + (fe.total13 || 0);
+        if (decimoCalcTotal) nova[FOLHA_DECIMO_CALC] = decimoCalcTotal;
+        // Encargos do 13º somam na coluna de encargos existente, não criam coluna própria: é
+        // o mesmo encargo (INSS/FGTS patronal), só que sobre outra base. Uma coluna separada
+        // faria o relatório anual ter duas linhas de encargo para a mesma natureza de custo.
+        // Soma ao lançado — a célula manual continua editável e não é sobrescrita.
+        if (de.encargos) nova.encargos = (Number(linha.encargos) || 0) + de.encargos;
         out[fid] = nova;
     });
     return out;
@@ -226,7 +246,11 @@ function prefillLinha(f) {
         // Encargos sobre a remuneração (salário + insalubridade). Pró-labore fica fora: é
         // remuneração de sócio, com regime de contribuição próprio — somá-lo aqui inflaria
         // o encargo com uma base que não é dele.
-        linha.encargos = Number(((salBase + linha.insalubridade) * (Number(params.encargosPct) || 0) / 100).toFixed(2));
+        // FGTS + outros encargos (INSS etc.) são parâmetros separados (ver config: 13º usa o
+        // mesmo split para poder recolher FGTS mesmo na 1ª parcela, que não tem os demais
+        // encargos). Aqui na folha mensal os dois continuam somados numa coluna só.
+        const pctEncTotal = (Number(params.fgtsPct) || 0) + (Number(params.encargosPct) || 0);
+        linha.encargos = Number(((salBase + linha.insalubridade) * pctEncTotal / 100).toFixed(2));
     }
     const ben = beneficiosDoFunc(f);
     linha.beneficios = ben.total;
@@ -296,7 +320,18 @@ function renderFolhaRel() {
 async function relFolhaMensal() {
     const { ano, mes } = folhaState;
     const key = mesKey(ano, mes);
-    const dados = (await DB.getObj(`${PATHS.folha}/${key}`)) || null;
+    const brutos = await DB.getObj(`${PATHS.folha}/${key}`);
+    // Sem isto o relatório mensal mostraria zero em "Férias" e "13º" para todo mês: as duas
+    // colunas manuais foram removidas, e o valor só existe como derivado (heBanco/feriasCalc/
+    // decimoCalc), injetado aqui em memória — nunca gravado, mesma regra da grade de
+    // Lançamentos → Folha mensal.
+    const dados = brutos
+        ? folhaComHeBanco(brutos, key, folhaState.bhFechamentos, folhaState.extras, folhaState.bhQuitacoes, {
+            ausencias: folhaState.ausencias, funcionarios: folhaState.funcionarios,
+            cargos: folhaState.cargos, params: folhaState.params, decimos: folhaState.decimos,
+            mediaHe: feriasCtx(folhaState).mediaHe
+        })
+        : null;
     const cont = document.getElementById('frContent');
 
     const treinosMes = folhaState.treinamentos.reduce((s, t) => s + custoTreinoNoMes(t, ano, mes), 0);
@@ -331,6 +366,17 @@ async function relFolhaMensal() {
     const custoFuncionarios = custoEmpresa - custoBeneficios;
     const pctBenef = custoEmpresa ? custoBeneficios / custoEmpresa * 100 : 0;
 
+    // Colunas derivadas (Férias/13º/HE do banco) entram ao lado das manuais, mesma posição e
+    // mesmo motivo da grade de Lançamentos → Folha mensal — sem elas o relatório mostraria
+    // "—" para todo mundo, já que o valor não vive mais numa célula gravada.
+    const iPro = FOLHA_COLS.findIndex(([k]) => k === 'prolabore');
+    const COLS_REL = [...FOLHA_COLS];
+    COLS_REL.splice(iPro + 1, 0,
+        [FOLHA_FERIAS_CALC, FOLHA_COL_LABEL[FOLHA_FERIAS_CALC]],
+        [FOLHA_DECIMO_CALC, FOLHA_COL_LABEL[FOLHA_DECIMO_CALC]]);
+    const iEnc = COLS_REL.findIndex(([k]) => k === 'encargos');
+    COLS_REL.splice(iEnc + 1, 0, [FOLHA_HE_BANCO, FOLHA_COL_LABEL[FOLHA_HE_BANCO]]);
+
     cont.innerHTML = `
         <div class="flex-between" style="margin-bottom:16px">${nav}<div></div></div>
         <div class="grid grid-4">
@@ -349,7 +395,7 @@ async function relFolhaMensal() {
                 <table class="table folha-table">
                     <thead><tr>
                         <th>Funcionário</th>
-                        ${FOLHA_COLS.map(([k, l]) => `<th class="num col-${k}">${l}</th>`).join('')}
+                        ${COLS_REL.map(([k, l]) => `<th class="num col-${k}">${l}</th>`).join('')}
                         <th class="num col-${FOLHA_DESC}">Desconto benef.</th>
                         <th class="num">Custo empresa</th>
                     </tr></thead>
@@ -357,7 +403,7 @@ async function relFolhaMensal() {
                         ${linhas.map(({ f, linha }) => `
                         <tr>
                             <td style="white-space:nowrap"><strong>${escapeHtml(f?.nome || '(removido)')}</strong></td>
-                            ${FOLHA_COLS.map(([k]) => `<td class="num col-${k}">${Number(linha[k]) ? fmtBRL(linha[k]) : '—'}</td>`).join('')}
+                            ${COLS_REL.map(([k]) => `<td class="num col-${k}">${Number(linha[k]) ? fmtBRL(linha[k]) : '—'}</td>`).join('')}
                             <td class="num col-${FOLHA_DESC}" style="color:var(--danger)">${descontoLinha(linha)
                                 ? `− ${fmtBRL(descontoLinha(linha))}${descontoLinha(linha) > descontoEfetivoLinha(linha)
                                     ? ` <span class="folha-desc-x" title="Coparticipação de ${fmtBRL(descontoLinha(linha))} maior que o benefício de ${fmtBRL(Number(linha.beneficios) || 0)}. Só ${fmtBRL(descontoEfetivoLinha(linha))} abatem o custo da empresa — o excedente sai do salário do funcionário.">*</span>`
@@ -368,7 +414,7 @@ async function relFolhaMensal() {
                     </tbody>
                     <tfoot><tr>
                         <td><strong>Total</strong></td>
-                        ${FOLHA_COLS.map(([k]) => `<td class="num col-${k}"><strong>${fmtBRL(linhas.reduce((s, l) => s + (Number(l.linha[k]) || 0), 0))}</strong></td>`).join('')}
+                        ${COLS_REL.map(([k]) => `<td class="num col-${k}"><strong>${fmtBRL(linhas.reduce((s, l) => s + (Number(l.linha[k]) || 0), 0))}</strong></td>`).join('')}
                         <td class="num col-${FOLHA_DESC}" style="color:var(--danger)"><strong>− ${fmtBRL(descontos)}</strong></td>
                         <td class="num"><strong>${fmtBRL(custoEmpresa)}</strong></td>
                     </tr></tfoot>
@@ -378,7 +424,7 @@ async function relFolhaMensal() {
     bindFrNav(cont);
 
     // Grupos de coluna ocultáveis
-    const COLS_DET = [...FOLHA_COLS.map(([k]) => k), FOLHA_DESC];
+    const COLS_DET = [...COLS_REL.map(([k]) => k), FOLHA_DESC];
     const aplicaGruposDet = () => COLS_DET.forEach(k => {
         const vis = colVisivel(k);
         cont.querySelectorAll(`.col-${k}`).forEach(el => el.classList.toggle('hidden', !vis));

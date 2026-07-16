@@ -36,6 +36,9 @@ const LANC_TABS = [
     { id: 'promocoes', label: 'Promoções' },
     { id: 'transferencias', label: 'Transferências' },
     { id: 'bancohoras', label: 'Banco de horas' },
+    // 13º: a aba inteira é dinheiro (base de cálculo, parcelas, provisão) — sem ver_financeiro
+    // não há o que mostrar que não seja valor. Mesma régua da Folha mensal.
+    { id: 'decimo', label: '13º Salário', fin: true },
     // Lançamentos financeiros: exigem permissão de folha + financeiro
     { id: 'folhagrid', label: 'Folha mensal', fin: true }
 ];
@@ -177,6 +180,7 @@ function renderLancTab() {
         promocoes: renderPromocoes,
         transferencias: renderTransferencias,
         bancohoras: renderBancoHoras,
+        decimo: renderDecimo,
         folhagrid: renderLancFolha
     })[lancTab]().catch(e => {
         console.error(e);
@@ -293,6 +297,7 @@ async function renderAusencias() {
         if (await confirmDialog({ title: 'Excluir ausência', message: `Excluir a ausência de <strong>${escapeHtml(lancFuncNome(a.funcionarioId))}</strong>?`, confirmText: 'Excluir', danger: true })) {
             await excluirAnexoRemoto(anexosDe(a));
             await DB.remove(PATHS.ausencias, a.id);
+            invalidarCaches13();   // faltas injustificadas alteram os avos do 13º
             toast('Ausência excluída.');
             renderLancTab();
         }
@@ -632,6 +637,10 @@ function formAusencia(a, modoFerias, sugerido) {
                 anexo: null
             });
             await excluirAnexoRemoto(removidos);
+            // Férias alimentam o 13º (adiantar13 abate a 1ª parcela) e a folha (coluna
+            // derivada). Faltas injustificadas alteram os avos. Sem invalidar, a aba do 13º
+            // seguiria com o cache velho e sugeriria pagar de novo o que já foi adiantado.
+            invalidarCaches13();
             toast(isEdit
                 ? (ferias ? 'Férias atualizadas.' : 'Lançamento atualizado.')
                 : (ferias ? 'Férias lançadas.' : 'Lançamento registrado.'));
@@ -951,6 +960,9 @@ const excluirFerias = async a => {
     if (await confirmDialog({ title: 'Excluir férias', message: `Excluir as férias de <strong>${escapeHtml(lancFuncNome(a.funcionarioId))}</strong> (${fmtDate(a.inicio)} → ${fmtDate(a.retorno)})?`, confirmText: 'Excluir', danger: true })) {
         await excluirAnexoRemoto(anexosDe(a));
         await DB.remove(PATHS.ausencias, a.id);
+        // Sem isto, o adiantamento de 13º de umas férias excluídas continuaria abatendo a 1ª
+        // parcela — o RH pagaria a menos.
+        invalidarCaches13();
         toast('Férias excluídas.');
         renderLancTab();
     }
@@ -1176,6 +1188,7 @@ async function renderDemissoes() {
             await DB.save(PATHS.funcionarios, d.funcionarioId, { demissao: null });
             const f = lancState.funcionarios.find(x => x.id === d.funcionarioId);
             if (f) f.demissao = null;
+            invalidarCaches13();   // reativado volta a ter avos até dezembro
             toast('Demissão excluída; funcionário reativado.');
             renderLancTab();
         }
@@ -1258,6 +1271,9 @@ function formDemissao(d) {
             // Conexão automática: atualiza a ficha
             await DB.save(PATHS.funcionarios, funcionarioId, { demissao: data });
             if (f) f.demissao = data;
+            // A demissão define os avos do 13º (param na data) e o direito ao proporcional —
+            // justa causa não gera (Súmula 14 TST). Ver situacao13Func.
+            invalidarCaches13();
             toast(isEdit ? 'Demissão atualizada.' : 'Desligamento registrado.');
             m.close();
             renderLancTab();
@@ -1523,10 +1539,19 @@ async function renderLancFolha() {
     const linhas = linhasTodas.filter(({ f }) => folhaPassaFiltro(f));
     const idsVis = linhas.map(l => l.id);
     const COLS_EDIT = [...FOLHA_COLS, [FOLHA_DESC, FOLHA_COL_LABEL[FOLHA_DESC]]];
+    const COLS_VIEW = [...COLS_EDIT];
+    // "Férias (calc)" e "13º (calc)": únicas colunas de férias/13º na grade — não há mais
+    // célula manual ao lado, o valor vem inteiro dos lançamentos das abas próprias. Entram
+    // depois de "Pró-labore": mesma posição que as colunas manuais ocupavam antes de serem
+    // removidas. Inserido ANTES do bloco de HE abaixo, para que o índice de "encargos"
+    // recalculado já reflita essas duas colunas novas.
+    const iPro = COLS_VIEW.findIndex(([k]) => k === 'prolabore');
+    COLS_VIEW.splice(iPro + 1, 0,
+        [FOLHA_FERIAS_CALC, FOLHA_COL_LABEL[FOLHA_FERIAS_CALC]],
+        [FOLHA_DECIMO_CALC, FOLHA_COL_LABEL[FOLHA_DECIMO_CALC]]);
     // A HE do banco é exibida junto das demais, mas nunca vira <input>: a coluna é derivada
     // dos fechamentos e do Extra Banco. Entra depois de "Encargos", onde ficava a hora extra
     // manual que ela substituiu.
-    const COLS_VIEW = [...COLS_EDIT];
     const iEnc = COLS_VIEW.findIndex(([k]) => k === 'encargos');
     COLS_VIEW.splice(iEnc + 1, 0, [FOLHA_HE_BANCO, FOLHA_COL_LABEL[FOLHA_HE_BANCO]]);
     // Hora extra manual: aposentada pelo banco de horas, mas meses antigos podem ter valor.
@@ -1534,15 +1559,21 @@ async function renderLancFolha() {
     // recriaria a duplicidade que a aposentadoria resolveu.
     const temHeLegado = folhaTemHeManual(dados);
     if (temHeLegado) COLS_VIEW.splice(iEnc + 2, 0, [FOLHA_HE_MANUAL, FOLHA_COL_LABEL[FOLHA_HE_MANUAL]]);
-    // "Férias (calc)" ao lado da coluna "Férias" manual: as duas são lidas juntas — o cálculo
-    // do sistema e o ajuste de convenção coletiva, lado a lado.
-    const iFer = COLS_VIEW.findIndex(([k]) => k === 'ferias');
-    COLS_VIEW.splice(iFer + 1, 0, [FOLHA_FERIAS_CALC, FOLHA_COL_LABEL[FOLHA_FERIAS_CALC]]);
-    const encPct = Number(folhaState.params.encargosPct) || 0;
+    // Folha mensal soma FGTS + outros encargos numa coluna só (os dois parâmetros só se
+    // separam no 13º, onde o FGTS precisa incidir mesmo na 1ª parcela — ver config.js).
+    const encPct = (Number(folhaState.params.fgtsPct) || 0) + (Number(folhaState.params.encargosPct) || 0);
     const custoEmpresa = () => idsVis.reduce((s, i) => s + totalLinha(dados[i]), 0);
-    // Colunas que compõem os encargos (recalculadas automaticamente)
-    const BASE_ENCARGOS = ['salario', 'insalubridade'];
     const filtrado = folhaFiltroUnidade || folhaFiltroCargo;
+    // Insalubridade: grau do cargo × base configurada — mesma regra de prefillLinha (folha.js),
+    // recalculada aqui pra reagir em tempo real quando o salário da linha muda.
+    const calcInsalubridade = fid => {
+        const f = folhaState.funcionarios.find(x => x.id === fid);
+        const cargo = folhaState.cargos.find(c => c.id === f?.cargoId);
+        const salBase = Number(dados[fid].salario) || 0;
+        const base = (folhaState.params.insalubridadeBase || 'salario') === 'minimo'
+            ? (Number(folhaState.params.salarioMinimo) || 0) : salBase;
+        return Number(((Number(cargo?.insalubridade) || 0) / 100 * base).toFixed(2));
+    };
 
     cont.innerHTML = `
         <div class="flex-between" style="margin-bottom:12px;flex-wrap:wrap;gap:10px">
@@ -1564,7 +1595,8 @@ async function renderLancFolha() {
                             const tips = {
                                 [FOLHA_HE_BANCO]: 'Somado automaticamente dos fechamentos de ciclo pagos e dos lançamentos de Extra Banco deste mês. Não editável — clique no valor para ver a origem.',
                                 [FOLHA_HE_MANUAL]: 'Hora extra lançada à mão antes do banco de horas. Coluna aposentada: aparece só nos meses que já têm valor e não é mais editável.',
-                                [FOLHA_FERIAS_CALC]: 'Remuneração de férias (gozo + 1/3 + abono) dos lançamentos deste mês, pelo início do período. Não editável — clique para ver o cálculo. Ajustes de convenção vão na coluna "Férias".'
+                                [FOLHA_FERIAS_CALC]: 'Remuneração de férias (gozo + 1/3 + abono) somada automaticamente dos lançamentos deste mês, pelo início do período. Não editável — clique para ver o cálculo. Ajuste em Lançamentos → Férias.',
+                                [FOLHA_DECIMO_CALC]: '13º somado automaticamente das parcelas lançadas (1ª, 2ª, única, rescisão) e do adiantamento pago junto das férias. Não editável — clique para ver o cálculo. Ajuste em Lançamentos → 13º Salário.'
                             };
                             return `<th class="num col-${k}" data-col-h="${k}"${tips[k] ? ` title="${escapeHtml(tips[k])}"` : ''}>${l}</th>`;
                         }).join('')}
@@ -1590,8 +1622,24 @@ async function renderLancFolha() {
                                 ? `<td class="num col-${k}" data-col-c="${k}">${Number(linha[k])
                                     ? `<button class="folha-he-banco" data-ferias-calc="${id}" title="Ver a memória de cálculo">${fmtBRL(linha[k])}</button>`
                                     : '<span class="muted">—</span>'}</td>`
+                                : k === FOLHA_DECIMO_CALC
+                                ? `<td class="num col-${k}" data-col-c="${k}">${Number(linha[k])
+                                    ? `<button class="folha-he-banco" data-decimo-calc="${id}" title="Ver a memória de cálculo">${fmtBRL(linha[k])}</button>`
+                                    : '<span class="muted">—</span>'}</td>`
+                                : k === 'beneficios' || k === FOLHA_DESC
+                                ? `<td class="num col-${k}" data-col-c="${k}">${podeEditar
+                                    ? `<span class="folha-legado folha-legado-lock" data-unlock-benef="${k}" title="Calculado do cadastro de benefícios ao gerar a folha. Clique no cadeado para editar manualmente esta célula.">${fmtBRL(linha[k])} <button type="button" class="btn-icon btn-icon-sm" data-unlock-benef-btn>${icon('lock')}</button></span>`
+                                    : (Number(linha[k]) ? fmtBRL(linha[k]) : '<span class="muted">—</span>')}</td>`
+                                : k === 'encargos'
+                                ? `<td class="num col-${k}" data-col-c="${k}">
+                                    <span class="folha-legado" title="Calculado automaticamente: FGTS + outros encargos sobre salário e insalubridade. Não editável."><span data-encargos-val>${fmtBRL(linha[k])}</span><button type="button" class="btn-icon btn-icon-sm" data-encargos-info="${id}">${icon('info')}</button></span>
+                                   </td>`
+                                : k === 'insalubridade'
+                                ? `<td class="num col-${k}" data-col-c="${k}">
+                                    <span class="folha-legado" title="Calculado automaticamente: grau de insalubridade do cargo × base configurada. Não editável."><span data-insal-val>${fmtBRL(linha[k])}</span><button type="button" class="btn-icon btn-icon-sm" data-insal-info="${id}">${icon('info')}</button></span>
+                                   </td>`
                                 : `<td class="num col-${k}" data-col-c="${k}">${podeEditar
-                                ? `<input class="input folha-cell${BASE_ENCARGOS.includes(k) ? '' : k === 'encargos' ? ' cell-auto' : ''}" data-col="${k}" type="number" min="0" step="0.01" value="${Number(linha[k]) || 0}"${k === 'encargos' ? ' title="Recalculado automaticamente ao alterar salário/insalubridade"' : ''}>`
+                                ? `<input class="input folha-cell" data-col="${k}" type="number" min="0" step="0.01" value="${Number(linha[k]) || 0}">`
                                 : fmtBRL(linha[k])}</td>`).join('')}
                             <td class="num"><strong data-total>${fmtBRL(totalLinha(linha))}</strong></td>
                         </tr>`).join('') : `<tr><td colspan="${COLS_VIEW.length + 2}">${emptyState({ icon: 'filter', title: 'Nenhum funcionário no filtro', text: 'Ajuste unidade/cargo para ver linhas da folha.' })}</td></tr>`}
@@ -1604,7 +1652,7 @@ async function renderLancFolha() {
                 </table>
             </div>
         </div>
-        <p class="muted" style="margin-top:10px;font-size:12px">Pré-preenchido pelos cadastros; edite qualquer célula — salvamento automático. Encargos (${encPct}%) recalculam sozinhos ao alterar salário/insalubridade. "Desconto benef." é a coparticipação do funcionário (abate do custo da empresa).</p>`;
+        <p class="muted" style="margin-top:10px;font-size:12px">Pré-preenchido pelos cadastros; edite as células liberadas — salvamento automático. Insalubridade e Encargos (${encPct}%) são só calculados — não editáveis — e recalculam sozinhos ao alterar o salário; clique no ícone ${icon('info')} para ver a memória de cálculo. "Benefícios" e "Desconto benef." (coparticipação, abate do custo da empresa) vêm do cadastro de benefícios da folha; clique no cadeado ${icon('lock')} para editar manualmente uma célula, ou use "Resetar linha" para recalcular pelo cadastro atual.</p>`;
     bindNav();
     folhaBindFiltros('lfFiltroUni', 'lfFiltroCargo', renderLancTab);
 
@@ -1665,8 +1713,7 @@ async function renderLancFolha() {
                     <p class="muted" style="font-size:12px;margin-bottom:14px">
                         Remuneração de férias somada automaticamente na folha de ${MESES_FULL[mes]}/${ano},
                         pelo mês de <strong>início</strong> do período (art. 145). Não é editável aqui: para alterar,
-                        ajuste o lançamento em Lançamentos → Férias. A coluna "Férias" manual continua livre para
-                        ajustes de convenção coletiva.
+                        ajuste o lançamento em Lançamentos → Férias.
                     </p>
                     <div class="he-origem-lista">
                         ${fe.itens.map(i => `
@@ -1682,6 +1729,148 @@ async function renderLancFolha() {
                     <div class="he-origem-total">
                         <span>Total somado na folha</span>
                         <strong>${fmtBRL(fe.total)}</strong>
+                    </div>`,
+                footer: ''
+            });
+        };
+    });
+
+    // Memória de cálculo do 13º do mês: parcelas lançadas (1ª, 2ª, única, rescisão) + o
+    // adiantamento pago junto das férias. Mesma lógica das duas anteriores — valor derivado,
+    // e quem o vê na folha precisa chegar até o lançamento que o gerou.
+    cont.querySelectorAll('[data-decimo-calc]').forEach(btn => {
+        btn.onclick = () => {
+            const fid = btn.dataset.decimoCalc;
+            const f = folhaState.funcionarios.find(x => x.id === fid);
+            const de = decimoDoMes(fid, key, folhaState.decimos);
+            const fe = feriasDoMes(fid, key, folhaState.ausencias, folhaState.funcionarios,
+                folhaState.cargos, folhaState.params, feriasCtx(folhaState));
+            const itens = [
+                ...de.itens.map(i => ({ desc: i.desc, data: i.data, valor: i.valor, ico: 'gift' })),
+                ...(fe.total13 ? [{ desc: '13º adiantado nas férias', data: fe.itens[0]?.data, valor: fe.total13, ico: 'sun' }] : [])
+            ];
+            openModal({
+                title: `13º Salário — ${f?.nome || ''}`,
+                body: `
+                    <p class="muted" style="font-size:12px;margin-bottom:14px">
+                        13º somado automaticamente na folha de ${MESES_FULL[mes]}/${ano}, pela data de pagamento
+                        de cada parcela. Não é editável aqui: para alterar, ajuste o lançamento em
+                        Lançamentos → 13º Salário (ou em Férias, para o adiantamento).
+                    </p>
+                    <div class="he-origem-lista">
+                        ${itens.map(i => `
+                            <div class="he-origem-row">
+                                <span class="he-origem-ico is-fech">${icon(i.ico)}</span>
+                                <div class="grow">
+                                    <strong>${escapeHtml(i.desc)}</strong>
+                                    <div class="muted">Pago em ${fmtDate(i.data)}</div>
+                                </div>
+                                <strong class="num">${fmtBRL(i.valor)}</strong>
+                            </div>`).join('')}
+                    </div>
+                    <div class="he-origem-total">
+                        <span>Total somado na folha</span>
+                        <strong>${fmtBRL(de.total + (fe.total13 || 0))}</strong>
+                    </div>`,
+                footer: ''
+            });
+        };
+    });
+
+    // Memória de cálculo dos encargos: base (salário + insalubridade) × FGTS% e ×
+    // outros encargos%. Só existe pra explicar o número — a coluna não é editável,
+    // ela sempre segue automaticamente a base quando salário/insalubridade mudam.
+    cont.querySelectorAll('[data-encargos-info]').forEach(btn => {
+        btn.onclick = () => {
+            const fid = btn.dataset.encargosInfo;
+            const f = folhaState.funcionarios.find(x => x.id === fid);
+            const linha = dados[fid];
+            const base = (Number(linha.salario) || 0) + (Number(linha.insalubridade) || 0);
+            const fgtsPct = Number(folhaState.params.fgtsPct) || 0;
+            const outrosPct = Number(folhaState.params.encargosPct) || 0;
+            const fgtsVal = Number((base * fgtsPct / 100).toFixed(2));
+            const outrosVal = Number((base * outrosPct / 100).toFixed(2));
+            openModal({
+                title: `Encargos — ${f?.nome || ''}`,
+                body: `
+                    <p class="muted" style="font-size:12px;margin-bottom:14px">
+                        Calculado automaticamente sobre salário + insalubridade. Não é editável aqui:
+                        os percentuais ficam em Configurações → Parâmetros, e o valor se atualiza
+                        sozinho quando salário ou insalubridade mudam nesta linha.
+                    </p>
+                    <div class="he-origem-lista">
+                        <div class="he-origem-row">
+                            <div class="grow">
+                                <strong>Base de cálculo</strong>
+                                <div class="muted">Salário + insalubridade</div>
+                            </div>
+                            <strong class="num">${fmtBRL(base)}</strong>
+                        </div>
+                        <div class="he-origem-row">
+                            <span class="he-origem-ico is-fech">${icon('lock')}</span>
+                            <div class="grow">
+                                <strong>FGTS (${fgtsPct}%)</strong>
+                                <div class="muted">Incide sobre a base, sempre</div>
+                            </div>
+                            <strong class="num">${fmtBRL(fgtsVal)}</strong>
+                        </div>
+                        <div class="he-origem-row">
+                            <span class="he-origem-ico is-extra">${icon('percent')}</span>
+                            <div class="grow">
+                                <strong>Outros encargos (${outrosPct}%)</strong>
+                                <div class="muted">INSS e demais encargos patronais</div>
+                            </div>
+                            <strong class="num">${fmtBRL(outrosVal)}</strong>
+                        </div>
+                    </div>
+                    <div class="he-origem-total">
+                        <span>Total (encargos)</span>
+                        <strong>${fmtBRL(fgtsVal + outrosVal)}</strong>
+                    </div>`,
+                footer: ''
+            });
+        };
+    });
+
+    // Memória de cálculo da insalubridade: grau do cargo × base configurada (salário
+    // da linha ou salário mínimo). Só existe pra explicar o número — não é editável,
+    // recalcula sozinha quando o salário muda (se a base for "salário").
+    cont.querySelectorAll('[data-insal-info]').forEach(btn => {
+        btn.onclick = () => {
+            const fid = btn.dataset.insalInfo;
+            const f = folhaState.funcionarios.find(x => x.id === fid);
+            const cargo = folhaState.cargos.find(c => c.id === f?.cargoId);
+            const grauPct = Number(cargo?.insalubridade) || 0;
+            const usaMinimo = (folhaState.params.insalubridadeBase || 'salario') === 'minimo';
+            const base = usaMinimo ? (Number(folhaState.params.salarioMinimo) || 0) : (Number(dados[fid].salario) || 0);
+            openModal({
+                title: `Insalubridade — ${f?.nome || ''}`,
+                body: `
+                    <p class="muted" style="font-size:12px;margin-bottom:14px">
+                        Calculado automaticamente: grau de insalubridade do cargo × base configurada
+                        em Configurações → Parâmetros. Não é editável aqui: para alterar, ajuste o
+                        grau no cadastro do cargo (<strong>${escapeHtml(cargo?.nome || '—')}</strong>) ou o parâmetro de base.
+                    </p>
+                    <div class="he-origem-lista">
+                        <div class="he-origem-row">
+                            <div class="grow">
+                                <strong>Base de cálculo</strong>
+                                <div class="muted">${usaMinimo ? 'Salário mínimo (parâmetro)' : 'Salário desta linha'}</div>
+                            </div>
+                            <strong class="num">${fmtBRL(base)}</strong>
+                        </div>
+                        <div class="he-origem-row">
+                            <span class="he-origem-ico is-fech">${icon('percent')}</span>
+                            <div class="grow">
+                                <strong>Grau de insalubridade (${grauPct}%)</strong>
+                                <div class="muted">Definido no cargo</div>
+                            </div>
+                            <strong class="num">${fmtBRL(Number((base * grauPct / 100).toFixed(2)))}</strong>
+                        </div>
+                    </div>
+                    <div class="he-origem-total">
+                        <span>Total (insalubridade)</span>
+                        <strong>${fmtBRL(Number((base * grauPct / 100).toFixed(2)))}</strong>
                     </div>`,
                 footer: ''
             });
@@ -1736,25 +1925,72 @@ async function renderLancFolha() {
                 ]);
             };
 
-            tr.querySelectorAll('.folha-cell').forEach(inp => {
+            const bindFolhaCell = inp => {
                 inp.addEventListener('change', async () => {
                     const val = Number(inp.value) || 0;
                     dados[fid][inp.dataset.col] = val;
                     const patch = { [inp.dataset.col]: val };
-                    // Recalcula encargos automaticamente quando a base muda
-                    if (BASE_ENCARGOS.includes(inp.dataset.col) && encPct > 0) {
+                    // Salário muda → insalubridade reage primeiro (se a base for "salário"),
+                    // e só então encargos, que depende do par salário+insalubridade já atualizado.
+                    if (inp.dataset.col === 'salario') {
+                        const insal = calcInsalubridade(fid);
+                        dados[fid].insalubridade = insal;
+                        patch.insalubridade = insal;
+                        const insalValEl = tr.querySelector('.col-insalubridade [data-insal-val]');
+                        if (insalValEl) {
+                            insalValEl.textContent = fmtBRL(insal);
+                            insalValEl.classList.add('cell-flash');
+                            setTimeout(() => insalValEl.classList.remove('cell-flash'), 600);
+                        }
+                    }
+                    // Recalcula encargos automaticamente quando a base (salário) muda
+                    if (inp.dataset.col === 'salario' && encPct > 0) {
                         const base = (Number(dados[fid].salario) || 0) + (Number(dados[fid].insalubridade) || 0);
                         const enc = Number((base * encPct / 100).toFixed(2));
                         dados[fid].encargos = enc;
                         patch.encargos = enc;
-                        const encInp = tr.querySelector('.folha-cell[data-col="encargos"]');
-                        if (encInp) { encInp.value = enc; encInp.classList.add('cell-flash'); setTimeout(() => encInp.classList.remove('cell-flash'), 600); }
+                        const encVal = tr.querySelector('.col-encargos [data-encargos-val]');
+                        if (encVal) {
+                            encVal.textContent = fmtBRL(enc);
+                            encVal.classList.add('cell-flash');
+                            setTimeout(() => encVal.classList.remove('cell-flash'), 600);
+                        }
                     }
                     await DB.save(`${PATHS.folha}/${key}`, fid, patch);
                     tr.querySelector('[data-total]').textContent = fmtBRL(totalLinha(dados[fid]));
                     recalcTotais();
                 });
-            });
+            };
+            tr.querySelectorAll('.folha-cell').forEach(bindFolhaCell);
+
+            // Cadeado do Benefícios/Desconto benef.: destrava a célula pra edição manual
+            // pontual, sem perder o valor calculado. Cadeado aberto ao lado do input
+            // re-trava a célula (volta ao visual read-only, mantendo o último valor salvo).
+            const lockCellHtml = (col, val) =>
+                `<span class="folha-legado folha-legado-lock" data-unlock-benef="${col}" title="Calculado do cadastro de benefícios ao gerar a folha. Clique no cadeado para editar manualmente esta célula.">${fmtBRL(val)} <button type="button" class="btn-icon btn-icon-sm" data-unlock-benef-btn>${icon('lock')}</button></span>`;
+            const unlockCellHtml = (col, val) =>
+                `<span class="folha-unlock-wrap"><input class="input folha-cell" data-col="${col}" type="number" min="0" step="0.01" value="${val}"><button type="button" class="btn-icon btn-icon-sm" data-relock-benef-btn title="Travar novamente">${icon('unlock')}</button></span>`;
+            const bindLockSpan = span => {
+                const btn = span.querySelector('[data-unlock-benef-btn]');
+                btn.onclick = e => {
+                    e.stopPropagation();
+                    const col = span.dataset.unlockBenef;
+                    const td = span.closest('td');
+                    const val = Number(dados[fid][col]) || 0;
+                    td.innerHTML = unlockCellHtml(col, val);
+                    const inp = td.querySelector('.folha-cell');
+                    bindFolhaCell(inp);
+                    inp.focus();
+                    inp.select();
+                    td.querySelector('[data-relock-benef-btn]').onclick = e2 => {
+                        e2.stopPropagation();
+                        const valAtual = Number(dados[fid][col]) || 0;
+                        td.innerHTML = lockCellHtml(col, valAtual);
+                        bindLockSpan(td.querySelector('[data-unlock-benef]'));
+                    };
+                };
+            };
+            tr.querySelectorAll('[data-unlock-benef]').forEach(bindLockSpan);
         });
     }
 }

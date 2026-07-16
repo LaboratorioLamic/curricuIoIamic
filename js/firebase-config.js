@@ -37,6 +37,9 @@ const PATHS = {
     // Hora extra paga direto, fora do banco (feriado a 100%, etc.) — não entra no ciclo,
     // mas soma na folha do mês de referência.
     extraBanco: 'rh_extra_banco',
+    // Parcelas PAGAS do 13º. Grava-se o pagamento, nunca o direito: os avos são derivados da
+    // admissão/afastamentos/demissão e se autocorrigem (ver avos13 em utils.js).
+    decimos: 'rh_decimos',
     parametros: 'rh_parametros',
     imagens: 'rh_imagens'
 };

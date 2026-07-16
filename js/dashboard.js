@@ -151,7 +151,13 @@ function renderDashTab() {
 const headcountEm = (funcs, dataIso) =>
     funcs.filter(f => f.admissao && f.admissao <= dataIso && (!f.demissao || f.demissao > dataIso)).length;
 
-const fimDoMes = (ano, mes) => `${mesKey(ano, mes)}-31`;
+// Limite superior do mês para COMPARAÇÃO de datas ISO, não uma data real: '2025-02-31' não
+// existe no calendário, mas ordena depois de qualquer dia de fevereiro, que é o que os
+// filtros abaixo precisam. Por isso não usa o `fimDoMes(mesKey)` de utils.js — aquele devolve
+// o último dia REAL do mês (para o fim do ciclo do banco de horas), e as duas funções não são
+// intercambiáveis. Nomes iguais em escopo global também eram SyntaxError: este arquivo
+// inteiro deixava de carregar, e com ele o Dashboard.
+const fimDoMesCmp = (ano, mes) => `${mesKey(ano, mes)}-31`;
 
 // Opções de doughnut: `dvOpts()` foi feito para barras/linhas (tooltip lê ctx.parsed.y,
 // que não existe em doughnut — o valor vem em ctx.parsed puro). Mesmo padrão de
@@ -255,10 +261,10 @@ function renderDashGeral(cont, dados) {
     // ---- Séries mensais de rotatividade ----
     const admMes = [], demMes = [], turnoverMes = [], headFimMes = [];
     for (let m = 0; m < 12; m++) {
-        const ini = `${mesKey(ano, m)}-01`, fim = fimDoMes(ano, m);
+        const ini = `${mesKey(ano, m)}-01`, fim = fimDoMesCmp(ano, m);
         const adm = funcs.filter(f => f.admissao >= ini && f.admissao <= fim).length;
         const dem = funcs.filter(f => f.demissao && f.demissao >= ini && f.demissao <= fim).length;
-        const hIni = headcountEm(funcs, m === 0 ? `${ano - 1}-12-31` : fimDoMes(ano, m - 1));
+        const hIni = headcountEm(funcs, m === 0 ? `${ano - 1}-12-31` : fimDoMesCmp(ano, m - 1));
         const hFim = headcountEm(funcs, fim);
         const hMedio = (hIni + hFim) / 2;
         admMes.push(adm); demMes.push(dem); headFimMes.push(hFim);

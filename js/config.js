@@ -746,10 +746,17 @@ async function renderCfgParametros() {
             <div class="card-sub" style="margin-bottom:18px">Valores padrão usados nos cálculos automáticos.</div>
             <div class="form-row">
                 <div class="field">
-                    <label>% padrão de encargos sobre salário</label>
-                    <input class="input" id="fpEncargos" type="number" min="0" max="100" step="0.1" value="${params.encargosPct ?? 28}">
-                    <div class="field-hint">Sugerido automaticamente na folha (editável por lançamento). Ex: INSS + FGTS ≈ 28%</div>
+                    <label>FGTS (%)</label>
+                    <input class="input" id="fpFgts" type="number" min="0" max="100" step="0.1" value="${params.fgtsPct ?? 8}">
+                    <div class="field-hint">Alíquota do FGTS (Lei 8.036 art. 15: 8%). Separado dos demais encargos porque incide em toda parcela do 13º, inclusive na 1ª.</div>
                 </div>
+                <div class="field">
+                    <label>Outros encargos (%)</label>
+                    <input class="input" id="fpEncargos" type="number" min="0" max="100" step="0.1" value="${params.encargosPct ?? 20}">
+                    <div class="field-hint">INSS e demais encargos sobre salário, sem o FGTS (que tem campo próprio ao lado). Sugerido automaticamente na folha (editável por lançamento).</div>
+                </div>
+            </div>
+            <div class="form-row">
                 <div class="field">
                     <label>Dias do período de experiência</label>
                     <input class="input" id="fpExp" type="number" min="1" step="1" value="${params.diasExperiencia ?? 90}">
@@ -862,6 +869,54 @@ async function renderCfgParametros() {
         </div>
 
         <div class="card mt-16" style="max-width:560px">
+            <div class="card-title">13º Salário</div>
+            <div class="card-sub" style="margin-bottom:18px">Regras da gratificação natalina (Lei 4.090/62, Lei 4.749/65). A competência é o <strong>ano civil</strong>, não o aniversário de admissão: os avos são recalculados a cada abertura da tela e se autocorrigem quando uma licença, promoção ou demissão muda o direito.</div>
+            <div class="form-row">
+                <div class="field">
+                    <label>Prazo da 1ª parcela</label>
+                    <div class="form-row" style="gap:8px">
+                        <input class="input" id="fpDecP1Dia" type="number" min="1" max="31" step="1" value="${params.decimoPrazo1Dia ?? DECIMO_PARAMS_PADRAO.prazo1Dia}">
+                        <select class="select" id="fpDecP1Mes">
+                            ${MESES_FULL.map((n, i) => `<option value="${i + 1}"${(params.decimoPrazo1Mes ?? DECIMO_PARAMS_PADRAO.prazo1Mes) === i + 1 ? ' selected' : ''}>${n}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="field-hint">Adiantamento — só FGTS incide (Lei 4.749 art. 2º: até 30/11). Os demais encargos ficam para a 2ª parcela.</div>
+                </div>
+                <div class="field">
+                    <label>Prazo da 2ª parcela</label>
+                    <div class="form-row" style="gap:8px">
+                        <input class="input" id="fpDecP2Dia" type="number" min="1" max="31" step="1" value="${params.decimoPrazo2Dia ?? DECIMO_PARAMS_PADRAO.prazo2Dia}">
+                        <select class="select" id="fpDecP2Mes">
+                            ${MESES_FULL.map((n, i) => `<option value="${i + 1}"${(params.decimoPrazo2Mes ?? DECIMO_PARAMS_PADRAO.prazo2Mes) === i + 1 ? ' selected' : ''}>${n}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="field-hint">Encargos incidem aqui, sobre o 13º integral (até 20/12).</div>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="field">
+                    <label>Dias para gerar o avo</label>
+                    <input class="input" id="fpDecAvo" type="number" min="1" max="31" step="1" value="${params.decimoDiasParaAvo ?? DECIMO_PARAMS_PADRAO.diasParaAvo}">
+                    <div class="field-hint">Mês trabalhado com este mínimo conta 1/12 integral (Lei 4.090 art. 1º §2º: 15 dias).</div>
+                </div>
+                <div class="field">
+                    <label>Faltas injustificadas descontam o avo</label>
+                    <label class="flex" style="gap:8px;align-items:center;margin-top:6px;cursor:pointer">
+                        <span class="switch"><input type="checkbox" id="fpDecFaltas" ${(params.decimoDescontarFaltas ?? DECIMO_PARAMS_PADRAO.descontarFaltas) ? 'checked' : ''}><span class="track"></span></span>
+                        <span>Descontar</span>
+                    </label>
+                    <div class="field-hint">Só faltas <strong>injustificadas</strong>. Licença médica, férias e falta justificada são tempo de serviço e nunca descontam.</div>
+                </div>
+            </div>
+            <div class="field" style="margin-bottom:0">
+                <label>Alerta de prazo (dias)</label>
+                <input class="input" id="fpDecAlerta" type="number" min="1" max="180" step="1" value="${params.decimoAlertaDias ?? DECIMO_PARAMS_PADRAO.alertaDias}">
+                <div class="field-hint">Antecedência do aviso de parcela a vencer, no sino de notificações e na aba.</div>
+            </div>
+            <button class="btn btn-primary mt-16" id="fpDecSave">${icon('check')} Salvar 13º salário</button>
+        </div>
+
+        <div class="card mt-16" style="max-width:560px">
             <div class="card-title">Dados de exemplo</div>
             <div class="card-sub" style="margin-bottom:16px">Gera ~20 funcionários fictícios com lançamentos e folha do ano para validar os KPIs. Limpe antes de usar o sistema com dados reais.</div>
             <div class="flex">
@@ -901,6 +956,7 @@ async function renderCfgParametros() {
         if (!(alertaAso >= 1 && alertaAso <= 365))
             return toast('O alerta de vencimento do ASO deve ficar entre 1 e 365 dias.', 'error');
         const novos = {
+            fgtsPct: Number(document.getElementById('fpFgts').value) || 0,
             encargosPct: Number(document.getElementById('fpEncargos').value) || 0,
             diasExperiencia: Number(document.getElementById('fpExp').value) || 90,
             salarioMinimo: Number(document.getElementById('fpSalMin').value) || 0,
@@ -983,5 +1039,58 @@ async function renderCfgParametros() {
         Object.assign(params, novos);
         setFeriasParams({ ...params, ...novos });
         toast('Parâmetros de férias salvos.');
+    };
+
+    document.getElementById('fpDecSave').onclick = async () => {
+        const p1d = Number(document.getElementById('fpDecP1Dia').value);
+        const p2d = Number(document.getElementById('fpDecP2Dia').value);
+        if (!(p1d >= 1 && p1d <= 31) || !(p2d >= 1 && p2d <= 31))
+            return toast('Os dias dos prazos devem ficar entre 1 e 31.', 'error');
+        const avo = Number(document.getElementById('fpDecAvo').value);
+        if (!(avo >= 1 && avo <= 31))
+            return toast('Os dias para gerar o avo devem ficar entre 1 e 31.', 'error');
+        const alerta = Number(document.getElementById('fpDecAlerta').value);
+        if (!(alerta >= 1 && alerta <= 180))
+            return toast('O alerta de prazo deve ficar entre 1 e 180 dias.', 'error');
+
+        const p1m = Number(document.getElementById('fpDecP1Mes').value);
+        const p2m = Number(document.getElementById('fpDecP2Mes').value);
+        // A 2ª parcela depois da 1ª: invertidos, o abatimento do "já pago" sairia na ordem
+        // errada e a 1ª parcela viria sempre zerada.
+        if (p2m * 100 + p2d <= p1m * 100 + p1d)
+            return toast('O prazo da 2ª parcela deve ser posterior ao da 1ª.', 'error');
+
+        // Aviso, não bloqueio: os prazos legais são 30/11 e 20/12, mas quem opera a folha pode
+        // ter um motivo (acordo coletivo antecipando) que o sistema não conhece.
+        const legal = p1m === 11 && p1d === 30 && p2m === 12 && p2d === 20;
+        if (!legal && !await confirmDialog({
+            title: 'Prazos diferentes do legal',
+            message: `A Lei 4.749 art. 2º fixa <strong>30/11</strong> para a 1ª parcela e <strong>20/12</strong> para a 2ª.<br><br>
+                Antecipar é permitido; atrasar sujeita a empresa a multa administrativa. Salvar assim mesmo?`,
+            confirmText: 'Salvar assim mesmo', danger: true
+        })) return;
+
+        const avoLegal = avo === 15;
+        if (!avoLegal && !await confirmDialog({
+            title: 'Avo diferente do legal',
+            message: `A Lei 4.090 art. 1º §2º conta o avo a partir de <strong>15 dias</strong> trabalhados no mês.<br><br>
+                Exigir mais que 15 dias <strong>reduz o direito do funcionário</strong> abaixo do mínimo legal. Salvar assim mesmo?`,
+            confirmText: 'Salvar assim mesmo', danger: true
+        })) return;
+
+        const novos = {
+            decimoPrazo1Dia: p1d, decimoPrazo1Mes: p1m,
+            decimoPrazo2Dia: p2d, decimoPrazo2Mes: p2m,
+            decimoDiasParaAvo: avo,
+            decimoDescontarFaltas: document.getElementById('fpDecFaltas').checked,
+            decimoAlertaDias: alerta
+        };
+        await DB.set(PATHS.parametros, { ...params, ...novos });
+        Object.assign(params, novos);
+        // Conjunto inteiro, não só `novos` — mesmo motivo do card de Férias.
+        setDecimoParams({ ...params, ...novos });
+        // A aba do 13º precisa reler: os avos e os prazos mudaram.
+        decimoState.carregado = false;
+        toast('Parâmetros de 13º salvos.');
     };
 }
