@@ -1,0 +1,1409 @@
+// ===== Utilidades =====
+
+// Ícones SVG (traço estilo Feather)
+const ICONS = {
+    logo: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    dashboard: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+    users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    launch: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    money: '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+    chart: '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
+    table: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/>',
+    clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    userPlus: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>',
+    userMinus: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="22" y1="11" x2="16" y2="11"/>',
+    percent: '<line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
+    trendDown: '<polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+    logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+    plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+    x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+    edit: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/>',
+    trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+    check: '<polyline points="20 6 9 17 4 12"/>',
+    alert: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
+    info: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
+    lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+    eyeOff: '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
+    dots: '<circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>',
+    building: '<rect x="4" y="2" width="16" height="20" rx="2"/><line x1="9" y1="6" x2="9.01" y2="6"/><line x1="15" y1="6" x2="15.01" y2="6"/><line x1="9" y1="10" x2="9.01" y2="10"/><line x1="15" y1="10" x2="15.01" y2="10"/><line x1="9" y1="14" x2="9.01" y2="14"/><line x1="15" y1="14" x2="15.01" y2="14"/><path d="M9 22v-4h6v4"/>',
+    briefcase: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
+    gift: '<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>',
+    calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+    award: '<circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/>',
+    trendUp: '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>',
+    book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+    tool: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+    chevronDown: '<polyline points="6 9 12 15 18 9"/>',
+    chevronRight: '<polyline points="9 18 15 12 9 6"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>',
+    paperclip: '<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+    filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+    refresh: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+    bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
+    // ASO / saúde ocupacional — maleta médica com cruz
+    medical: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>'
+};
+
+function icon(name, cls) {
+    return `<svg class="icon${cls ? ' ' + cls : ''}" viewBox="0 0 24 24">${ICONS[name] || ICONS.info}</svg>`;
+}
+
+// Hash SHA-256 → hex
+async function sha256(text) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Formatação
+const fmtBRL = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const fmtNum = v => (Number(v) || 0).toLocaleString('pt-BR');
+const fmtPct = (v, d = 1) => `${(Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: d, minimumFractionDigits: d })}%`;
+
+function fmtDate(iso) {
+    if (!iso) return '—';
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y}`;
+}
+
+// ---- Duração em HH:MM (banco de horas) ----
+// O usuário digita e lê HH:MM; o banco guarda MINUTOS INTEIROS COM SINAL. Guardar "08:30"
+// obrigaria a fazer parsing em toda soma, e o sinal de "-00:30" pertence ao par, não à hora
+// (quem soma -0 + -30 acerta por acidente). Decimal traria float onde a fiscalização exige
+// exatidão. Minutos somam, comparam e ordenam sem cerimônia — HH:MM é apresentação.
+//
+// Horas NÃO são módulo 24: um saldo de 40h é "40:00", não "16:00". Nada de Date aqui.
+const fmtHHMM = min => {
+    const n = Math.round(Number(min) || 0);
+    const a = Math.abs(n);
+    return `${n < 0 ? '-' : ''}${String(Math.floor(a / 60)).padStart(2, '0')}:${String(a % 60).padStart(2, '0')}`;
+};
+
+// Aceita o que o RH realmente digita: "8:30", "-08:30", "8h30", "8,5h", "510" (minutos puros
+// só quando não há separador). Devolve minutos com sinal, ou null se não der para entender —
+// null é diferente de 0: "não consegui ler" não pode virar "zero horas" em silêncio.
+function parseHHMM(str) {
+    if (typeof str === 'number') return Math.round(str);
+    const s = String(str ?? '').trim();
+    if (!s) return null;
+    const neg = /^-/.test(s);
+    const corpo = s.replace(/^[-+]/, '').replace(/\s/g, '');
+
+    let min = null;
+    let m = corpo.match(/^(\d+)[:h](\d{1,2})m?$/i);              // 8:30 | 8h30 | 8h30m
+    if (m) {
+        const mm = Number(m[2].padEnd(2, '0'));                   // "8h3" → 30min, não 3
+        if (mm > 59) return null;
+        min = Number(m[1]) * 60 + mm;
+    } else if ((m = corpo.match(/^(\d+)[.,](\d+)\s*h?$/i))) {     // 8,5h → decimal de HORAS
+        min = Math.round(Number(`${m[1]}.${m[2]}`) * 60);
+    } else if ((m = corpo.match(/^(\d+)h?$/i))) {                 // "8h" = 8 horas; "510" = 510 minutos
+        min = /h$/i.test(corpo) ? Number(m[1]) * 60 : Number(m[1]);
+    } else return null;
+
+    return neg ? -min : min;
+}
+
+// Para eixos de gráfico: "8,5 h". Um eixo Y em HH:MM é ilegível — os ticks não caem em
+// múltiplos redondos e o Chart.js não tem escala sexagesimal.
+const fmtHorasDec = min => `${((Number(min) || 0) / 60).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} h`;
+
+function hoje() { return new Date().toISOString().slice(0, 10); }
+
+// ---- Ausência em curso ----
+// `retorno` é a data em que o funcionário VOLTA ao trabalho, então o intervalo é
+// fechado no início e aberto no fim: no dia do retorno ele já está presente.
+const ausenciaVigente = (a, ref) => !!a.inicio && !!a.retorno && a.inicio <= (ref || hoje()) && (ref || hoje()) < a.retorno;
+
+// Férias em curso de um funcionário (null quando não está de férias).
+// Quem está de férias continua ATIVO (recebe salário, conta no headcount) — a ausência
+// é operacional, não contratual. Ver diagnosticoUnidade() para o efeito no alerta.
+const feriasVigente = (fid, ausencias, ref) =>
+    (ausencias || []).find(a => a.funcionarioId === fid && a.tipo === 'Férias' && ausenciaVigente(a, ref)) || null;
+
+// Cadastro com admissão no futuro. Não é um estado válido de funcionário: ou é erro de
+// digitação, ou é contratação agendada. Em ambos os casos os indicadores derivados
+// (tempo de casa, férias, experiência) não têm base — a tela precisa avisar, não calcular.
+const admissaoFutura = (f, ref) => !!f?.admissao && !f.demissao && f.admissao > (ref || hoje());
+
+// Dias até o retorno (1 = volta amanhã)
+const diasAteRetorno = (a, ref) => diasEntre(ref || hoje(), a.retorno);
+
+// ============ PROGRAMAÇÃO DE FÉRIAS (CLT) ============
+//
+// Dois relógios, não um:
+//   • Período AQUISITIVO  — 12 meses trabalhados que GERAM o direito (admissão + 12m, e daí
+//                           a cada 12m). Quem está no 1º ciclo ainda não tem direito.
+//   • Período CONCESSIVO  — os 12 meses SEGUINTES, em que a empresa DEVE conceder.
+//                           Estourou? Férias em dobro (art. 137 CLT).
+//
+// O prazo que importa para gestão é o CONCESSIVO: é ele que vira custo. A previsão NÃO deriva
+// das últimas férias gozadas — deriva do ciclo aquisitivo, que corre desde a admissão
+// independente de quando a pessoa gozou. Derivar do gozo faria quem tirou férias atrasadas
+// parecer folgado justamente quando está vencendo.
+
+const addMeses = (iso, n) => {
+    const d = new Date(iso + 'T00:00:00');
+    const dia = d.getDate();
+    d.setMonth(d.getMonth() + n);
+    if (d.getDate() < dia) d.setDate(0);          // 31/jan +1m → 28/fev, não 03/mar
+    return d.toISOString().slice(0, 10);
+};
+
+// Meses cheios entre duas datas (para "faltam 3 meses")
+function mesesEntre(iniIso, fimIso) {
+    const a = new Date(iniIso + 'T00:00:00'), b = new Date(fimIso + 'T00:00:00');
+    let m = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+    if (b.getDate() < a.getDate()) m--;
+    return m;
+}
+
+// Texto curto de prazo: "12 dias", "3 meses", "1 ano e 2 meses"
+function prazoTexto(dias) {
+    const abs = Math.abs(dias);
+    if (abs < 45) return `${abs} dia${abs !== 1 ? 's' : ''}`;
+    const meses = Math.round(abs / 30.44);
+    if (meses < 12) return `${meses} mes${meses !== 1 ? 'es' : ''}`;
+    const anos = Math.floor(meses / 12), rm = meses % 12;
+    return `${anos} ano${anos !== 1 ? 's' : ''}${rm ? ` e ${rm} mes${rm !== 1 ? 'es' : ''}` : ''}`;
+}
+
+// Parâmetros de férias (Configurações → Parâmetros). Carregado uma vez por sessão.
+//
+// `diasPorCiclo` (30) é o total de uma competência: fracionar não muda o total, só o divide.
+// `tercoPct` (33.3333) é o adicional do art. 7º XVII CF — parametrizável porque convenção
+// coletiva pode ser mais generosa, nunca menos. `abonoMaxDias` (10) = art. 143: até 1/3 do
+// período pode ser vendido. `mediaHeMeses` (12) = período aquisitivo (Súmula 45 TST).
+const FERIAS_PARAMS_PADRAO = {
+    alertaLegalDias: 60,
+    diasPorCiclo: 30,
+    tercoPct: 100 / 3,
+    abonoMaxDias: 10,
+    mediaHe: true,
+    mediaHeMeses: 12
+};
+let feriasParams = { ...FERIAS_PARAMS_PADRAO };
+const setFeriasParams = p => {
+    const num = (v, d) => (v == null || v === '' || isNaN(Number(v)) ? d : Number(v));
+    feriasParams = {
+        alertaLegalDias: Number(p?.feriasAlertaLegalDias) || FERIAS_PARAMS_PADRAO.alertaLegalDias,
+        diasPorCiclo: num(p?.feriasDiasPorCiclo, FERIAS_PARAMS_PADRAO.diasPorCiclo),
+        tercoPct: num(p?.feriasTercoPct, FERIAS_PARAMS_PADRAO.tercoPct),
+        abonoMaxDias: num(p?.feriasAbonoMaxDias, FERIAS_PARAMS_PADRAO.abonoMaxDias),
+        // Checkbox: `??` e não `||` — false é escolha, não ausência.
+        mediaHe: p?.feriasMediaHe ?? FERIAS_PARAMS_PADRAO.mediaHe,
+        mediaHeMeses: num(p?.feriasMediaHeMeses, FERIAS_PARAMS_PADRAO.mediaHeMeses)
+    };
+};
+
+// ============ CONTROLE DE ASO (NR-7) ============
+//
+// Periodicidade do exame vem do CARGO (asoPeriodicidadeMeses), não da insalubridade:
+// insalubridade é critério trabalhista/salarial, periodicidade de ASO é critério
+// médico-ocupacional (PCMSO). São definidos por gente diferente e podem divergir.
+const ASO_PERIODICIDADES = [6, 12, 24];
+const ASO_PERIODICIDADE_PADRAO = 12;
+// Cargo sem o campo (cadastro anterior a este recurso) assume o padrão legal geral.
+const asoPeriodicidadeDe = cargo => Number(cargo?.asoPeriodicidadeMeses) || ASO_PERIODICIDADE_PADRAO;
+
+// 90 dias: exame ocupacional depende de agenda de clínica e do PCMSO — avisar com 30 dias
+// deixa pouca margem para marcar, remarcar e o colaborador comparecer. Configurável em
+// Configurações → Parâmetros.
+const ASO_PARAMS_PADRAO = { alertaDias: 90 };
+let asoParams = { ...ASO_PARAMS_PADRAO };
+const setAsoParams = p => {
+    asoParams = { alertaDias: Number(p?.asoAlertaDias) || ASO_PARAMS_PADRAO.alertaDias };
+};
+
+// Os cinco tipos da NR-7. Só o Periódico é recorrente — os outros são disparados por
+// eventos (admissão, demissão, afastamento longo, mudança de função) que o módulo de
+// Lançamentos já registra. Ver asosPendentesPorEvento().
+const ASO_TIPOS = ['Admissional', 'Periódico', 'Demissional', 'Retorno ao trabalho', 'Mudança de risco'];
+const ASO_TIPO_PERIODICO = 'Periódico';
+const ASO_RESULTADOS = ['Apto', 'Apto com restrições', 'Inapto'];
+
+// Ordem de urgência e cores — espelham FERIAS_ORDEM/FERIAS_STATUS de propósito: a leitura
+// de "quem precisa de ação agora" tem que ser idêntica nas duas telas.
+const ASO_ORDEM = { vencido: 0, sem_historico: 1, critico: 2, em_dia: 3 };
+const ASO_STATUS = {
+    vencido:       { cls: 'badge-danger',  dot: 'st-vencida', txt: 'Vencido' },
+    sem_historico: { cls: 'badge-danger',  dot: 'st-vencida', txt: 'Sem ASO' },
+    critico:       { cls: 'badge-warning', dot: 'st-critica', txt: 'Vence em breve' },
+    em_dia:        { cls: 'badge-neutral', dot: 'st-ok',      txt: 'Em dia' }
+};
+
+// ASOs de um funcionário já realizados (data <= ref), do mais recente para o mais antigo.
+const asosDoFunc = (fid, asos, ref) => (asos || [])
+    .filter(a => a.funcionarioId === fid && a.data && a.data <= (ref || hoje()))
+    .sort((a, b) => b.data.localeCompare(a.data));
+
+// Situação do exame PERIÓDICO. Mesmo contrato de retorno de situacaoFeriasFunc:
+// { status, dias, label, desc, ... } — para a fila, os badges e os dots serem reaproveitados.
+//
+// Vencimento = último exame + periodicidade do cargo. Nada é gravado: se o exame antecipa,
+// se o cargo muda de periodicidade ou se a pessoa é transferida, a projeção se corrige
+// sozinha no próximo render. Lembrete gravado apodrece; fórmula não.
+//
+// `dias` > 0 = ainda tem prazo; < 0 = vencido há N dias. Mesma convenção das férias.
+function situacaoAsoFunc(f, asos, cargo, ref) {
+    if (!f?.admissao || f.demissao) return null;
+    const h = ref || hoje();
+    if (f.admissao > h) return null;                  // admissão futura: nada a calcular
+
+    const meses = asoPeriodicidadeDe(cargo);
+    const feitos = asosDoFunc(f.id, asos, h);
+    // Admissional e Periódico reiniciam a contagem; os demais (demissional, retorno,
+    // mudança de risco) são exames pontuais e NÃO renovam o ciclo periódico.
+    const base = feitos.find(a => a.tipo === ASO_TIPO_PERIODICO || a.tipo === 'Admissional');
+
+    // Nunca fez exame. Silêncio aqui seria o pior estado possível num controle de NR-7:
+    // quem nunca fez é justamente o caso mais grave, não "sem dados".
+    if (!base) {
+        const dias = diasEntre(h, addMeses(f.admissao, meses));
+        return {
+            status: 'sem_historico', dias, meses,
+            ultimo: null, ultimoTipo: null, vencimento: null, total: feitos.length,
+            label: 'Sem ASO registrado',
+            desc: `Nenhum exame lançado desde a admissão (${fmtDate(f.admissao)}). O admissional é obrigatório antes do início das atividades.`
+        };
+    }
+
+    const vencimento = addMeses(base.data, meses);
+    const dias = diasEntre(h, vencimento);
+    const comum = {
+        meses, ultimo: base.data, ultimoTipo: base.tipo, vencimento, total: feitos.length
+    };
+
+    if (dias < 0) return {
+        ...comum, status: 'vencido', dias,
+        label: `Vencido há ${prazoTexto(dias)}`,
+        desc: `Periódico venceu em ${fmtDate(vencimento)} (último exame: ${fmtDate(base.data)}, a cada ${meses} meses). Colaborador sem ASO válido.`
+    };
+    // dias === 0: vence HOJE — ainda válido, mas "Vence em 0 dias" não é português.
+    if (dias <= asoParams.alertaDias) return {
+        ...comum, status: 'critico', dias,
+        label: dias === 0 ? 'Vence hoje' : `Vence em ${prazoTexto(dias)}`,
+        desc: `Agendar antes de ${fmtDate(vencimento)} — periodicidade de ${meses} meses definida no cargo.`
+    };
+    return {
+        ...comum, status: 'em_dia', dias,
+        label: `Vence em ${prazoTexto(dias)}`,
+        desc: `Último exame em ${fmtDate(base.data)}. Próximo periódico até ${fmtDate(vencimento)}.`
+    };
+}
+
+// ---- Gatilhos dos tipos NÃO periódicos ----
+// Não inventam entidade nova: leem eventos que o módulo já registra e cobram o exame
+// correspondente. Retorna [{ tipo, motivo, prazo, ref }] pendentes (sem ASO correspondente).
+const ASO_RETORNO_DIAS_MIN = 30;   // NR-7: afastamento ≥ 30 dias exige exame de retorno
+const ASO_TIPOS_AFASTAMENTO = ['Licença médica', 'Licença maternidade/paternidade'];
+
+function asosPendentesPorEvento(f, asos, dados, ref) {
+    const h = ref || hoje();
+    const { demissoes = [], ausencias = [], promocoes = [], transferencias = [] } = dados || {};
+    const feitos = (asos || []).filter(a => a.funcionarioId === f.id);
+    const temApos = (tipo, dataEvento) => feitos.some(a => a.tipo === tipo && a.data >= dataEvento);
+    const pend = [];
+
+    // Admissional — obrigatório antes do início das atividades
+    if (f.admissao && !feitos.some(a => a.tipo === 'Admissional'))
+        pend.push({ tipo: 'Admissional', motivo: `Admissão em ${fmtDate(f.admissao)}`, prazo: f.admissao, ref: f.admissao });
+
+    // Demissional — até 10 dias do desligamento
+    demissoes.filter(d => d.funcionarioId === f.id && !temApos('Demissional', d.data))
+        .forEach(d => pend.push({
+            tipo: 'Demissional', motivo: `Desligamento em ${fmtDate(d.data)}`,
+            prazo: addDias(d.data, 10), ref: d.data
+        }));
+
+    // Retorno ao trabalho — afastamento ≥ 30 dias por motivo médico
+    ausencias.filter(a => a.funcionarioId === f.id
+            && ASO_TIPOS_AFASTAMENTO.includes(a.tipo)
+            && Number(a.dias) >= ASO_RETORNO_DIAS_MIN
+            && !temApos('Retorno ao trabalho', a.retorno))
+        .forEach(a => pend.push({
+            tipo: 'Retorno ao trabalho', motivo: `${a.tipo} de ${prazoTexto(Number(a.dias))}`,
+            prazo: a.retorno, ref: a.retorno
+        }));
+
+    // Mudança de risco — promoção ou transferência alteram função/ambiente
+    promocoes.filter(p => p.funcionarioId === f.id && !temApos('Mudança de risco', p.data))
+        .forEach(p => pend.push({ tipo: 'Mudança de risco', motivo: `Promoção em ${fmtDate(p.data)}`, prazo: p.data, ref: p.data }));
+    transferencias.filter(t => t.funcionarioId === f.id && !temApos('Mudança de risco', t.data))
+        .forEach(t => pend.push({ tipo: 'Mudança de risco', motivo: `Transferência em ${fmtDate(t.data)}`, prazo: t.data, ref: t.data }));
+
+    // Só o que já é exigível (evento passado) — evento futuro ainda não gera pendência
+    return pend.filter(p => p.ref <= h).sort((a, b) => a.prazo.localeCompare(b.prazo));
+}
+
+// Diagnóstico de ASO por UNIDADE, para o sino de notificações.
+// O ASO é um controle por pessoa, mas o sino fala por unidade (igual aos outros alertas) —
+// agrega aqui para a leitura do sino continuar uniforme. Retorna null quando não há nada
+// a cobrar, para o chamador poder filtrar direto.
+function diagnosticoAso(un, funcionarios, asos, cargos, ref) {
+    const ativos = funcionarios.filter(f => f.unidadeId === un.id && !f.demissao);
+    const cargoDe = f => (cargos || []).find(c => c.id === f.cargoId);
+    const itens = ativos
+        .map(f => ({ f, sit: situacaoAsoFunc(f, asos, cargoDe(f), ref) }))
+        .filter(x => x.sit && (x.sit.status === 'vencido' || x.sit.status === 'sem_historico' || x.sit.status === 'critico'));
+    if (!itens.length) return null;
+
+    const conta = st => itens.filter(x => x.sit.status === st).length;
+    return {
+        nome: un.nome,
+        vencidos: conta('vencido'),
+        semHistorico: conta('sem_historico'),
+        criticos: conta('critico'),
+        // Ordena por urgência para a janela de detalhe mostrar o pior primeiro
+        pessoas: itens
+            .sort((a, b) => (ASO_ORDEM[a.sit.status] - ASO_ORDEM[b.sit.status]) || (a.sit.dias - b.sit.dias))
+            .map(x => ({ nome: x.f.nome, status: x.sit.status, label: x.sit.label, vencimento: x.sit.vencimento }))
+    };
+}
+
+// Distribuição dos exames projetados ao longo do tempo.
+// Marcar 20 exames no mesmo dia na mesma unidade é lista de desejos, não agenda: a clínica
+// não atende e o RH não organiza. Aqui o exame é um MARCO pontual (não um período como as
+// férias), então o escalonamento empurra por DIA, respeitando um teto por dia/unidade.
+// Retorna Map(funcionarioId → { data, adiado, base }).
+function programacaoAso(itens, porDiaPorUnidade = 3) {
+    const ocupacao = {};   // 'unidade|data' → quantidade já marcada
+    const out = new Map();
+    const h = hoje();
+
+    // Quem vence primeiro marca primeiro
+    [...itens].sort((a, b) => (ASO_ORDEM[a.sit.status] - ASO_ORDEM[b.sit.status]) || (a.sit.dias - b.sit.dias))
+        .forEach(({ f, sit }) => {
+            // Vencido/sem histórico → hoje (já está atrasado). Senão, na data de vencimento.
+            const base = (sit.status === 'vencido' || sit.status === 'sem_historico')
+                ? h : sit.vencimento;
+            const uni = f.unidadeId || '-';
+            let data = base, adiado = false;
+            // Empurra para o próximo dia com vaga (limite de segurança: 60 dias)
+            for (let i = 0; i < 60; i++) {
+                const k = `${uni}|${data}`;
+                if ((ocupacao[k] || 0) < porDiaPorUnidade) break;
+                data = addDias(data, 1);
+                adiado = true;
+            }
+            ocupacao[`${uni}|${data}`] = (ocupacao[`${uni}|${data}`] || 0) + 1;
+            out.set(f.id, { data, adiado, base });
+        });
+    return out;
+}
+
+// ============ BANCO DE HORAS (CLT art. 59, §2º) ============
+//
+// Diferença essencial para a folha: a folha FECHA no mês (dezembro não deve nada a janeiro).
+// O banco de horas ACUMULA até um prazo legal e, se estourar, vira dinheiro — o saldo positivo
+// não compensado é pago como hora extra com adicional. Por isso o número que importa não é o
+// saldo do mês, é o ACUMULADO DO CICLO e quantos dias faltam para ele fechar.
+//
+// O ciclo é DERIVADO, nunca gravado (mesma decisão do ASO): âncora = mês do primeiro
+// lançamento do funcionário. Gravar um cicloId em cada linha apodrece no dia em que alguém
+// lança um mês retroativo anterior ao "primeiro" — o id passa a apontar para um ciclo que não
+// existe mais e ninguém percebe até o fechamento. A fórmula se recalcula e nunca mente.
+//
+// A âncora é o primeiro LANÇAMENTO, não a admissão: banco de horas nasce de um acordo de
+// compensação, não do contrato. Quem nunca gerou saldo não tem ciclo — e isso é a melhor
+// notícia possível, não uma pendência (o oposto do ASO, onde "sem histórico" é o pior caso).
+
+const BH_PARAMS_PADRAO = { cicloMeses: 6, alertaDias: 45, tetoMensalMin: 600, adicionalPct: 50 };
+let bhParams = { ...BH_PARAMS_PADRAO };
+const setBhParams = p => {
+    bhParams = {
+        cicloMeses: Number(p?.bhCicloMeses) || BH_PARAMS_PADRAO.cicloMeses,
+        alertaDias: Number(p?.bhAlertaDias) || BH_PARAMS_PADRAO.alertaDias,
+        // Teto 0 = "sem teto", intencional — por isso ?? e não ||.
+        tetoMensalMin: p?.bhTetoMensalMin == null ? BH_PARAMS_PADRAO.tetoMensalMin : Number(p.bhTetoMensalMin),
+        adicionalPct: p?.bhAdicionalPct == null ? BH_PARAMS_PADRAO.adicionalPct : Number(p.bhAdicionalPct)
+    };
+};
+
+const BH_DESTINOS = ['Pago como hora extra', 'Compensado', 'Perdoado', 'Descontado'];
+
+// A quitação é um subconjunto do fechamento: só os destinos que movem dinheiro. "Compensado"
+// (horas viraram folga) e "Perdoado" (saldo negativo anistiado) resolvem o saldo em horas, e
+// quitar significa pagar — oferecê-los aqui seria registrar um pagamento que não existiu.
+const BH_DESTINOS_QUITACAO = ['Pago como hora extra', 'Descontado'];
+
+// Único destino que vira hora extra na folha. "Descontado" também move dinheiro, mas no
+// sentido oposto: é rubrica de desconto, e somá-lo como HE produziria hora extra negativa.
+const BH_DESTINO_PAGO = 'Pago como hora extra';
+
+// Destino da quitação. Quitações gravadas antes deste campo existir são pagamento de HE —
+// era o único comportamento possível na época, e o valor já somava na folha como tal.
+const destinoQuitacao = q => q?.destino || BH_DESTINO_PAGO;
+
+// Ordem de urgência. `sem_ciclo` fica por ÚLTIMO — inversão deliberada em relação ao
+// ASO_ORDEM, onde sem_historico é o primeiro: lá a ausência de dado é a pior notícia; aqui
+// é a melhor. Mesmo motor, semântica oposta.
+const BH_ORDEM = { vencido: 0, critico: 1, atencao: 2, em_dia: 3, sem_ciclo: 4 };
+const BH_STATUS = {
+    vencido:   { cls: 'badge-danger',  dot: 'st-vencida', txt: 'Ciclo vencido' },
+    critico:   { cls: 'badge-warning', dot: 'st-critica', txt: 'Fecha em breve' },
+    atencao:   { cls: 'badge-warning', dot: 'st-critica', txt: 'Saldo alto' },
+    em_dia:    { cls: 'badge-neutral', dot: 'st-ok',      txt: 'Em dia' },
+    sem_ciclo: { cls: 'badge-neutral', dot: 'st-ok',      txt: 'Sem banco' }
+};
+
+// ---- Aritmética de mês ('AAAA-MM') ----
+// O banco é indexado por mês, não por dia (rh_banco_horas/{ano-mes}/{funcionarioId}), então
+// a aritmética de ciclo é toda em meses. Não dá para reusar addMeses/mesesEntre: elas exigem
+// data completa e devolveriam o dia junto, que aqui não existe e viraria fonte de erro.
+const mesAdd = (mk, n) => {
+    const [y, m] = mk.split('-').map(Number);
+    const t = (y * 12 + (m - 1)) + n;
+    return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
+};
+const mesDiff = (a, b) => {
+    const [ya, ma] = a.split('-').map(Number), [yb, mb] = b.split('-').map(Number);
+    return (yb * 12 + mb) - (ya * 12 + ma);
+};
+const mesDe = iso => (iso || '').slice(0, 7);
+const mesHoje = () => hoje().slice(0, 7);
+// Último dia do mês: dia 0 do mês seguinte. Usado para o fim do ciclo — o ciclo fecha no
+// último dia do 6º mês, não no dia 1.
+const fimDoMes = mk => {
+    const [y, m] = mk.split('-').map(Number);
+    return new Date(y, m, 0).toISOString().slice(0, 10);
+};
+
+const bhSaldoLinha = l => (Number(l?.extraMin) || 0) - (Number(l?.atrasoMin) || 0);
+
+// Lançamentos de um funcionário, achatados de rh_banco_horas/{ano-mes}/{fid} para
+// [{ mes, extraMin, atrasoMin, saldoMin }], ordenados por mês. Só até `ateMes` (default: mês
+// corrente) — mês futuro não conta para o ciclo em curso.
+function bhLancamentosFunc(fid, banco, ateMes) {
+    const lim = ateMes || mesHoje();
+    return Object.entries(banco || {})
+        .filter(([mk, meses]) => mk <= lim && meses && meses[fid])
+        .map(([mk, meses]) => ({
+            mes: mk,
+            extraMin: Number(meses[fid].extraMin) || 0,
+            atrasoMin: Number(meses[fid].atrasoMin) || 0,
+            saldoMin: bhSaldoLinha(meses[fid]),
+            obs: meses[fid].obs || ''
+        }))
+        .sort((a, b) => a.mes.localeCompare(b.mes));
+}
+
+// ---- QUITAÇÃO: pagamento parcial DURANTE o ciclo ----
+//
+// Quitar ≠ fechar. Quitação paga meses específicos enquanto o ciclo corre: aqueles meses
+// saem do saldo em aberto e ficam travados para edição (já viraram dinheiro), o ciclo
+// continua e o cálculo segue com o restante. Fechamento encerra o ciclo — e só pode
+// acontecer no fim dele ou por desligamento (ver podeFecharCiclo).
+//
+// Quita MESES INTEIROS, não um valor livre de horas: é o que torna o bloqueio preciso. Com
+// um valor solto ("quitei 10h de 23h"), o sistema teria que adivinhar quais meses travar.
+
+// Meses já quitados de um funcionário → Map(mes → quitação). Usado para travar a edição e
+// para excluir do saldo em aberto.
+function mesesQuitadosBh(fid, quitacoes) {
+    const map = new Map();
+    (quitacoes || [])
+        .filter(q => q.funcionarioId === fid)
+        .forEach(q => (q.meses || []).forEach(mk => map.set(mk, q)));
+    return map;
+}
+
+// Um mês publicado que já foi quitado não pode ser editado: o valor virou pagamento, e
+// mudar as horas depois faria a folha divergir do que foi pago sem ninguém perceber. Para
+// corrigir, exclui-se a quitação primeiro — ato explícito e reversível.
+const mesBhQuitado = (fid, mesKey, quitacoes) => mesesQuitadosBh(fid, quitacoes).get(mesKey) || null;
+
+// Ciclo CORRENTE do funcionário. Mesmo contrato de retorno de situacaoAsoFunc
+// ({ status, dias, label, desc, ... }) para reusar fila, badges e dots sem adaptador.
+//
+// `dias` > 0 = ainda tem prazo; < 0 = fechou há N dias. Mesma convenção de férias/ASO.
+function cicloBhFunc(f, banco, fechamentos, ref, quitacoes) {
+    if (!f?.admissao) return null;
+    const h = ref || hoje();
+    const mesRef = mesDe(h);
+    const lancs = bhLancamentosFunc(f.id, banco, mesRef);
+
+    // Sem nenhum lançamento = sem acordo de compensação em vigor. Não é pendência.
+    // Devolve o contrato COMPLETO (com abertos/quitados/podeFechar) mesmo vazio: a UI lê
+    // essas propriedades sem saber qual ramo produziu o objeto, e um `undefined` aqui
+    // apareceria como botão habilitado num ciclo que não existe.
+    if (!lancs.length) return {
+        status: 'sem_ciclo', dias: null, inicio: null, fim: null, indice: 0,
+        acumuladoMin: 0, extraMin: 0, atrasoMin: 0, meses: [], lancados: 0, fechados: 0,
+        abertos: [], quitados: [], quitacoes: [], quitadoMin: 0, quitadoValor: 0, quitadoDescontado: 0,
+        fechado: null, desligado: !!f.demissao && f.demissao <= h,
+        podeFechar: false, motivoNaoFechar: 'Não há ciclo de banco de horas para este funcionário.',
+        label: 'Sem banco de horas',
+        desc: 'Nenhum saldo lançado. O ciclo começa no primeiro mês publicado.'
+    };
+
+    const cicloMeses = bhParams.cicloMeses;
+    const ancora = lancs[0].mes;                       // âncora derivada: 1º lançamento existente
+    const fechs = (fechamentos || []).filter(x => x.funcionarioId === f.id);
+    const quitMap = mesesQuitadosBh(f.id, quitacoes);
+
+    // Índice do ciclo corrente = quantos blocos de `cicloMeses` já passaram desde a âncora.
+    // O ciclo "corrente" é o mais antigo AINDA EM ABERTO — não o do calendário.
+    // Saltar direto para o bloco de hoje esconderia um ciclo vencido e não liquidado, que é
+    // justamente o que vira passivo: o RH abriria a tela e veria "em dia" com dinheiro devido
+    // dois ciclos atrás. Um ciclo só sai de cena quando é fechado (ato explícito) ou quando
+    // encerrou zerado — aí não há o que cobrar.
+    // Mês quitado não conta para o saldo EM ABERTO: ele já foi pago. Um ciclo cujos meses
+    // foram todos quitados não tem mais nada a cobrar — não pode continuar prendendo o
+    // "ciclo corrente", senão o RH ficaria preso num ciclo antigo já resolvido.
+    const ultimoIdx = Math.floor(mesDiff(ancora, mesRef) / cicloMeses);
+    const abertoDoIdx = i => {
+        const ini = mesAdd(ancora, i * cicloMeses);
+        const fm = mesAdd(ini, cicloMeses - 1);
+        return lancs.filter(l => l.mes >= ini && l.mes <= fm && !quitMap.has(l.mes))
+            .reduce((s, l) => s + l.saldoMin, 0);
+    };
+    let indice = ultimoIdx;
+    for (let i = 0; i <= ultimoIdx; i++) {
+        const ini = mesAdd(ancora, i * cicloMeses);
+        const pendente = !fechs.some(x => x.cicloInicio === ini) && abertoDoIdx(i) !== 0;
+        if (pendente) { indice = i; break; }
+    }
+
+    const inicio = mesAdd(ancora, indice * cicloMeses);
+    const fimMes = mesAdd(inicio, cicloMeses - 1);
+    const fim = fimDoMes(fimMes);                      // fecha no último DIA do último mês
+
+    const doCiclo = lancs.filter(l => l.mes >= inicio && l.mes <= fimMes);
+    // Meses do ciclo já quitados vs. ainda em aberto. `acumuladoMin` é o saldo EM ABERTO —
+    // é ele que vira passivo, que o RH precisa compensar e que o fechamento liquida.
+    const abertos = doCiclo.filter(l => !quitMap.has(l.mes));
+    const quitados = doCiclo.filter(l => quitMap.has(l.mes));
+    const acumuladoMin = abertos.reduce((s, l) => s + l.saldoMin, 0);
+    const extraMin = abertos.reduce((s, l) => s + l.extraMin, 0);
+    const atrasoMin = abertos.reduce((s, l) => s + l.atrasoMin, 0);
+    const fechado = fechs.find(x => x.cicloInicio === inicio) || null;
+
+    // Quitações que tocam este ciclo, para a janela de detalhe mostrar o histórico.
+    const quitsDoCiclo = [...new Set(quitados.map(l => quitMap.get(l.mes)))]
+        .sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+
+    const dias = diasEntre(h, fim);
+    const desligado = !!f.demissao && f.demissao <= h;
+
+    // ---- Quando o ciclo pode ser FECHADO ----
+    // Só no fim do ciclo (prazo cumprido) ou por desligamento. Fechar um ciclo em curso
+    // seria apurar um saldo que ainda vai mudar — os meses seguintes ainda serão lançados.
+    // Para pagar horas antes disso existe a QUITAÇÃO, que não encerra nada: paga os meses
+    // já publicados e deixa o ciclo correndo.
+    //
+    // Sem essa regra, "fechar" virava sinônimo de "pagar" e o ciclo de 6 meses perdia o
+    // sentido: cada pagamento zerava o prazo e reancorava o próximo ciclo no mês seguinte.
+    const podeFechar = !fechado && (desligado || dias < 0);
+    const motivoNaoFechar = fechado ? 'Este ciclo já foi fechado.'
+        : podeFechar ? null
+        : `O ciclo só pode ser fechado a partir de ${fmtDate(fim)} (fim do prazo) ou no desligamento. Para pagar horas antes disso, use uma quitação — ela paga os meses publicados e o ciclo continua correndo.`;
+
+    const comum = {
+        inicio, fim, fimMes, indice, ancora, cicloMeses,
+        acumuladoMin, extraMin, atrasoMin, meses: doCiclo,
+        abertos, quitados,
+        quitacoes: quitsDoCiclo,
+        quitadoMin: quitados.reduce((s, l) => s + l.saldoMin, 0),
+        // Só o que virou pagamento. "Descontado" é dinheiro andando no sentido oposto —
+        // somá-lo aqui inflaria o "já quitado (R$)" com valor que nunca saiu do caixa.
+        quitadoValor: quitsDoCiclo
+            .filter(q => destinoQuitacao(q) === BH_DESTINO_PAGO)
+            .reduce((s, q) => s + (Number(q.valor) || 0), 0),
+        quitadoDescontado: quitsDoCiclo
+            .filter(q => destinoQuitacao(q) !== BH_DESTINO_PAGO)
+            .reduce((s, q) => s + (Number(q.valor) || 0), 0),
+        lancados: doCiclo.length, fechados: fechs.length, fechado,
+        desligado, podeFechar, motivoNaoFechar
+    };
+
+    // Desligado com saldo aberto: a rescisão obriga o pagamento do saldo (art. 59, §3º) —
+    // o prazo do ciclo deixa de valer. Vencido na hora, independente de data.
+    if (f.demissao && f.demissao <= h && !fechado && acumuladoMin !== 0) return {
+        ...comum, status: 'vencido', dias: diasEntre(h, f.demissao),
+        label: 'Desligado com saldo em aberto',
+        desc: `Desligamento em ${fmtDate(f.demissao)} com saldo de ${fmtHHMM(acumuladoMin)}. A rescisão exige a liquidação do saldo (art. 59, §3º).`
+    };
+    // Desligado e sem saldo: nada a liquidar, então nada a fechar — `podeFechar` seria
+    // verdadeiro pela regra do desligamento, mas abriria um fechamento de saldo zero.
+    if (f.demissao && f.demissao <= h) return {
+        ...comum, status: 'sem_ciclo', dias: null, podeFechar: false,
+        motivoNaoFechar: 'Sem saldo em aberto — não há o que liquidar.',
+        label: 'Desligado', desc: 'Sem saldo em aberto no desligamento.'
+    };
+
+    if (fechado) return {
+        ...comum, status: 'em_dia', dias,
+        label: 'Ciclo fechado',
+        desc: `Fechado em ${fmtDate(fechado.data)} — ${fechado.destino}. Próximo ciclo inicia em ${mesLabel(mesAdd(fimMes, 1))}.`
+    };
+
+    // Ciclo estourou o prazo e ninguém liquidou. Saldo zero não é problema: não há o que pagar.
+    if (dias < 0 && acumuladoMin !== 0) return {
+        ...comum, status: 'vencido', dias,
+        label: `Vencido há ${prazoTexto(dias)}`,
+        desc: `O ciclo fechou em ${fmtDate(fim)} com ${fmtHHMM(acumuladoMin)} e não foi liquidado. Saldo positivo não compensado é devido como hora extra com adicional.`
+    };
+    if (dias < 0) return {
+        ...comum, status: 'em_dia', dias,
+        label: 'Ciclo encerrado sem saldo',
+        desc: `Fechou em ${fmtDate(fim)} zerado — nada a compensar ou pagar.`
+    };
+
+    if (dias <= bhParams.alertaDias && acumuladoMin !== 0) return {
+        ...comum, status: 'critico', dias,
+        label: dias === 0 ? 'Fecha hoje' : `Fecha em ${prazoTexto(dias)}`,
+        desc: `${fmtHHMM(acumuladoMin)} acumulados e ${prazoTexto(dias)} para compensar. Depois de ${fmtDate(fim)}, o saldo positivo vira pagamento.`
+    };
+
+    // "Atenção": ainda há prazo, mas já não cabe compensar o saldo dentro dele nem estourando
+    // o teto todo mês. O pagamento já é inevitável — avisar agora ainda dá margem de negociação.
+    const mesesRestantes = mesDiff(mesRef, fimMes) + 1;
+    const capacidade = bhParams.tetoMensalMin * mesesRestantes;
+    if (bhParams.tetoMensalMin > 0 && acumuladoMin > capacidade) return {
+        ...comum, status: 'atencao', dias,
+        label: `Saldo acima da capacidade de compensação`,
+        desc: `${fmtHHMM(acumuladoMin)} acumulados, mas só há ${mesesRestantes} ${mesesRestantes > 1 ? 'meses' : 'mês'} até ${fmtDate(fim)} (capacidade de ${fmtHHMM(capacidade)} no teto de ${fmtHHMM(bhParams.tetoMensalMin)}/mês). O excedente tende a virar pagamento.`
+    };
+
+    return {
+        ...comum, status: 'em_dia', dias,
+        label: `Fecha em ${prazoTexto(dias)}`,
+        desc: `${fmtHHMM(acumuladoMin)} acumulados no ciclo ${mesLabel(inicio)} → ${mesLabel(fimMes)}.`
+    };
+}
+
+// 'AAAA-MM' → "Mar/2026". Rótulo curto para eixos e textos de ciclo.
+const mesLabel = mk => {
+    const [y, m] = (mk || '').split('-');
+    return m ? `${MESES[Number(m) - 1]}/${y}` : '—';
+};
+
+// Todos os ciclos do funcionário — fechados e o corrente. Base da sub-aba Ciclos e do
+// mapa de ciclos em Resultados.
+// ---- Ciclos ABERTOS de um funcionário ----
+// `cicloBhFunc` devolve UM ciclo: o mais antigo em aberto — a prioridade de cobrança. Mas
+// vencido-não-fechado e vigente coexistem de verdade: enquanto o RH não liquida o de trás,
+// o funcionário continua lançando horas no da frente. Retornar só o primeiro faz a tela
+// esconder o outro, e o RH nunca vê onde as horas de hoje estão caindo.
+//
+// Não é um ciclo "novo": a régua derivada da âncora já contém todos. Isto só para de
+// esconder os que já existem.
+function ciclosAbertosBh(f, banco, fechamentos, ref, quitacoes) {
+    const h = ref || hoje();
+    const hist = historicoCiclosBh(f, banco, fechamentos, ref, quitacoes);
+    const doCalendario = mesDe(h);
+
+    return hist
+        .filter(c => {
+            if (c.fechamento) return false;                     // fechado sai de cena
+            // Um ciclo só existe onde há lançamento: a régua é derivada e se estende até
+            // hoje, mas um bloco sem nenhuma hora publicada não é um ciclo em curso — é um
+            // intervalo vazio do calendário. Mostrá-lo anunciaria um acordo de compensação
+            // que ninguém abriu.
+            if (!c.meses.length) return false;
+            // Com lançamento, o ciclo do calendário aparece mesmo zerado: é onde as horas de
+            // hoje caem, e o RH precisa vê-lo para saber onde está lançando. Os anteriores só
+            // aparecem se tiverem saldo — ciclo velho que encerrou zerado não é pendência.
+            if (doCalendario >= c.inicio && doCalendario <= c.fimMes) return true;
+            return c.acumuladoMin !== 0;
+        })
+        .sort((a, b) => a.inicio.localeCompare(b.inicio))
+        .map((c, i, arr) => ({
+            ...c,
+            // "Vigente" = o do calendário (onde as horas de hoje entram).
+            // "Vencido" = prazo estourado e ninguém liquidou. Os dois coexistem: enquanto o
+            // RH não fecha o de trás, o funcionário segue lançando no da frente.
+            vigente: doCalendario >= c.inicio && doCalendario <= c.fimMes,
+            vencido: diasEntre(h, fimDoMes(c.fimMes)) < 0,
+            // Prioridade de cobrança: o mais antigo em aberto. É o que cicloBhFunc devolve.
+            prioritario: i === 0,
+            ordem: i, totalAbertos: arr.length
+        }));
+}
+
+// ---- REABRIR um ciclo fechado (retificação de erro) ----
+// Fechar é um ato definitivo por natureza — mas erro de digitação existe, e sem uma saída o
+// RH "corrigiria" criando um fechamento novo por cima, deixando dois registros do mesmo
+// ciclo e dobrando o valor na folha.
+//
+// A trava: só enquanto NÃO houver horas lançadas depois do ciclo. Essas horas pertencem ao
+// ciclo seguinte, e reabrir com elas no lugar deixaria dois ciclos abertos sobrepostos — o
+// saldo em aberto viraria pergunta sem resposta.
+//
+// A régua derivada SEMPRE contém o bloco seguinte: o que bloqueia não é ele existir, é ele
+// já ter horas publicadas dentro.
+function podeReabrirCicloBh(f, fech, banco, ref) {
+    if (!fech) return { pode: false, motivo: 'Fechamento não encontrado.' };
+
+    const proxIni = mesAdd(fech.cicloFim || mesAdd(fech.cicloInicio, bhParams.cicloMeses - 1), 1);
+    // Lançamento zerado não ancora ciclo nenhum: não é obstáculo para reabrir.
+    const lancs = bhLancamentosFunc(f.id, banco, mesDe(ref || hoje()))
+        .filter(l => l.mes >= proxIni && l.saldoMin !== 0);
+
+    if (lancs.length) return {
+        pode: false,
+        motivo: `Já há horas lançadas em ${lancs.map(l => mesLabel(l.mes)).join(', ')} — elas pertencem ao ciclo seguinte. Reabrir criaria dois ciclos abertos ao mesmo tempo. Para retificar, apague antes as horas lançadas após ${mesLabel(fech.cicloFim || proxIni)}.`
+    };
+
+    return { pode: true, motivo: null };
+}
+
+function historicoCiclosBh(f, banco, fechamentos, ref, quitacoes) {
+    const h = ref || hoje();
+    const lancs = bhLancamentosFunc(f.id, banco, mesDe(h));
+    if (!lancs.length) return [];
+    const cicloMeses = bhParams.cicloMeses;
+    const ancora = lancs[0].mes;
+    const fechs = (fechamentos || []).filter(x => x.funcionarioId === f.id);
+    const quitMap = mesesQuitadosBh(f.id, quitacoes);
+    const total = Math.floor(mesDiff(ancora, mesDe(h)) / cicloMeses);
+
+    return Array.from({ length: total + 1 }, (_, i) => {
+        const inicio = mesAdd(ancora, i * cicloMeses);
+        const fimMes = mesAdd(inicio, cicloMeses - 1);
+        const meses = lancs.filter(l => l.mes >= inicio && l.mes <= fimMes);
+        const abertos = meses.filter(l => !quitMap.has(l.mes));
+        const quitados = meses.filter(l => quitMap.has(l.mes));
+        const quits = [...new Set(quitados.map(l => quitMap.get(l.mes)))]
+            .sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+        return {
+            indice: i, inicio, fimMes, fim: fimDoMes(fimMes), meses,
+            // Saldo em ABERTO (quitado já virou dinheiro) — mesma semântica de cicloBhFunc,
+            // senão o histórico contaria como devido algo que já foi pago.
+            acumuladoMin: abertos.reduce((s, l) => s + l.saldoMin, 0),
+            extraMin: abertos.reduce((s, l) => s + l.extraMin, 0),
+            atrasoMin: abertos.reduce((s, l) => s + l.atrasoMin, 0),
+            abertos, quitados, quitacoes: quits,
+            quitadoMin: quitados.reduce((s, l) => s + l.saldoMin, 0),
+            // Mesma separação de cicloBhFunc: "quitado (R$)" é só o que saiu do caixa.
+            quitadoValor: quits
+                .filter(q => destinoQuitacao(q) === BH_DESTINO_PAGO)
+                .reduce((s, q) => s + (Number(q.valor) || 0), 0),
+            quitadoDescontado: quits
+                .filter(q => destinoQuitacao(q) !== BH_DESTINO_PAGO)
+                .reduce((s, q) => s + (Number(q.valor) || 0), 0),
+            fechamento: fechs.find(x => x.cicloInicio === inicio) || null,
+            corrente: i === total
+        };
+    });
+}
+
+// ============ CÁLCULO DE FÉRIAS (CF art. 7º XVII, CLT arts. 129-145) ============
+//
+// Média de horas extras do período aquisitivo (Súmula 45 TST): HE habitual integra a
+// remuneração de férias. Lê a mesma fonte da folha — banco de horas + Extra Banco — para não
+// existirem duas verdades sobre quanto de HE a pessoa recebeu.
+//
+// Média sobre os meses do aquisitivo, não só os meses COM extra: quem fez HE em 3 de 12 meses
+// não tem a média dos 3 — dividir só pelos meses com valor inflaria a base.
+function mediaHeFerias(fid, aquisitivoIni, aquisitivoFim, fechamentos, extras, quitacoes) {
+    if (!feriasParams.mediaHe) return { media: 0, meses: 0, total: 0, comValor: 0 };
+    const meses = Math.max(1, Math.min(feriasParams.mediaHeMeses, mesesEntre(aquisitivoIni, aquisitivoFim) || 12));
+    let total = 0, comValor = 0;
+    for (let i = 0; i < meses; i++) {
+        const mk = mesAdd(mesDe(aquisitivoIni), i);
+        const v = heBancoDoMes(fid, mk, fechamentos, extras, quitacoes).total;
+        if (v > 0) comValor++;
+        total += v;
+    }
+    return { media: Number((total / meses).toFixed(2)), meses, total: Number(total.toFixed(2)), comValor };
+}
+
+// Remuneração de férias de UM lançamento.
+//
+// `dias` = dias gozados; `abonoDias` = dias vendidos (art. 143, até 1/3 do período). Ambos
+// remunerados: o abono não é gozo, mas é pago — e sai da competência do mesmo jeito.
+//
+// O terço (art. 7º XVII CF) incide sobre gozo E abono: é adicional sobre a remuneração de
+// férias, não sobre o tempo parado.
+function calculoFerias(f, cargo, params, dias, abonoDias, opts) {
+    const o = opts || {};
+    const salario = Number(f?.salario) || Number(cargo?.salarioBase) || Number(cargo?.salario) || 0;
+    const grau = Number(cargo?.insalubridade) || 0;
+    const baseInsal = (params?.insalubridadeBase || 'salario') === 'minimo'
+        ? (Number(params?.salarioMinimo) || 0) : salario;
+    const insalubridade = Number((grau / 100 * baseInsal).toFixed(2));
+    const mediaHe = Number(o.mediaHe) || 0;
+
+    // Base = salário + insalubridade + média de HE habitual (Súmula 45 TST).
+    const base = salario + insalubridade + mediaHe;
+    // Divisor 30 é fixo em lei (art. 142: remuneração / 30 × dias), não é a jornada mensal.
+    const valorDia = base / 30;
+    const d = Math.max(0, Number(dias) || 0);
+    const ab = Math.max(0, Number(abonoDias) || 0);
+
+    const gozo = valorDia * d;
+    const abono = valorDia * ab;
+    const pct = Number(feriasParams.tercoPct) || 0;
+    const tercoGozo = gozo * pct / 100;
+    const tercoAbono = abono * pct / 100;
+
+    // Adiantamento do 13º (Lei 4.749 art. 2º §2º): metade do salário, pago junto das férias.
+    // Sai na coluna 13º da folha, não na de férias — são rubricas distintas no holerite.
+    const adiantamento13 = o.adiantar13 ? Number((salario / 2).toFixed(2)) : 0;
+
+    const totalFerias = gozo + tercoGozo + abono + tercoAbono;
+    return {
+        salario, insalubridade, mediaHe, base,
+        valorDia: Number(valorDia.toFixed(4)),
+        dias: d, abonoDias: ab,
+        gozo: Number(gozo.toFixed(2)),
+        terco: Number((tercoGozo + tercoAbono).toFixed(2)),
+        tercoPct: pct,
+        abono: Number(abono.toFixed(2)),
+        adiantamento13,
+        total: Number(totalFerias.toFixed(2)),
+        // O que cai em cada coluna da folha: férias e 13º são rubricas separadas.
+        totalComAdiantamento: Number((totalFerias + adiantamento13).toFixed(2))
+    };
+}
+
+// Teto do abono: art. 143 — até 1/3 do período. Com 30 dias, 10.
+const abonoMaxFerias = (diasTotais) => Math.min(
+    feriasParams.abonoMaxDias,
+    Math.floor((Number(diasTotais) || feriasParams.diasPorCiclo) / 3)
+);
+
+// ---- PONTE FÉRIAS → FOLHA ----
+// Mesma arquitetura da ponte do banco de horas: coluna DERIVADA, recalculada a cada render.
+// Mês de referência = mês do INÍCIO das férias (art. 145: o pagamento é até 2 dias antes do
+// início). Um lançamento que atravessa o mês cai inteiro no mês em que começou — dividir o
+// valor entre duas folhas divergiria do recibo, que é único.
+function feriasDoMes(fid, mesKey, ausencias, funcionarios, cargos, params, ctx) {
+    const c = ctx || {};
+    const itens = [];
+    (ausencias || [])
+        .filter(a => a.funcionarioId === fid && a.tipo === 'Férias' && mesDe(a.inicio) === mesKey)
+        .forEach(a => {
+            const f = (funcionarios || []).find(x => x.id === fid);
+            if (!f) return;
+            const cargo = (cargos || []).find(x => x.id === f.cargoId);
+            // Valor congelado no lançamento vence o recálculo: o recibo foi emitido com ele, e
+            // uma promoção posterior não reescreve o que já foi pago.
+            const calc = a.calculo && a.calculo.total != null
+                ? a.calculo
+                : calculoFerias(f, cargo, params, a.dias, a.abonoDias, {
+                    mediaHe: c.mediaHe ? c.mediaHe(f, a) : 0,
+                    adiantar13: !!a.adiantar13
+                });
+            itens.push({
+                tipo: 'ferias', id: a.id,
+                valor: Number(calc.total) || 0,
+                adiantamento13: Number(calc.adiantamento13) || 0,
+                dias: Number(a.dias) || 0, abonoDias: Number(a.abonoDias) || 0,
+                desc: `Férias ${fmtDate(a.inicio)} a ${fmtDate(a.retorno)} (${a.dias} dias${a.abonoDias ? ` + ${a.abonoDias} de abono` : ''})`,
+                data: a.inicio
+            });
+        });
+    return {
+        itens,
+        total: Number(itens.reduce((s, i) => s + i.valor, 0).toFixed(2)),
+        total13: Number(itens.reduce((s, i) => s + i.adiantamento13, 0).toFixed(2))
+    };
+}
+
+// Custo estimado de um saldo positivo, em R$. Estimativa, não folha: ignora insalubridade
+// (para isso existe calculoHoraExtra) e serve para dimensionar risco agregado. Saldo
+// negativo devolve 0 — hora que o funcionário deve não é passivo da empresa.
+//
+// `jornadaMes` é obrigatório na prática: quem chama deve passar jornadaDe(f), senão um
+// contrato de 200h seria estimado a 220 e o passivo sairia ~10% menor do que é.
+function passivoBh(saldoMin, salario, jornadaMes = JORNADA_MENSAL_PADRAO) {
+    const min = Number(saldoMin) || 0;
+    const sal = Number(salario) || 0;
+    const jor = Number(jornadaMes) || JORNADA_MENSAL_PADRAO;
+    if (min <= 0 || sal <= 0) return 0;
+    return (min / 60) * (sal / jor) * (1 + bhParams.adicionalPct / 100);
+}
+
+// ---- Valor da hora extra: cálculo detalhado, para SUGERIR na tela ----
+//
+// Diferente de passivoBh (que estima um passivo agregado), aqui cada parcela é devolvida
+// separada para a tela poder MOSTRAR a conta. Um valor sugerido que aparece pronto, sem
+// origem, é um número que o RH não confere e não defende numa reclamatória — a memória de
+// cálculo é o que transforma sugestão em decisão informada.
+//
+// Base = salário + insalubridade. A insalubridade integra a remuneração para efeito de
+// hora extra (é parcela salarial, não indenizatória) — passivoBh ignora isso porque estima
+// risco agregado; aqui, onde o número vira pagamento, a base tem que estar certa.
+
+// 220h = 44h semanais, o divisor mais comum — não uma verdade universal: 40h/semana usa 200,
+// 30h usa 150. Por isso a jornada é campo da FICHA (jornadaMensal), e não parâmetro global:
+// dois colaboradores da mesma empresa podem ter contratos de jornada diferente, e o
+// valor-hora de cada um sai do contrato dele.
+const JORNADA_MENSAL_PADRAO = 220;
+// Ficha › padrão. Cargo não entra: jornada é cláusula do contrato individual, não do cargo.
+const jornadaDe = f => Number(f?.jornadaMensal) || JORNADA_MENSAL_PADRAO;
+
+function calculoHoraExtra(f, cargo, params, minutos, adicionalPct, jornadaMes) {
+    jornadaMes = Number(jornadaMes) || jornadaDe(f);
+    const salario = Number(f?.salario) || Number(cargo?.salarioBase) || Number(cargo?.salario) || 0;
+    const grau = Number(cargo?.insalubridade) || 0;
+    const baseInsal = (params?.insalubridadeBase || 'salario') === 'minimo'
+        ? (Number(params?.salarioMinimo) || 0) : salario;
+    const insalubridade = Number((grau / 100 * baseInsal).toFixed(2));
+
+    const base = salario + insalubridade;
+    const valorHora = jornadaMes > 0 ? base / jornadaMes : 0;
+    const horas = (Number(minutos) || 0) / 60;
+    const pct = Number(adicionalPct) || 0;
+    const valorHoraExtra = valorHora * (1 + pct / 100);
+    const total = horas * valorHoraExtra;
+
+    return {
+        salario, insalubridade, base, jornadaMes,
+        valorHora: Number(valorHora.toFixed(4)),
+        valorHoraExtra: Number(valorHoraExtra.toFixed(4)),
+        horas, adicionalPct: pct,
+        total: Number(total.toFixed(2))
+    };
+}
+
+// ============ PONTE BANCO DE HORAS → FOLHA ============
+//
+// Decisão: a folha NÃO recebe a soma gravada na célula "Hora extra". Ela ganha uma coluna
+// DERIVADA (`heBanco`), calculada a cada render a partir dos fechamentos pagos e dos
+// lançamentos de Extra Banco do mês.
+//
+// Por que não somar direto na célula manual: a folha é uma grade editável. Somado o
+// fechamento no valor digitado, o número vira uma mistura sem origem — e na primeira vez
+// que o RH corrigir a parte manual, apaga a parte automática junto. O fechamento continua
+// registrado, a folha não. Coluna própria e read-only torna isso impossível por construção,
+// e mantém a resposta para "de onde veio esse valor?" a um clique.
+//
+// É a mesma razão pela qual o ciclo não é gravado (ver cicloBhFunc): derivado se autocorrige,
+// gravado apodrece.
+
+// Mês de referência de um fechamento = mês da DATA do fechamento, não do fim do ciclo.
+// O ciclo pode fechar em 31/ago e o pagamento acontecer na folha de setembro; quem manda é
+// quando o dinheiro sai, que é o que o RH lança.
+const mesRefFechamento = fech => mesDe(fech?.data);
+
+// Hora extra vinda do banco de horas para {mês}/{funcionário}, com a origem preservada.
+// Retorna { total, itens: [{ tipo, valor, ... }] } — a tela mostra o total e explica a
+// composição sem precisar refazer a conta.
+//
+// Três origens, todas dinheiro que sai no mês de referência: fechamento de ciclo (paga o
+// saldo final), QUITAÇÃO (paga meses durante o ciclo) e Extra Banco (HE fora do banco).
+function heBancoDoMes(fid, mesKey, fechamentos, extras, quitacoes) {
+    const itens = [];
+
+    // Quitações: pagamento parcial durante o ciclo. Mês de referência = data do pagamento,
+    // mesma regra do fechamento — quem manda é quando o dinheiro sai, não quais meses foram
+    // quitados (uma quitação de jan+fev paga em maio cai na folha de maio).
+    // Só "Pago como hora extra" entra: "Descontado" é saldo negativo abatido do salário —
+    // rubrica de desconto, não HE. Mesma regra do fechamento, logo abaixo.
+    (quitacoes || [])
+        .filter(q => q.funcionarioId === fid
+            && destinoQuitacao(q) === BH_DESTINO_PAGO
+            && Number(q.valor) > 0
+            && mesDe(q.data) === mesKey)
+        .forEach(q => itens.push({
+            tipo: 'quitacao', id: q.id, valor: Number(q.valor),
+            saldoMin: Number(q.minutos) || 0,
+            desc: `Quitação de ${(q.meses || []).length} ${(q.meses || []).length === 1 ? 'mês' : 'meses'} do banco (${(q.meses || []).map(mesLabel).join(', ')})`,
+            data: q.data
+        }));
+
+    // Fechamentos: só o que efetivamente virou dinheiro. "Compensado" e "Perdoado" não vão
+    // para a folha — o saldo foi resolvido em horas, não em reais. "Descontado" é valor
+    // NEGATIVO (o funcionário devia horas), e é justamente por isso que não pode entrar
+    // aqui: desconto de saldo negativo é rubrica de desconto, não hora extra. Somá-lo como
+    // HE negativa produziria uma folha que "paga" menos hora extra do que zero.
+    (fechamentos || [])
+        .filter(x => x.funcionarioId === fid
+            && x.destino === 'Pago como hora extra'
+            && Number(x.valor) > 0
+            && mesRefFechamento(x) === mesKey)
+        .forEach(x => itens.push({
+            tipo: 'fechamento', id: x.id, valor: Number(x.valor),
+            saldoMin: Number(x.saldoMin) || 0,
+            desc: `Fechamento do ciclo ${mesLabel(x.cicloInicio)} → ${mesLabel(x.cicloFim)}`,
+            data: x.data
+        }));
+
+    // Extra Banco: hora extra paga direto, fora do ciclo (feriado a 100%, etc.)
+    (extras || [])
+        .filter(x => x.funcionarioId === fid && mesDe(x.mesRef || x.data) === mesKey)
+        .forEach(x => itens.push({
+            tipo: 'extra', id: x.id, valor: Number(x.valor) || 0,
+            minutos: Number(x.minutos) || 0, adicionalPct: Number(x.adicionalPct) || 0,
+            desc: `${x.motivo || 'Hora extra avulsa'} — ${fmtHHMM(x.minutos)} a ${x.adicionalPct}%`,
+            data: x.data
+        }));
+
+    return { total: Number(itens.reduce((s, i) => s + i.valor, 0).toFixed(2)), itens };
+}
+
+// Motivos do Extra Banco. O adicional é editável no lançamento (o padrão sai daqui), porque
+// a mesma empresa paga 50% no dia comum e 100% no feriado — e o que define é o dia, não uma
+// configuração global.
+const EXTRA_MOTIVOS = [
+    { nome: 'Feriado', pct: 100 },
+    { nome: 'Domingo', pct: 100 },
+    { nome: 'Hora extra comum', pct: 50 },
+    { nome: 'Convocação/plantão', pct: 50 },
+    { nome: 'Outro', pct: 50 }
+];
+
+// Diagnóstico por UNIDADE para o sino de notificações — mesmo formato de diagnosticoAso.
+function diagnosticoBh(un, funcionarios, banco, fechamentos, ref, quitacoes) {
+    const doSetor = funcionarios.filter(f => f.unidadeId === un.id);
+    const itens = doSetor
+        .map(f => ({ f, sit: cicloBhFunc(f, banco, fechamentos, ref, quitacoes) }))
+        .filter(x => x.sit && (x.sit.status === 'vencido' || x.sit.status === 'critico' || x.sit.status === 'atencao'));
+    if (!itens.length) return null;
+
+    const conta = st => itens.filter(x => x.sit.status === st).length;
+    return {
+        nome: un.nome,
+        vencidos: conta('vencido'),
+        criticos: conta('critico'),
+        atencao: conta('atencao'),
+        pessoas: itens
+            .sort((a, b) => (BH_ORDEM[a.sit.status] - BH_ORDEM[b.sit.status]) || (a.sit.dias - b.sit.dias))
+            .map(x => ({ nome: x.f.nome, status: x.sit.status, label: x.sit.label, saldoMin: x.sit.acumuladoMin, fim: x.sit.fim }))
+    };
+}
+
+// Situação de férias de um funcionário. Retorna null para quem não tem admissão ou está
+// desligado. Campos: ciclo, aquisitivoIni/Fim, concessivoFim, status, dias, gozadas, label.
+//
+// O ciclo avança pelo TEMPO decorrido desde a admissão, não pela contagem de férias gozadas:
+// contar `ciclo = gozadas.length` jogaria quem tirou muitas férias para um aquisitivo futuro,
+// produzindo prazos de 2+ anos — que não existem. O gozo apenas QUITA um ciclo já vencido.
+// Dias de férias de um lançamento, incluindo abono vendido: quem vende 10 dias não os goza,
+// mas eles saem da competência do mesmo jeito (art. 143) — ignorá-los deixaria a competência
+// eternamente incompleta para quem vendeu.
+const diasFeriasLanc = a => (Number(a?.dias) || 0) + (Number(a?.abonoDias) || 0);
+
+// Teto de dias que UM lançamento pode ter.
+//
+// A regra normal é a competência (30 dias): ninguém goza mais férias do que tem direito, e um
+// período de 45 dias quase sempre é erro de digitação na data de retorno.
+//
+// A exceção é real e não pode ser bloqueada: quem tem competências atrasadas acumuladas pode
+// gozá-las juntas (art. 137 — o empregador que não concedeu no prazo deve, e pagará em
+// dobro). Nesse caso o teto é o saldo em aberto somado: 30 da competência corrente + 30 de
+// cada competência vencida e não gozada.
+//
+// Retorna { max, competencias, vencidas, saldoCorrente } — `max` é o limite do lançamento.
+function tetoDiasFerias(f, ausencias, ref) {
+    const total = feriasParams.diasPorCiclo;
+    const sit = situacaoFeriasFunc(f, ausencias, ref);
+    if (!sit) return { max: total, competencias: 1, vencidas: 0, saldoCorrente: total };
+
+    // Competências que já venceram (direito adquirido) e ainda não foram gozadas. `ciclo` é o
+    // índice da corrente; quantos aquisitivos completos existem além dela é o atraso.
+    const h = ref || hoje();
+    const completos = Math.max(0, Math.floor(mesesEntre(f.admissao, h) / 12));
+    const vencidas = Math.max(0, completos - sit.ciclo - (sit.status === 'aquisitivo' ? 0 : 1));
+
+    // Saldo da corrente (30, ou o que falta se fracionada) + 30 por competência atrasada.
+    const saldoCorrente = sit.diasRestantes > 0 ? sit.diasRestantes : total;
+    return {
+        max: saldoCorrente + vencidas * total,
+        competencias: 1 + vencidas,
+        vencidas,
+        saldoCorrente
+    };
+}
+
+function situacaoFeriasFunc(f, ausencias, ref) {
+    if (!f?.admissao || f.demissao) return null;
+    const h = ref || hoje();
+    if (f.admissao > h) return null;                     // admissão futura: nada a calcular
+
+    // Férias em curso quitam o ciclo na hora que COMEÇAM, não só quando terminam — senão o
+    // prazo legal do ciclo seguinte segue contando durante o gozo e a pessoa aparece como
+    // "vencida" enquanto está de férias.
+    const gozadas = (ausencias || [])
+        .filter(a => a.funcionarioId === f.id && a.tipo === 'Férias' && a.inicio <= h)
+        .sort((a, b) => a.inicio.localeCompare(b.inicio));
+
+    // Ciclos aquisitivos JÁ COMPLETOS pelo tempo de casa (admissão + 12m, +24m, ...)
+    const ciclosCompletos = Math.max(0, Math.floor(mesesEntre(f.admissao, h) / 12));
+
+    // ---- Competência se fecha por DIAS, não por número de lançamentos ----
+    // O fracionamento (art. 134 §1º: até 3 períodos, um deles ≥ 14 dias) é UM direito
+    // dividido, não vários. Contar `gozadas.length` fazia 15+15 avançar dois ciclos
+    // aquisitivos — a pessoa "gozava" dois anos com 30 dias — e um único período de 15 dias
+    // encerrar a competência com metade em aberto, apagando da tela o risco de dobra que
+    // ainda existia.
+    //
+    // Aqui cada lançamento despeja seus dias na competência aberta mais antiga; ela só fecha
+    // ao completar `diasPorCiclo`, e o excedente transborda para a seguinte.
+    const total = feriasParams.diasPorCiclo;
+    const alocado = [];                                  // dias por índice de competência
+    for (const a of gozadas) {
+        let restam = diasFeriasLanc(a);
+        // Lançamento sem dias (dado velho/incompleto): assume a competência inteira, que era
+        // o comportamento anterior. Melhor que somar zero e nunca fechar competência nenhuma.
+        if (!restam) restam = total;
+        let i = 0;
+        while (restam > 0) {
+            const cabe = Math.max(0, total - (alocado[i] || 0));
+            if (!cabe) { i++; continue; }
+            const usa = Math.min(cabe, restam);
+            alocado[i] = (alocado[i] || 0) + usa;
+            restam -= usa;
+            if (restam > 0) i++;
+        }
+    }
+    // Competências COMPLETAS (30/30). A parcial não conta: o direito ainda está em aberto.
+    const completas = alocado.filter(d => d >= total).length;
+    // Nunca além do que o tempo de casa já gerou: gozo antecipado não cria ciclo aquisitivo.
+    let ciclo = Math.min(completas, ciclosCompletos);
+
+    // Dias já gozados da competência corrente e o que falta para fechá-la.
+    const diasNaCorrente = Math.min(alocado[ciclo] || 0, total);
+    const diasRestantes = Math.max(0, total - diasNaCorrente);
+    const fracionada = diasNaCorrente > 0 && diasRestantes > 0;
+
+    let aquisitivoIni = addMeses(f.admissao, ciclo * 12);
+    let aquisitivoFim = addMeses(f.admissao, (ciclo + 1) * 12);
+    let concessivoFim = addMeses(aquisitivoFim, 12);
+
+    // Está de férias agora e esse gozo já COMPLETOU a competência? Avança — o prazo legal em
+    // exibição deve ser o do direito ainda em aberto, não o que a féria em curso satisfez.
+    // Com fracionamento a competência continua a mesma: 15 dias não encerram nada, e o prazo
+    // legal segue correndo sobre os 15 que faltam. Era exatamente o que o modelo antigo
+    // errava — qualquer período em curso reancorava o ciclo.
+    const feriasEmCurso = gozadas.find(a => ausenciaVigente(a, h));
+    if (feriasEmCurso && !fracionada && diasNaCorrente >= total && feriasEmCurso.inicio < concessivoFim) {
+        ciclo++;
+        aquisitivoIni = addMeses(f.admissao, ciclo * 12);
+        aquisitivoFim = addMeses(f.admissao, (ciclo + 1) * 12);
+        concessivoFim = addMeses(aquisitivoFim, 12);
+    }
+
+    const critico = feriasParams.alertaLegalDias;
+    // Competência aberta pela metade: o prazo legal continua correndo sobre o que falta, e a
+    // tela tem que dizer isso — senão "15 de 30 dias" parece resolvido.
+    const fr = fracionada ? ` Fracionada: ${diasNaCorrente} de ${total} dias gozados, faltam ${diasRestantes}.` : '';
+
+    // Aquisitivo ainda em formação: o direito nem nasceu, não há prazo legal correndo.
+    if (h < aquisitivoFim) {
+        const dias = diasEntre(h, aquisitivoFim);
+        return {
+            ciclo, aquisitivoIni, aquisitivoFim, concessivoFim,
+            diasNaCorrente, diasRestantes, fracionada, diasPorCiclo: total,
+            status: 'aquisitivo', dias, gozadas: gozadas.length,
+            label: `Aquisitivo — ${prazoTexto(dias)}`,
+            desc: `Direito completo em ${fmtDate(aquisitivoFim)}.${fr}`
+        };
+    }
+
+    // Aquisitivo fechado → prazo legal (concessivo) correndo. Máximo possível: 12 meses.
+    const dias = diasEntre(h, concessivoFim);
+    if (dias < 0) return {
+        ciclo, aquisitivoIni, aquisitivoFim, concessivoFim,
+        diasNaCorrente, diasRestantes, fracionada, diasPorCiclo: total,
+        status: 'vencida', dias, gozadas: gozadas.length,
+        label: `Vencida há ${prazoTexto(dias)}${fracionada ? ` · faltam ${diasRestantes}d` : ''}`,
+        desc: `Prazo legal esgotou em ${fmtDate(concessivoFim)} — férias em dobro (art. 137 CLT).${fr}`
+    };
+    if (dias <= critico) return {
+        ciclo, aquisitivoIni, aquisitivoFim, concessivoFim,
+        diasNaCorrente, diasRestantes, fracionada, diasPorCiclo: total,
+        status: 'critica', dias, gozadas: gozadas.length,
+        label: `Vence em ${prazoTexto(dias)}${fracionada ? ` · faltam ${diasRestantes}d` : ''}`,
+        desc: `Conceder até ${fmtDate(concessivoFim)} para evitar pagamento em dobro.${fr}`
+    };
+    return {
+        ciclo, aquisitivoIni, aquisitivoFim, concessivoFim,
+        diasNaCorrente, diasRestantes, fracionada, diasPorCiclo: total,
+        status: 'atencao', dias, gozadas: gozadas.length,
+        label: `Vence em ${prazoTexto(dias)}${fracionada ? ` · faltam ${diasRestantes}d` : ''}`,
+        desc: `Direito adquirido em ${fmtDate(aquisitivoFim)}. Conceder até ${fmtDate(concessivoFim)}.${fr}`
+    };
+}
+
+// Alerta da DATA PREVISTA — diferente do alerta legal.
+// Legal  = fim do concessivo → multa/dobra (art. 137).
+// Prevista = a data que o sistema sugeriu → só precisa reprogramar.
+// A antecedência da prevista deriva do parâmetro legal (metade), evitando um segundo campo.
+function alertaPrevisto(sit, plano, ref) {
+    if (!sit || !plano) return null;
+    const h = ref || hoje();
+    const dias = diasEntre(h, plano.inicio);
+    const janela = Math.max(7, Math.round(feriasParams.alertaLegalDias / 2));
+    // A sugestão cai fora do prazo legal? É o caso mais grave: nem o plano salva da dobra.
+    if (sit.status !== 'aquisitivo' && plano.retorno > sit.concessivoFim)
+        return { nivel: 'estoura', txt: 'plano estoura o prazo legal', dias };
+    if (dias < 0) return { nivel: 'atrasado', txt: `previsto há ${prazoTexto(dias)}`, dias };
+    if (dias <= janela) return { nivel: 'proximo', txt: `previsto em ${prazoTexto(dias)}`, dias };
+    return { nivel: 'ok', txt: `previsto em ${prazoTexto(dias)}`, dias };
+}
+
+// Ordem de urgência para a fila de programação
+const FERIAS_ORDEM = { vencida: 0, critica: 1, atencao: 2, aquisitivo: 3 };
+const FERIAS_STATUS = {
+    vencida:    { cls: 'badge-danger',  dot: 'st-vencida',  txt: 'Vencida' },
+    critica:    { cls: 'badge-warning', dot: 'st-critica',  txt: 'Crítica' },
+    atencao:    { cls: 'badge-info',    dot: 'st-atencao',  txt: 'Atenção' },
+    aquisitivo: { cls: 'badge-neutral', dot: 'st-ok',       txt: 'Em dia' }
+};
+
+// Data sugerida para UMA pessoa, isolada: início do concessivo (ou já, se atrasado).
+// 30 dias corridos — o padrão; fracionamento é decisão caso a caso do RH.
+function sugestaoFerias(sit) {
+    if (!sit) return null;
+    const h = hoje();
+    const inicio = sit.status === 'aquisitivo' ? sit.aquisitivoFim : (h > sit.aquisitivoFim ? h : sit.aquisitivoFim);
+    // Competência fracionada: sugerir 30 dias de novo somaria 45 e transbordaria para a
+    // competência seguinte. A sugestão é o SALDO — o que falta para fechar esta.
+    const saldo = sit.diasRestantes != null && sit.diasRestantes > 0
+        ? sit.diasRestantes
+        : (sit.diasPorCiclo || FERIAS_PARAMS_PADRAO.diasPorCiclo);
+    const retorno = addDias(inicio, saldo);
+    return { inicio, retorno, dias: diasEntre(inicio, retorno) };
+}
+
+// Programação ESCALONADA de uma equipe.
+// Sugerir a mesma data para todo mundo que está atrasado seria inútil como planejamento —
+// esvaziaria a operação de uma vez. Aqui quem vence primeiro entra primeiro, e os demais são
+// empurrados para a próxima janela livre do seu grupo (unidade+cargo), respeitando férias já
+// lançadas. O resultado é uma fila executável, não uma lista de desejos.
+// `itens`: [{ f, sit }]. Retorna Map(funcionarioId → { inicio, retorno, dias, adiado }).
+function programacaoEscalonada(itens, ausencias, folgaDias = 1) {
+    const ocupacao = {};   // grupo → [{ini, fim}] já comprometidos
+    const grupoDe = f => `${f.unidadeId || '-'}|${f.cargoId || '-'}`;
+
+    // Férias já lançadas ocupam a agenda do grupo
+    (ausencias || []).filter(a => a.tipo === 'Férias').forEach(a => {
+        const f = itens.find(x => x.f.id === a.funcionarioId)?.f;
+        if (!f) return;
+        (ocupacao[grupoDe(f)] ||= []).push({ ini: a.inicio, fim: a.retorno });
+    });
+
+    const out = new Map();
+    // Quem vence primeiro escolhe primeiro
+    [...itens].sort((a, b) => (FERIAS_ORDEM[a.sit.status] - FERIAS_ORDEM[b.sit.status]) || (a.sit.dias - b.sit.dias))
+        .forEach(({ f, sit }) => {
+            const base = sugestaoFerias(sit);
+            const g = grupoDe(f);
+            const ocup = (ocupacao[g] ||= []);
+            let ini = base.inicio;
+            // Férias se contam em DIAS CORRIDOS (art. 130), não em mês de calendário:
+            // `addMeses(ini, 1)` daria 28 dias em fevereiro e 31 em julho — o funcionário
+            // perderia 2 dias num caso, e no outro a competência de 30 nunca fecharia.
+            // `base.dias` já é o saldo da competência: 30, ou o que falta se fracionada.
+            const dur = base.dias;
+            let fim = addDias(ini, dur);
+            let adiado = false;
+            // Empurra até achar janela livre no grupo (limite de segurança: 24 tentativas)
+            for (let i = 0; i < 24; i++) {
+                const choque = ocup.find(o => o.ini < fim && ini < o.fim);
+                if (!choque) break;
+                ini = addDias(choque.fim, folgaDias);
+                fim = addDias(ini, dur);
+                adiado = true;
+            }
+            ocup.push({ ini, fim });
+            out.set(f.id, { inicio: ini, retorno: fim, dias: diasEntre(ini, fim), adiado, base: base.inicio });
+        });
+    return out;
+}
+
+// 'YYYY-MM-DD' → Date na meia-noite LOCAL.
+// new Date('2026-07-15') seria meia-noite UTC (−3h no Brasil), enquanto new Date() é local:
+// misturar os dois desloca datas em um dia inteiro perto da virada. Todo parse passa aqui.
+const dataLocal = iso => new Date(iso + 'T00:00:00');
+
+function diasEntre(iniIso, fimIso) {
+    if (!iniIso || !fimIso) return 0;
+    return Math.round((dataLocal(fimIso) - dataLocal(iniIso)) / 86400000);
+}
+
+// Soma dias corridos a uma data ISO. Passa por dataLocal pelo mesmo motivo que diasEntre:
+// aritmética em UTC desloca a data em um dia perto da virada.
+const addDias = (iso, n) => {
+    const d = dataLocal(iso);
+    d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0, 10);
+};
+
+// Tempo de empresa legível ("2 anos e 3 meses").
+// Admissão futura NÃO é zero: zerar faz um cadastro errado (ou uma contratação agendada)
+// parecer um funcionário recém-admitido normal — foi assim que "09/12/2026 → 0 dias"
+// passou despercebido. Devolve o texto explícito para a tela poder sinalizar.
+function tempoEmpresa(admissao, demissao) {
+    if (!admissao) return '—';
+    const fimIso = demissao || hoje();
+    if (admissao > fimIso) return `admissão futura (${fmtDate(admissao)})`;
+
+    const ini = dataLocal(admissao);
+    const fim = dataLocal(fimIso);
+    let meses = (fim.getFullYear() - ini.getFullYear()) * 12 + (fim.getMonth() - ini.getMonth());
+    if (fim.getDate() < ini.getDate()) meses--;
+    if (meses < 0) meses = 0;
+    const anos = Math.floor(meses / 12), m = meses % 12;
+    if (anos === 0 && m === 0) {
+        const d = diasEntre(admissao, fimIso);
+        return `${d} dia${d !== 1 ? 's' : ''}`;
+    }
+    const p = [];
+    if (anos) p.push(`${anos} ano${anos > 1 ? 's' : ''}`);
+    if (m) p.push(`${m} ${m > 1 ? 'meses' : 'mês'}`);
+    return p.join(' e ');
+}
+
+function idade(nascimento) {
+    if (!nascimento) return null;
+    const n = dataLocal(nascimento), h = new Date();
+    let a = h.getFullYear() - n.getFullYear();
+    if (h.getMonth() < n.getMonth() || (h.getMonth() === n.getMonth() && h.getDate() < n.getDate())) a--;
+    return a;
+}
+
+// Validação de CPF (dígitos verificadores)
+function validaCPF(cpf) {
+    cpf = (cpf || '').replace(/\D/g, '');
+    if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+    for (const t of [9, 10]) {
+        let soma = 0;
+        for (let i = 0; i < t; i++) soma += Number(cpf[i]) * (t + 1 - i);
+        const dig = ((soma * 10) % 11) % 10;
+        if (dig !== Number(cpf[t])) return false;
+    }
+    return true;
+}
+
+function maskCPF(v) {
+    v = (v || '').replace(/\D/g, '').slice(0, 11);
+    return v.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+}
+
+function maskFone(v) {
+    v = (v || '').replace(/\D/g, '').slice(0, 11);
+    if (v.length > 10) return v.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+    if (v.length > 6) return v.replace(/(\d{2})(\d{4})(\d{1,4})/, '($1) $2-$3');
+    if (v.length > 2) return v.replace(/(\d{2})(\d+)/, '($1) $2');
+    return v;
+}
+
+function maskCNPJ(v) {
+    v = (v || '').replace(/\D/g, '').slice(0, 14);
+    return v.replace(/(\d{2})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1/$2').replace(/(\d{4})(\d{1,2})$/, '$1-$2');
+}
+
+// Iniciais para avatar
+function iniciais(nome) {
+    const p = (nome || '?').trim().split(/\s+/);
+    return ((p[0]?.[0] || '') + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase();
+}
+
+function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+const MESES_FULL = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+// Chave ano-mês "2026-07"
+const mesKey = (ano, mes) => `${ano}-${String(mes + 1).padStart(2, '0')}`;

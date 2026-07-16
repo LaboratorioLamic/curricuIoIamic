@@ -1,0 +1,384 @@
+// ===== Sistema de anexos: Arquivo (Google Drive) | Imagem (Firebase, comprimida) | Link =====
+// Contrato do Apps Script: POST {action:'upload', filename, data:<dataURL>}
+//                          GET  ?action=list → [{id, name, url}]
+//                          POST {action:'delete', id} | {action:'rename', id, newName}
+
+const ANEXO_MAX_MB = 15; // limite do Apps Script/navegador — acima disso, orientar uso de Link
+
+// SVG (traço Feather) por formato — usado no chip do anexo
+const ANEXO_SVG = {
+    doc:   '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+    lines: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>',
+    grid:  '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="16" x2="16" y2="16"/><line x1="12" y1="11" x2="12" y2="18"/>',
+    play:  '<rect x="2" y="4" width="20" height="16" rx="2"/><polygon points="10 9 15 12 10 15 10 9"/>',
+    image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
+    link:  '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+    file:  '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>'
+};
+
+// Formatos identificados por extensão → ícone colorido próprio
+const ANEXO_FORMATOS = {
+    pdf:    { label: 'PDF',     cor: '#e34948', svg: 'doc',   ext: ['pdf'] },
+    word:   { label: 'Word',    cor: '#2a78d6', svg: 'lines', ext: ['doc', 'docx', 'odt', 'rtf'] },
+    excel:  { label: 'Excel',   cor: '#008300', svg: 'grid',  ext: ['xls', 'xlsx', 'csv', 'ods'] },
+    txt:    { label: 'Texto',   cor: '#8a90a3', svg: 'lines', ext: ['txt', 'md', 'log'] },
+    video:  { label: 'Vídeo',   cor: '#4a3aa7', svg: 'play',  ext: ['mp4', 'avi', 'mov', 'mkv', 'webm', 'wmv'] },
+    imagem: { label: 'Imagem',  cor: '#eda100', svg: 'image', ext: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'] },
+    link:   { label: 'Link',    cor: '#0284c7', svg: 'link',  ext: [] },
+    outro:  { label: 'Arquivo', cor: '#6b7280', svg: 'file',  ext: [] }
+};
+
+function detectaFormato(nomeArquivo) {
+    const ext = (nomeArquivo || '').split('.').pop().toLowerCase();
+    for (const [k, v] of Object.entries(ANEXO_FORMATOS)) if (v.ext.includes(ext)) return k;
+    return 'outro';
+}
+
+// Ícone colorido do formato (chip quadrado com SVG do tipo)
+function anexoIcone(formato, size = 34) {
+    const f = ANEXO_FORMATOS[formato] || ANEXO_FORMATOS.outro;
+    const isz = Math.round(size * 0.52);
+    return `<span class="anexo-ico" style="width:${size}px;height:${size}px;background:${f.cor}1a;color:${f.cor};border:1px solid ${f.cor}40">
+        <svg viewBox="0 0 24 24" style="width:${isz}px;height:${isz}px" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ANEXO_SVG[f.svg] || ANEXO_SVG.file}</svg>
+    </span>`;
+}
+
+// ---- Upload de arquivo → Google Drive ----
+function lerComoDataURL(file) {
+    return new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = e => res(e.target.result);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+    });
+}
+
+const _uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+async function uploadArquivoDrive(file, titulo) {
+    const token = _uid();
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    const filename = `[RH:${token}] ${titulo}.${ext}`;
+    const data = await lerComoDataURL(file);
+    await fetch(DRIVE_API, { method: 'POST', body: JSON.stringify({ action: 'upload', filename, data }) });
+    // O script não retorna o id — localiza pelo token na listagem
+    const lista = await (await fetch(`${DRIVE_API}?action=list`)).json();
+    const arq = (lista || []).find(x => (x.name || '').includes(`[RH:${token}]`));
+    if (!arq) throw new Error('Upload concluído mas o arquivo não foi localizado no Drive.');
+    return { driveId: arq.id, url: arq.url, nomeArquivo: file.name };
+}
+
+async function excluirArquivoDrive(driveId) {
+    if (!driveId) return;
+    try {
+        await fetch(DRIVE_API, { method: 'POST', body: JSON.stringify({ action: 'delete', id: driveId }) });
+    } catch (e) { console.warn('Falha ao excluir do Drive:', e); }
+}
+
+// ---- Imagem: comprime (redimensiona + JPEG) e grava no Firebase ----
+async function comprimirImagem(file) {
+    const dataURL = await lerComoDataURL(file);
+    const img = await new Promise((res, rej) => {
+        const i = new Image();
+        i.onload = () => res(i);
+        i.onerror = rej;
+        i.src = dataURL;
+    });
+    // Qualidade progressiva até ficar leve (~≤400KB) para não pesar no banco
+    const tentativas = [[1280, .72], [1024, .6], [800, .5], [640, .4]];
+    let out = null;
+    for (const [maxDim, q] of tentativas) {
+        const escala = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * escala);
+        canvas.height = Math.round(img.height * escala);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        out = canvas.toDataURL('image/jpeg', q);
+        if (out.length <= 400 * 1024) break;
+    }
+    return out;
+}
+
+async function salvarImagemDB(dataURL) {
+    const ref = db.ref(PATHS.imagens).push();
+    await ref.set({ data: dataURL, criadoEm: hoje() });
+    return ref.key;
+}
+
+// Cache em memória: cada imagem é buscada UMA vez por sessão, e só ao abrir
+const IMG_CACHE = {};
+async function obterImagem(imgKey) {
+    if (IMG_CACHE[imgKey]) return IMG_CACHE[imgKey];
+    const obj = await DB.getObj(`${PATHS.imagens}/${imgKey}`);
+    if (!obj?.data) throw new Error('Imagem não encontrada.');
+    IMG_CACHE[imgKey] = obj.data;
+    return obj.data;
+}
+
+// ---- Abrir anexo (imagem: viewer com lazy load; demais: nova aba) ----
+async function abrirAnexo(anexo) {
+    if (!anexo) return;
+    if (anexo.tipo === 'imagem') {
+        const m = openModal({ title: anexo.titulo || 'Imagem', size: 'modal-lg', body: '<div class="loading-center"><div class="spinner-dark"></div></div>', footer: null });
+        try {
+            const data = await obterImagem(anexo.imgKey);
+            m.body.innerHTML = `<img src="${data}" alt="${escapeHtml(anexo.titulo || '')}" style="max-width:100%;border-radius:10px;display:block;margin:0 auto">`;
+        } catch (e) {
+            m.body.innerHTML = `<p class="muted">Erro ao carregar a imagem: ${escapeHtml(e.message)}</p>`;
+        }
+        return;
+    }
+    if (anexo.url) window.open(anexo.url, '_blank');
+    else toast('Anexo sem URL disponível.', 'error');
+}
+
+// Exclui o conteúdo remoto de um ou mais anexos (Drive ou imagem no banco)
+async function excluirAnexoRemoto(anexos) {
+    const lista = Array.isArray(anexos) ? anexos : (anexos ? [anexos] : []);
+    for (const anexo of lista) {
+        if (!anexo) continue;
+        if (anexo.tipo === 'arquivo') await excluirArquivoDrive(anexo.driveId);
+        if (anexo.tipo === 'imagem' && anexo.imgKey) {
+            await db.ref(`${PATHS.imagens}/${anexo.imgKey}`).remove();
+            delete IMG_CACHE[anexo.imgKey];
+        }
+    }
+}
+
+// Normaliza o campo persistido: aceita o formato antigo (anexo único, objeto) e o novo
+// (anexos, array), sempre retornando um array — o resto do sistema só lida com array.
+const anexosDe = registro => registro?.anexos || (registro?.anexo ? [registro.anexo] : []);
+
+// Balão da coluna de tabela: mostra só a QUANTIDADE de anexos, não nome/ícone por item —
+// listas com múltiplos anexos ficariam largas demais linha a linha.
+function anexoChip(anexos) {
+    const lista = Array.isArray(anexos) ? anexos : (anexos ? [anexos] : []);
+    if (!lista.length) return '';
+    return `<span class="anexo-balao" data-anexo-open title="${lista.length} anexo${lista.length > 1 ? 's' : ''}">
+        ${icon('paperclip')}<span>${lista.length}</span>
+    </span>`;
+}
+
+function bindAnexoChips(container, resolver) {
+    container.querySelectorAll('[data-anexo-open]').forEach(el => {
+        el.addEventListener('click', e => {
+            e.stopPropagation();
+            const anexos = resolver(el);
+            if (anexos && anexos.length) abrirGaleriaAnexos(anexos);
+        });
+    });
+}
+
+// ---- Janela de visualização: ícones grandes com o título abaixo de cada um ----
+function abrirGaleriaAnexos(anexos) {
+    const lista = Array.isArray(anexos) ? anexos : [anexos];
+    if (!lista.length) return;
+    const m = openModal({
+        title: lista.length > 1 ? `Anexos (${lista.length})` : 'Anexo',
+        size: 'modal-lg',
+        body: `<div class="anexo-galeria">
+            ${lista.map((a, i) => `
+                <button type="button" class="anexo-galeria-item" data-anexo-idx="${i}" title="${escapeHtml(a.titulo || '')}">
+                    ${anexoIcone(a.formato, 72)}
+                    <span>${escapeHtml(a.titulo || '')}</span>
+                </button>`).join('')}
+        </div>`,
+        footer: null
+    });
+    m.body.querySelectorAll('[data-anexo-idx]').forEach(btn => {
+        btn.onclick = () => abrirAnexo(lista[Number(btn.dataset.anexoIdx)]);
+    });
+}
+
+// ---- Campo de anexo para formulários (os 3 tipos, com título) ----
+// initAnexoField(slotEl, anexosExistentes) → controller.getAnexos() executa os uploads pendentes
+// no salvar e retorna a lista final. Aceita vários anexos: cada um vira um item na lista, com
+// opção de continuar adicionando mais antes de salvar. Aceita tanto array quanto o anexo único
+// antigo (objeto), para compatibilidade com registros já gravados.
+function initAnexoField(slot, existentes) {
+    const iniciais = Array.isArray(existentes) ? existentes : (existentes ? [existentes] : []);
+    const st = { lista: iniciais.slice(), removidos: [], tipo: '', file: null, imgPreview: null };
+
+    // Cartões-botão de tipo (substituem o select nativo)
+    const TIPOS = [
+        { id: 'arquivo', label: 'Arquivo', hint: 'Word, PDF, Excel, vídeo…', svg: ANEXO_SVG.file },
+        { id: 'imagem',  label: 'Imagem',  hint: 'Comprimida no banco',      svg: ANEXO_SVG.image },
+        { id: 'link',    label: 'Link',    hint: 'URL externa (YouTube…)',   svg: ANEXO_SVG.link }
+    ];
+    const tipoCards = () => `
+        <div class="ax-types">${TIPOS.map(t => `
+            <button type="button" class="ax-type${st.tipo === t.id ? ' active' : ''}" data-ax-type="${t.id}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${t.svg}</svg>
+                <strong>${t.label}</strong>
+                <span>${t.hint}</span>
+            </button>`).join('')}</div>`;
+
+    const listaExistentesHtml = () => st.lista.length ? `
+        <div class="ax-existing-list">
+            ${st.lista.map((a, i) => `
+                <div class="ax-existing" data-ax-existing="${i}">
+                    ${anexoIcone(a.formato, 40)}
+                    <div class="grow">
+                        <strong>${escapeHtml(a.titulo || '')}</strong>
+                        <div class="muted">${ANEXO_FORMATOS[a.formato]?.label || ''} anexado</div>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" data-ax-ver="${i}">Abrir</button>
+                    <button type="button" class="btn-icon danger" data-ax-rem="${i}" title="Remover">${icon('trash')}</button>
+                </div>`).join('')}
+        </div>` : '';
+
+    const render = () => {
+        slot.innerHTML = `
+            <div class="anexo-field">
+                ${listaExistentesHtml()}
+                ${tipoCards()}
+                <div class="field ${st.tipo ? '' : 'hidden'}" data-ax-titulo-wrap style="margin:12px 0 0">
+                    <label>Título do anexo <span class="req">*</span></label>
+                    <input class="input" data-ax-titulo placeholder="Ex: Certificado assinado">
+                </div>
+                <div data-ax-corpo></div>
+                ${st.tipo ? `<button type="button" class="btn btn-secondary btn-sm" data-ax-add style="margin-top:12px">${icon('plus')} Adicionar anexo</button>` : ''}
+            </div>`;
+
+        slot.querySelectorAll('[data-ax-ver]').forEach(b => b.onclick = () => abrirAnexo(st.lista[Number(b.dataset.axVer)]));
+        slot.querySelectorAll('[data-ax-rem]').forEach(b => b.onclick = () => {
+            const i = Number(b.dataset.axRem);
+            const [removido] = st.lista.splice(i, 1);
+            if (removido) st.removidos.push(removido);
+            render();
+        });
+
+        const cards = slot.querySelectorAll('[data-ax-type]');
+        const tituloAtual = () => (slot.querySelector('[data-ax-titulo]')?.value || '');
+        cards.forEach(c => c.onclick = () => {
+            const t = c.dataset.axType;
+            const prevTitulo = tituloAtual();
+            st.tipo = st.tipo === t ? '' : t;      // clicar de novo desmarca
+            st.file = null; st.imgPreview = null;
+            render();
+            const ti = slot.querySelector('[data-ax-titulo]');
+            if (ti) { ti.value = prevTitulo; if (st.tipo) ti.focus(); }
+        });
+
+        const btnAdd = slot.querySelector('[data-ax-add]');
+        if (btnAdd) btnAdd.onclick = async () => {
+            try {
+                const anexo = await montaAnexoPendente();
+                st.lista.push(anexo);
+                st.tipo = ''; st.file = null; st.imgPreview = null;
+                render();
+            } catch (e) {
+                toast(e.message || 'Erro ao anexar.', 'error');
+            }
+        };
+
+        const corpo = slot.querySelector('[data-ax-corpo]');
+        if (!corpo) return;
+
+        // Dropzone reutilizável: input file oculto + área clicável/arrastável
+        const dropzone = (accept, hintHtml) => `
+            <div class="field" style="margin-top:12px"><label>${st.tipo === 'imagem' ? 'Imagem' : 'Arquivo'} <span class="req">*</span></label>
+                <div class="ax-drop" data-ax-drop tabindex="0" role="button">
+                    <input data-ax-file type="file" accept="${accept}" hidden>
+                    <div class="ax-drop-inner">
+                        <svg class="ax-drop-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        <div class="ax-drop-txt"><strong>Clique ou arraste</strong> o ${st.tipo === 'imagem' ? 'imagem' : 'arquivo'} aqui</div>
+                    </div>
+                    <div class="ax-drop-preview" data-ax-preview hidden></div>
+                </div>
+                <div class="field-hint" data-ax-info>${hintHtml}</div>
+            </div>`;
+
+        const bindDrop = onFile => {
+            const dz = corpo.querySelector('[data-ax-drop]');
+            const inp = corpo.querySelector('[data-ax-file]');
+            const pick = () => inp.click();
+            dz.onclick = pick;
+            dz.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } };
+            dz.ondragover = e => { e.preventDefault(); dz.classList.add('dragging'); };
+            dz.ondragleave = () => dz.classList.remove('dragging');
+            dz.ondrop = e => {
+                e.preventDefault(); dz.classList.remove('dragging');
+                if (e.dataTransfer.files[0]) { inp.files = e.dataTransfer.files; onFile(e.dataTransfer.files[0]); }
+            };
+            inp.onchange = e => e.target.files[0] && onFile(e.target.files[0]);
+        };
+
+        if (st.tipo === 'arquivo') {
+            corpo.innerHTML = dropzone('.pdf,.doc,.docx,.odt,.rtf,.xls,.xlsx,.csv,.ods,.txt,.md,.mp4,.avi,.mov,.mkv,.webm',
+                `Máx. ${ANEXO_MAX_MB}MB — para vídeos grandes, use o tipo <strong>Link</strong>. Enviado ao Google Drive ao salvar.`);
+            bindDrop(f => {
+                if (f.size > ANEXO_MAX_MB * 1024 * 1024) {
+                    toast(`Arquivo acima de ${ANEXO_MAX_MB}MB. Use o tipo Link.`, 'error');
+                    st.file = null; return;
+                }
+                st.file = f;
+                const fmt = ANEXO_FORMATOS[detectaFormato(f.name)];
+                const prev = corpo.querySelector('[data-ax-preview]');
+                prev.hidden = false;
+                prev.innerHTML = `${anexoIcone(detectaFormato(f.name), 36)}<div class="grow"><strong>${escapeHtml(f.name)}</strong><div class="muted">${(f.size / 1024 / 1024).toFixed(1)}MB · ${fmt.label}</div></div>`;
+                corpo.querySelector('[data-ax-drop]').classList.add('has-file');
+            });
+        } else if (st.tipo === 'imagem') {
+            corpo.innerHTML = dropzone('image/*',
+                'Comprimida automaticamente (máx. 1280px, JPEG) e gravada no banco — carregada só ao abrir.');
+            bindDrop(async f => {
+                st.file = f; st.imgPreview = null;
+                const info = corpo.querySelector('[data-ax-info]');
+                const prev = corpo.querySelector('[data-ax-preview]');
+                info.textContent = 'Comprimindo...';
+                try {
+                    st.imgPreview = await comprimirImagem(f);
+                    info.textContent = `Pronta: ${(st.imgPreview.length / 1024).toFixed(0)}KB após compressão (original ${(f.size / 1024).toFixed(0)}KB)`;
+                    prev.hidden = false;
+                    prev.innerHTML = `<img src="${st.imgPreview}" alt="Prévia">`;
+                    corpo.querySelector('[data-ax-drop]').classList.add('has-file');
+                } catch (err) {
+                    info.textContent = 'Erro ao processar a imagem.';
+                    st.file = null;
+                }
+            });
+        } else if (st.tipo === 'link') {
+            corpo.innerHTML = `
+                <div class="field" style="margin-top:12px"><label>URL <span class="req">*</span></label>
+                    <input class="input" data-ax-url type="url" placeholder="https://...">
+                </div>`;
+        } else corpo.innerHTML = '';
+    };
+
+    // Executa o upload do rascunho em edição e retorna o anexo pronto (sem mexer em st.lista)
+    async function montaAnexoPendente() {
+        if (!st.tipo) throw new Error('Escolha um tipo de anexo.');
+        const titulo = (slot.querySelector('[data-ax-titulo]')?.value || '').trim();
+        if (!titulo) throw new Error('Informe o título do anexo.');
+        const base = { id: _uid(), titulo, criadoEm: hoje() };
+
+        if (st.tipo === 'link') {
+            const url = (slot.querySelector('[data-ax-url]')?.value || '').trim();
+            if (!url) throw new Error('Informe a URL do link.');
+            return { ...base, tipo: 'link', formato: 'link', url };
+        }
+        if (st.tipo === 'imagem') {
+            if (!st.imgPreview) throw new Error('Selecione uma imagem.');
+            const imgKey = await salvarImagemDB(st.imgPreview);
+            IMG_CACHE[imgKey] = st.imgPreview;
+            return { ...base, tipo: 'imagem', formato: 'imagem', imgKey };
+        }
+        // arquivo → Google Drive
+        if (!st.file) throw new Error('Selecione um arquivo.');
+        const up = await uploadArquivoDrive(st.file, titulo);
+        return { ...base, tipo: 'arquivo', formato: detectaFormato(st.file.name), ...up };
+    }
+
+    render();
+
+    return {
+        // Executa o upload do rascunho pendente (se houver) e retorna {anexos, removidos}.
+        // `removidos` são os anexos remotos que precisam ser excluídos (Drive/imagem) após salvar.
+        async getAnexos() {
+            const lista = st.lista.slice();
+            if (st.tipo) lista.push(await montaAnexoPendente());
+            return { anexos: lista, removidos: st.removidos };
+        }
+    };
+}
