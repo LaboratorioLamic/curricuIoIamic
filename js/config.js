@@ -248,22 +248,38 @@ function formUsuario(u, usuarios) {
 
 // ============ CARGOS ============
 async function renderCfgCargos() {
-    const cargos = (await DB.getAll(PATHS.cargos)).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+    // Params junto: cargos marcados como "usa salário mínimo" não gravam o valor — a listagem
+    // resolve o número na hora de exibir (ver salarioBaseCargo).
+    const [cargos, cfgParams] = await Promise.all([
+        DB.getAll(PATHS.cargos).then(cs => cs.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))),
+        DB.getObj(PATHS.parametros).then(p => p || {})
+    ]);
 
     cfgList({
         searchPh: 'Buscar cargo...',
         btnLabel: 'Novo cargo',
         emptyText: 'Nenhum cargo cadastrado.',
-        thead: '<th>Cargo</th><th>Tipo</th><th class="num">Salário base</th><th class="num">Insalubridade</th><th class="num" title="Periodicidade do exame periódico (NR-7)">ASO</th><th style="width:48px"></th>',
-        rowsHtml: cargos.map(c => `
-            <tr data-id="${c.id}" data-search="${escapeHtml((c.nome + ' ' + c.tipo).toLowerCase())}">
+        thead: '<th>Cargo</th><th>Tipo</th><th>Perfil</th><th class="num">Remuneração</th><th class="num">Insalubridade</th><th class="num" title="Periodicidade do exame periódico (NR-7)">ASO</th><th style="width:48px"></th>',
+        rowsHtml: cargos.map(c => {
+            const r = remuneracaoCargo(c, cfgParams);
+            const def = CARGO_PERFIS.find(p => p.id === r.perfil);
+            // Mostra as verbas que o perfil tem — a coluna antiga dizia "salário base" mesmo
+            // quando o valor era bolsa de estágio.
+            const verbas = [
+                r.salarioBase ? `${fmtBRL(r.salarioBase)}${r.usaSalarioMinimo ? ' <span class="fc-min-tag" title="Acompanha o salário mínimo dos Parâmetros">mín.</span>' : ''}` : '',
+                r.bolsa ? `${fmtBRL(r.bolsa)} <span class="text-2">bolsa</span>` : '',
+                r.prolabore ? `${fmtBRL(r.prolabore)} <span class="text-2">pró-labore</span>` : ''
+            ].filter(Boolean);
+            return `
+            <tr data-id="${c.id}" data-search="${escapeHtml((c.nome + ' ' + c.tipo + ' ' + def.label).toLowerCase())}">
                 <td><strong>${escapeHtml(c.nome)}</strong></td>
                 <td><span class="badge badge-accent">${escapeHtml(c.tipo || '—')}</span></td>
-                <td class="num">${fmtBRL(c.salario)}</td>
+                <td><span class="badge badge-neutral">${escapeHtml(def.label)}</span></td>
+                <td class="num">${verbas.length ? verbas.join('<br>') : '—'}</td>
                 <td class="num">${c.insalubridade ? `<span class="badge badge-warning">${c.insalubridade}%</span>` : '—'}</td>
                 <td class="num text-2">${asoPeriodicidadeDe(c)} meses</td>
                 <td><button class="btn-icon" data-menu>${icon('dots')}</button></td>
-            </tr>`).join(''),
+            </tr>`; }).join(''),
         onNew: () => formCargo(null)
     });
 
@@ -297,9 +313,34 @@ function formCargo(c) {
             <div class="form-row">
                 <div class="field"><label>Tipo de cargo <span class="req">*</span></label>
                     <select class="select" id="fcTipo">${TIPOS_CARGO.map(t => `<option ${c?.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+                    <div class="field-hint">Classificação organizacional — usada nos gráficos do Dashboard.</div>
                 </div>
-                <div class="field"><label>Salário base (R$) <span class="req">*</span></label><input class="input" id="fcSalario" type="number" min="0" step="0.01" value="${c?.salario ?? ''}">
-                    <div class="field-hint">Usado como sugestão na folha de pagamento</div>
+                <div class="field"><label>Perfil de remuneração <span class="req">*</span></label>
+                    <button class="btn btn-secondary btn-filter fc-perfil-btn" id="fcPerfil" type="button" data-perfil="${perfilCargo(c)}">
+                        ${icon('briefcase')} <span id="fcPerfilLbl"></span> ${icon('chevronDown')}
+                    </button>
+                    <div class="field-hint">Define quais verbas o cargo tem.</div>
+                </div>
+            </div>
+            <div class="cargo-verbas" id="fcVerbas">
+                <div class="field" data-verba="salarioBase">
+                    <label>Salário base (R$) <span class="req">*</span></label>
+                    <input class="input" id="fcSalario" type="number" min="0" step="0.01" value="${c?.salarioBase ?? c?.salario ?? ''}">
+                    <label class="fc-min">
+                        <span class="switch"><input type="checkbox" id="fcUsaMin" ${c?.usaSalarioMinimo ? 'checked' : ''}><span class="track"></span></span>
+                        <span>Usar salário mínimo dos Parâmetros</span>
+                    </label>
+                    <div class="field-hint" id="fcSalHint">Sugestão na folha de pagamento.</div>
+                </div>
+                <div class="field" data-verba="bolsa">
+                    <label>Bolsa estágio (R$) <span class="req">*</span></label>
+                    <input class="input" id="fcBolsa" type="number" min="0" step="0.01" value="${c?.bolsa ?? (perfilCargo(c) === 'estagiario' ? c?.salario : '') ?? ''}">
+                    <div class="field-hint">Lei 11.788: bolsa não é salário e não gera encargos.</div>
+                </div>
+                <div class="field" data-verba="prolabore">
+                    <label>Pró-labore (R$)</label>
+                    <input class="input" id="fcProlabore" type="number" min="0" step="0.01" value="${c?.prolabore ?? (perfilCargo(c) === 'diretor' ? c?.salario : '') ?? ''}">
+                    <div class="field-hint">Remuneração de sócio/administrador, paga além do salário.</div>
                 </div>
             </div>
             <div class="form-row">
@@ -320,6 +361,51 @@ function formCargo(c) {
             </div>`,
         footer: ''
     });
+    // O salário mínimo vem dos Parâmetros e é lido a cada render — o cargo grava a intenção,
+    // não o número (ver salarioBaseCargo). O form é síncrono: busca uma vez ao abrir.
+    let minimo = 0;
+    (async () => {
+        minimo = Number((await DB.getObj(PATHS.parametros))?.salarioMinimo) || 0;
+        syncMinimo();
+    })();
+
+    const btnPerfil = m.body.querySelector('#fcPerfil');
+    const lblPerfil = m.body.querySelector('#fcPerfilLbl');
+    const salEl = m.body.querySelector('#fcSalario');
+    const minEl = m.body.querySelector('#fcUsaMin');
+    const salHint = m.body.querySelector('#fcSalHint');
+
+    const syncMinimo = () => {
+        const on = minEl.checked;
+        // Campo travado, não escondido: o RH tem que VER quanto o cargo vai pagar. Um input
+        // vazio e desabilitado não diria nada.
+        salEl.disabled = on;
+        salEl.classList.toggle('cell-auto', on);
+        if (on) salEl.value = minimo ? minimo.toFixed(2) : '';
+        salHint.innerHTML = on
+            ? minimo
+                ? `Acompanha o salário mínimo dos Parâmetros (<strong>${fmtBRL(minimo)}</strong>). Muda lá, muda aqui — sem reeditar o cargo.`
+                : `<span class="txt-danger">Salário mínimo não configurado em Parâmetros.</span> Defina-o antes de usar esta opção.`
+            : 'Sugestão na folha de pagamento.';
+    };
+    minEl.onchange = syncMinimo;
+
+    const syncPerfil = () => {
+        const p = btnPerfil.dataset.perfil;
+        const def = CARGO_PERFIS.find(x => x.id === p);
+        lblPerfil.textContent = def.label;
+        m.body.querySelectorAll('[data-verba]').forEach(el => {
+            el.hidden = !def.campos.includes(el.dataset.verba);
+        });
+        syncMinimo();
+    };
+    btnPerfil.onclick = () => openPopover(btnPerfil, CARGO_PERFIS.map(p => ({
+        label: `${p.label} — ${p.desc}`,
+        icon: p.id === btnPerfil.dataset.perfil ? 'check' : null,
+        onClick: () => { btnPerfil.dataset.perfil = p.id; syncPerfil(); }
+    })));
+    syncPerfil();
+
     m.footer.innerHTML = `
         <button class="btn btn-secondary" data-cancel>Cancelar</button>
         <button class="btn btn-primary" data-save>${isEdit ? 'Salvar' : 'Criar cargo'}</button>`;
@@ -327,11 +413,32 @@ function formCargo(c) {
     m.footer.querySelector('[data-save]').onclick = async () => {
         const nome = m.body.querySelector('#fcNome').value.trim();
         const tipo = m.body.querySelector('#fcTipo').value;
-        const salario = Number(m.body.querySelector('#fcSalario').value);
+        const perfil = btnPerfil.dataset.perfil;
+        const usaMin = minEl.checked;
         if (!nome) return toast('Informe o nome do cargo.', 'error');
-        if (!(salario >= 0)) return toast('Informe o salário base.', 'error');
+
+        const num = el => Number(m.body.querySelector(el).value) || 0;
+        const salarioBase = usaMin ? 0 : num('#fcSalario');
+        const bolsa = num('#fcBolsa');
+        const prolabore = num('#fcProlabore');
+
+        // Valida só a verba que o perfil realmente usa: exigir salário base de um estagiário
+        // barraria um cadastro correto.
+        if (perfil === 'estagiario' && !(bolsa > 0))
+            return toast('Informe o valor da bolsa estágio.', 'error');
+        if (perfil !== 'estagiario' && !usaMin && !(salarioBase > 0))
+            return toast('Informe o salário base ou marque "usar salário mínimo".', 'error');
+        if (usaMin && !minimo)
+            return toast('Configure o salário mínimo em Parâmetros antes de usar essa opção.', 'error');
+
         await DB.save(PATHS.cargos, c?.id || null, {
-            nome, tipo, salario,
+            nome, tipo, perfil,
+            // `salarioBase` substitui `salario`, que mudava de significado conforme o tipo.
+            // O legado continua gravado para não quebrar folhas já lançadas que o leem.
+            salarioBase, bolsa, prolabore,
+            usaSalarioMinimo: usaMin,
+            // Espelho do legado: valor "principal" do perfil, como o campo antigo esperava.
+            salario: perfil === 'estagiario' ? bolsa : salarioBase,
             insalubridade: Number(m.body.querySelector('#fcInsal').value) || 0,
             asoPeriodicidadeMeses: Number(m.body.querySelector('#fcAsoPer').value) || ASO_PERIODICIDADE_PADRAO
         });

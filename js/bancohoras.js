@@ -250,8 +250,10 @@ function bhProgramacao() {
 
 // Salário atual do funcionário: ficha primeiro, cargo como fallback — mesma precedência
 // que a folha usa no pré-preenchimento.
-const salarioDoFunc = f =>
-    Number(f?.salario) || Number(bhCargoDoFunc(f)?.salarioBase) || 0;
+// Lia `salarioBase` num cargo que só gravava `salario`: nunca achava o valor do cargo, e o
+// passivo de quem não tem salário individual saía zerado. `salarioDe` resolve os dois nomes
+// e o salário mínimo derivado.
+const salarioDoFunc = f => salarioDe(f, bhCargoDoFunc(f), folhaState.params);
 
 // ============ SUB-ABA: GRADE MENSAL ============
 // Clona a estrutura da folha (navegação de mês, edição inline, salvamento automático).

@@ -792,6 +792,64 @@ function historicoCiclosBh(f, banco, fechamentos, ref, quitacoes) {
     });
 }
 
+// ============ PERFIL DE REMUNERAÇÃO DO CARGO ============
+//
+// Perfil ≠ tipo. `tipo` (Operacional/Administrativo/Gestão/…) é classificação organizacional e
+// alimenta os gráficos do dashboard. `perfil` decide só QUAIS verbas o cargo tem:
+//
+//   Estagiário → bolsa (Lei 11.788: bolsa não é salário, não gera encargos)
+//   Funcionário → salário base
+//   Diretor    → salário base + pró-labore (pode ter os dois: é sócio e empregado)
+//
+// Antes existia UM campo `salario` que mudava de significado conforme o tipo — o mesmo número
+// virava bolsa, pró-labore ou salário. Por isso um diretor não conseguia ter as duas verbas.
+const CARGO_PERFIS = [
+    { id: 'funcionario', label: 'Funcionário', desc: 'Salário base', campos: ['salarioBase'] },
+    { id: 'estagiario', label: 'Estagiário', desc: 'Bolsa estágio', campos: ['bolsa'] },
+    { id: 'diretor', label: 'Diretor', desc: 'Salário base + pró-labore', campos: ['salarioBase', 'prolabore'] }
+];
+
+// Perfil de um cargo, com migração dos dados antigos: `tipo` era o que decidia a verba, então
+// cargos já cadastrados continuam caindo no perfil equivalente sem ninguém reeditá-los.
+const perfilCargo = c => c?.perfil
+    || (c?.tipo === 'Estágio' ? 'estagiario' : c?.tipo === 'Diretoria' ? 'diretor' : 'funcionario');
+
+const cargoTemCampo = (c, campo) =>
+    (CARGO_PERFIS.find(p => p.id === perfilCargo(c))?.campos || []).includes(campo);
+
+// Salário base do cargo, JÁ resolvido.
+//
+// `salarioMinimoFlag` grava a intenção ("este cargo paga o mínimo"), não o número: quando o
+// mínimo muda em Parâmetros, todo cargo marcado acompanha sozinho. Gravar o valor faria cada
+// reajuste do mínimo exigir reabrir e salvar cargo por cargo — e nada avisaria os defasados.
+//
+// Aceita `salarioBase` (novo) e `salario` (legado) — metade do código lia um, metade o outro.
+function salarioBaseCargo(c, params) {
+    if (!c) return 0;
+    if (c.usaSalarioMinimo) return Number(params?.salarioMinimo) || 0;
+    return Number(c.salarioBase ?? c.salario) || 0;
+}
+
+// Verbas do cargo resolvidas, respeitando o perfil: um cargo de estagiário não tem salário
+// base mesmo que o campo tenha sobrado gravado de uma troca de perfil.
+function remuneracaoCargo(c, params) {
+    const p = perfilCargo(c);
+    const campos = CARGO_PERFIS.find(x => x.id === p)?.campos || [];
+    return {
+        perfil: p,
+        salarioBase: campos.includes('salarioBase') ? salarioBaseCargo(c, params) : 0,
+        bolsa: campos.includes('bolsa') ? (Number(c?.bolsa ?? c?.salario) || 0) : 0,
+        prolabore: campos.includes('prolabore') ? (Number(c?.prolabore) || 0) : 0,
+        usaSalarioMinimo: !!c?.usaSalarioMinimo
+    };
+}
+
+// Salário do FUNCIONÁRIO para cálculos (hora extra, férias, passivo): o dele quando existe,
+// senão o do cargo. Ponto único — antes cada arquivo resolvia isso à sua maneira, e dois deles
+// liam `salarioBase` num cargo que só gravava `salario`.
+const salarioDe = (f, cargo, params) =>
+    Number(f?.salario) || salarioBaseCargo(cargo, params) || 0;
+
 // ============ CÁLCULO DE FÉRIAS (CF art. 7º XVII, CLT arts. 129-145) ============
 //
 // Média de horas extras do período aquisitivo (Súmula 45 TST): HE habitual integra a
@@ -822,7 +880,8 @@ function mediaHeFerias(fid, aquisitivoIni, aquisitivoFim, fechamentos, extras, q
 // férias, não sobre o tempo parado.
 function calculoFerias(f, cargo, params, dias, abonoDias, opts) {
     const o = opts || {};
-    const salario = Number(f?.salario) || Number(cargo?.salarioBase) || Number(cargo?.salario) || 0;
+    // Ponto único: resolve salário do funcionário → cargo → salário mínimo (quando marcado).
+    const salario = salarioDe(f, cargo, params);
     const grau = Number(cargo?.insalubridade) || 0;
     const baseInsal = (params?.insalubridadeBase || 'salario') === 'minimo'
         ? (Number(params?.salarioMinimo) || 0) : salario;
@@ -941,7 +1000,8 @@ const jornadaDe = f => Number(f?.jornadaMensal) || JORNADA_MENSAL_PADRAO;
 
 function calculoHoraExtra(f, cargo, params, minutos, adicionalPct, jornadaMes) {
     jornadaMes = Number(jornadaMes) || jornadaDe(f);
-    const salario = Number(f?.salario) || Number(cargo?.salarioBase) || Number(cargo?.salario) || 0;
+    // Ponto único: resolve salário do funcionário → cargo → salário mínimo (quando marcado).
+    const salario = salarioDe(f, cargo, params);
     const grau = Number(cargo?.insalubridade) || 0;
     const baseInsal = (params?.insalubridadeBase || 'salario') === 'minimo'
         ? (Number(params?.salarioMinimo) || 0) : salario;
@@ -1080,6 +1140,77 @@ function diagnosticoBh(un, funcionarios, banco, fechamentos, ref, quitacoes) {
 // mas eles saem da competência do mesmo jeito (art. 143) — ignorá-los deixaria a competência
 // eternamente incompleta para quem vendeu.
 const diasFeriasLanc = a => (Number(a?.dias) || 0) + (Number(a?.abonoDias) || 0);
+
+// ---- Todas as COMPETÊNCIAS de um funcionário ----
+//
+// `situacaoFeriasFunc` devolve UMA: a corrente, que é a prioridade. Mas competências vencidas
+// e não gozadas continuam existindo e devendo — o RH precisa vê-las lado a lado, com quanto
+// falta em cada uma, para decidir o que conceder primeiro.
+//
+// Aqui a régua é a mesma do banco de horas: derivada da admissão (12 em 12 meses), nunca
+// gravada. Cada lançamento de férias despeja seus dias na competência aberta mais antiga —
+// mesma alocação de situacaoFeriasFunc, exposta por competência.
+//
+// Retorna array do mais antigo para o mais novo, com:
+//   estado: 'gozada' | 'vencida' | 'vigente' | 'formacao'
+function competenciasFerias(f, ausencias, ref) {
+    if (!f?.admissao) return [];
+    const h = ref || hoje();
+    if (f.admissao > h) return [];
+    const total = feriasParams.diasPorCiclo;
+
+    const gozadas = (ausencias || [])
+        .filter(a => a.funcionarioId === f.id && a.tipo === 'Férias' && a.inicio <= h)
+        .sort((a, b) => a.inicio.localeCompare(b.inicio));
+
+    // Quantas competências a régua já produziu: as completas + a que está em formação.
+    const completos = Math.max(0, Math.floor(mesesEntre(f.admissao, h) / 12));
+
+    // Aloca dias e guarda QUAIS lançamentos tocaram cada competência — sem isso a janela não
+    // conseguiria mostrar "estes 15 dias vieram daqui".
+    const alocado = [];
+    const lancs = [];
+    for (const a of gozadas) {
+        let restam = diasFeriasLanc(a) || total;
+        let i = 0;
+        while (restam > 0) {
+            const cabe = Math.max(0, total - (alocado[i] || 0));
+            if (!cabe) { i++; continue; }
+            const usa = Math.min(cabe, restam);
+            alocado[i] = (alocado[i] || 0) + usa;
+            (lancs[i] ||= []).push({ ...a, diasNaCompetencia: usa });
+            restam -= usa;
+            if (restam > 0) i++;
+        }
+    }
+
+    return Array.from({ length: completos + 1 }, (_, i) => {
+        const aquisitivoIni = addMeses(f.admissao, i * 12);
+        const aquisitivoFim = addMeses(f.admissao, (i + 1) * 12);
+        const concessivoFim = addMeses(aquisitivoFim, 12);
+        const usados = Math.min(alocado[i] || 0, total);
+        const restantes = Math.max(0, total - usados);
+        const emFormacao = h < aquisitivoFim;
+        const dias = diasEntre(h, concessivoFim);
+
+        // Gozada só quando os dias fecham: 15 de 30 é competência aberta, não "gozada".
+        const estado = restantes === 0 ? 'gozada'
+            : emFormacao ? 'formacao'
+            : dias < 0 ? 'vencida'
+            : 'vigente';
+
+        return {
+            indice: i, aquisitivoIni, aquisitivoFim, concessivoFim,
+            usados, restantes, total,
+            fracionada: usados > 0 && restantes > 0,
+            lancamentos: lancs[i] || [],
+            estado, dias,
+            // Dobra do art. 137 incide sobre o que sobrou por conceder, não sobre a competência
+            // inteira: quem gozou 20 de 30 deve 10, não 30.
+            emDobra: estado === 'vencida' ? restantes : 0
+        };
+    }).sort((a, b) => a.indice - b.indice);
+}
 
 // Teto de dias que UM lançamento pode ter.
 //

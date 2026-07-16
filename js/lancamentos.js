@@ -740,7 +740,7 @@ function feriasProgramacao(ferias) {
                         const s = FERIAS_STATUS[sit.status];
                         const p = plano.get(f.id);
                         return `
-                        <tr data-id="${f.id}" data-search="${escapeHtml((f.nome + ' ' + (unidadeNomeDe(f.unidadeId))).toLowerCase())}">
+                        <tr data-id="${f.id}" class="row-clickable" data-search="${escapeHtml((f.nome + ' ' + (unidadeNomeDe(f.unidadeId))).toLowerCase())}">
                             <td>
                                 <div class="flex" style="gap:8px">
                                     <span class="prog-dot ${s.dot}"></span>
@@ -785,12 +785,164 @@ function feriasProgramacao(ferias) {
 
     box.querySelectorAll('#lancTbody tr[data-id]').forEach(tr => {
         const item = linhas.find(x => x.f.id === tr.dataset.id);
+        // A linha mostra só a competência corrente. Clicar abre todas — as vencidas que ainda
+        // devem, a vigente, a em formação — e o histórico do que já foi publicado.
+        tr.onclick = () => detalheFeriasFunc(item.f, ferias, item.sit, plano);
         const btn = tr.querySelector('[data-lancar]');
         if (btn) btn.onclick = e => {
             e.stopPropagation();
             // Pré-preenche com a data escalonada (não a bruta); o RH ajusta antes de salvar.
             const p = plano.get(item.f.id);
             formAusencia({ funcionarioId: item.f.id, inicio: p.inicio, retorno: p.retorno, dias: p.dias }, true, item.sit);
+        };
+    });
+}
+
+// ============ JANELA: SITUAÇÃO DE FÉRIAS DO FUNCIONÁRIO ============
+// Abre pela linha da Programação. A tabela mostra a competência CORRENTE; aqui estão todas —
+// as vencidas que continuam devendo, a vigente e a que está em formação — mais o histórico do
+// que já foi publicado.
+function detalheFeriasFunc(f, ausencias, sit, plano) {
+    const podeEditar = can('editar_lancamentos');
+    const comps = competenciasFerias(f, ausencias);
+    const emAberto = comps.filter(c => c.estado !== 'gozada' && c.estado !== 'formacao');
+    const publicadas = (ausencias || [])
+        .filter(a => a.funcionarioId === f.id && a.tipo === 'Férias')
+        .sort((a, b) => (b.inicio || '').localeCompare(a.inicio || ''));
+
+    const s = FERIAS_STATUS[sit.status];
+    const fer = feriasVigente(f.id, ausencias);
+    const t = tetoDiasFerias(f, ausencias);
+    const diasDevidos = comps.reduce((acc, c) => acc + c.emDobra, 0);
+
+    const ESTADO = {
+        vencida:  { cls: 'badge-danger',  txt: 'Vencida',      ico: 'alert' },
+        vigente:  { cls: 'badge-info',    txt: 'Vigente',      ico: 'clock' },
+        formacao: { cls: 'badge-neutral', txt: 'Em formação',  ico: 'refresh' },
+        gozada:   { cls: 'badge-success', txt: 'Gozada',       ico: 'check' }
+    };
+
+    const m = openModal({
+        title: f.nome,
+        size: 'md',
+        body: `
+            <div class="dc-tabs" role="tablist">
+                <button class="dc-tab is-active" data-dftab="situacao" role="tab">${icon('sun')} Competências
+                    ${emAberto.length ? `<span class="dc-tab-badge">${emAberto.length}</span>` : ''}</button>
+                <button class="dc-tab" data-dftab="historico" role="tab">${icon('clock')} Histórico
+                    ${publicadas.length ? `<span class="dc-tab-badge">${publicadas.length}</span>` : ''}</button>
+            </div>
+
+            <div data-dfpane="situacao">
+                <div class="df-hero ${sit.status === 'vencida' ? 'is-vencida' : sit.status === 'critica' ? 'is-critica' : 'is-ok'}">
+                    <div class="df-hero-top">
+                        <div>
+                            <span class="dc-lbl">${sit.status === 'aquisitivo' ? 'Direito em formação' : 'Dias em aberto'}</span>
+                            <div class="df-saldo">${t.max}<small>dias</small></div>
+                            <div class="df-decomp">${t.competencias} competência${t.competencias > 1 ? 's' : ''} em aberto${t.vencidas ? ` · <strong class="txt-danger">${t.vencidas} atrasada${t.vencidas > 1 ? 's' : ''}</strong>` : ''}</div>
+                        </div>
+                        <div class="dc-hero-right">
+                            <span class="badge ${s.cls}">${escapeHtml(sit.label)}</span>
+                            ${fer ? `<div class="df-emcurso">${icon('sun')} De férias até ${fmtDate(fer.retorno)}</div>` : ''}
+                        </div>
+                    </div>
+                    <p class="dc-desc">${escapeHtml(sit.desc)}</p>
+                    ${diasDevidos ? `<div class="df-dobra">${icon('alert')} <span><strong>${diasDevidos} dias</strong> já vencidos são devidos <strong>em dobro</strong> (art. 137 CLT). A dobra incide só sobre o que falta conceder, não sobre a competência inteira.</span></div>` : ''}
+                </div>
+
+                <div class="dc-sec">
+                    <div class="dc-sec-tit">${icon('calendar')} Períodos aquisitivos</div>
+                    <div class="df-comps">
+                        ${comps.slice().reverse().map(c => {
+                            const e = ESTADO[c.estado];
+                            const pct = Math.round(c.usados / c.total * 100);
+                            return `
+                            <div class="df-comp is-${c.estado}">
+                                <div class="df-comp-top">
+                                    <div>
+                                        <strong>${fmtDate(c.aquisitivoIni)} → ${fmtDate(c.aquisitivoFim)}</strong>
+                                        <div class="muted">${c.estado === 'formacao'
+                                            ? `Direito completo em ${fmtDate(c.aquisitivoFim)}`
+                                            : `Conceder até ${fmtDate(c.concessivoFim)}${c.dias < 0 ? ` — venceu há ${prazoTexto(c.dias)}` : c.estado === 'gozada' ? '' : ` — ${prazoTexto(c.dias)} restantes`}`}</div>
+                                    </div>
+                                    <span class="badge ${e.cls}">${e.txt}</span>
+                                </div>
+                                <div class="df-comp-bar" title="${c.usados} de ${c.total} dias">
+                                    <div class="df-comp-fill is-${c.estado}" style="width:${pct}%"></div>
+                                </div>
+                                <div class="df-comp-nums">
+                                    <span>${c.usados} de ${c.total} dias gozados</span>
+                                    ${c.restantes && c.estado !== 'formacao' ? `<strong class="${c.estado === 'vencida' ? 'txt-danger' : ''}">faltam ${c.restantes}</strong>` : ''}
+                                    ${c.fracionada ? '<span class="df-frac">fracionada</span>' : ''}
+                                </div>
+                                ${c.lancamentos.length ? `
+                                <div class="df-comp-lancs">
+                                    ${c.lancamentos.map(l => `
+                                        <button class="df-lanc" data-lanc="${l.id}">
+                                            ${icon('sun')} ${fmtDate(l.inicio)} → ${fmtDate(l.retorno)}
+                                            <span>${l.diasNaCompetencia}d${l.abonoDias ? ` · ${l.abonoDias} abono` : ''}</span>
+                                        </button>`).join('')}
+                                </div>` : ''}
+                            </div>`;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>
+
+            <div data-dfpane="historico" hidden>
+                ${publicadas.length ? `
+                <div class="dc-hist-resumo">
+                    <div><span>Lançamentos</span><strong>${publicadas.length}</strong></div>
+                    <div><span>Dias gozados</span><strong>${publicadas.reduce((s2, a) => s2 + (Number(a.dias) || 0), 0)}</strong></div>
+                    <div><span>Dias vendidos</span><strong>${publicadas.reduce((s2, a) => s2 + (Number(a.abonoDias) || 0), 0) || '—'}</strong></div>
+                </div>
+                <div class="df-hist">
+                    ${publicadas.map(a => {
+                        const emCurso = ausenciaVigente(a, hoje());
+                        const futura = a.inicio > hoje();
+                        return `
+                        <div class="df-hist-item ${emCurso ? 'is-curso' : futura ? 'is-futura' : ''}" data-lanc="${a.id}">
+                            <span class="df-hist-ico">${icon('sun')}</span>
+                            <div class="grow">
+                                <strong>${fmtDate(a.inicio)} → ${fmtDate(a.retorno)}</strong>
+                                ${emCurso ? '<span class="badge badge-ferias">em curso</span>' : futura ? '<span class="badge badge-info">programada</span>' : ''}
+                                <div class="muted">${a.dias} dias${a.abonoDias ? ` + ${a.abonoDias} de abono` : ''}${a.adiantar13 ? ' · 13º adiantado' : ''}${a.obs ? ` — ${escapeHtml(a.obs)}` : ''}</div>
+                            </div>
+                            ${a.calculo?.total ? `<strong class="num">${fmtBRL(a.calculo.total)}</strong>` : ''}
+                            ${icon('chevronRight')}
+                        </div>`;
+                    }).join('')}
+                </div>` : `
+                <div class="dc-vazio">${icon('sun')} Nenhuma férias publicada para ${escapeHtml(f.nome.split(' ')[0])} ainda.</div>`}
+            </div>`,
+        footer: `
+            <button class="btn btn-secondary" data-cancel>Fechar</button>
+            ${podeEditar && !fer ? `<button class="btn btn-primary" data-lancar>${icon('plus')} Lançar férias</button>` : ''}`
+    });
+
+    m.footer.querySelector('[data-cancel]').onclick = m.close;
+    const bl = m.footer.querySelector('[data-lancar]');
+    if (bl) bl.onclick = () => {
+        m.close();
+        const p = plano?.get(f.id);
+        formAusencia(p ? { funcionarioId: f.id, inicio: p.inicio, retorno: p.retorno, dias: p.dias } : { funcionarioId: f.id }, true, sit);
+    };
+
+    // Abas. A ação do rodapé é sobre a competência corrente; no histórico ela não faz sentido.
+    m.body.querySelectorAll('[data-dftab]').forEach(tab => {
+        tab.onclick = () => {
+            const alvo = tab.dataset.dftab;
+            m.body.querySelectorAll('[data-dftab]').forEach(t2 => t2.classList.toggle('is-active', t2 === tab));
+            m.body.querySelectorAll('[data-dfpane]').forEach(p => p.hidden = p.dataset.dfpane !== alvo);
+            if (bl) bl.hidden = alvo !== 'situacao';
+        };
+    });
+
+    // Qualquer lançamento (na competência ou no histórico) abre o detalhe já existente.
+    m.body.querySelectorAll('[data-lanc]').forEach(el => {
+        el.onclick = () => {
+            const a = (ausencias || []).find(x => x.id === el.dataset.lanc);
+            if (a) { m.close(); detalheAusencia(a, excluirFerias, () => renderLancTab()); }
         };
     });
 }

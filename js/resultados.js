@@ -104,19 +104,23 @@ function resBase() {
         const folhaMes = folhaComHeBanco(dados.folha[mk] || {}, mk, dados.bhFechamentos, dados.extras, dados.bhQuitacoes, feriasCtx(dados));
         const linhas = Object.entries(folhaMes).filter(([id]) => ids.has(id)).map(([, l]) => l);
         const soma = k => linhas.reduce((s, l) => s + (Number(l[k]) || 0), 0);
-        // Custo da empresa = bruto − coparticipação dos funcionários
+        // Custo da empresa = bruto − a parte da coparticipação que cabe dentro do benefício.
+        // O excedente sai do salário do funcionário e não reduz custo nenhum (ver
+        // descontoEfetivoLinha em folha.js).
         const folhaBruto = linhas.reduce((s, l) => s + brutoLinha(l), 0);
         const descontos = linhas.reduce((s, l) => s + descontoLinha(l), 0);
+        const folhaTotal = linhas.reduce((s, l) => s + totalLinha(l), 0);
+        // Piso zero por linha: benefício 440 com desconto 600 custa 0, não −160.
+        const beneficiosLiq = linhas.reduce((s, l) => s + beneficioLinha(l), 0);
         meses.push({
             adm, dem, hIni, hFim, hMedio,
             turnover: hMedio > 0 ? ((adm + dem) / 2) / hMedio * 100 : 0,
             folhaBruto,
             descontos,
-            folhaTotal: folhaBruto - descontos,
-            // Custo dos benefícios para a empresa = benefícios brutos − coparticipação
-            beneficiosLiq: soma('beneficios') - descontos,
+            folhaTotal,
+            beneficiosLiq,
             // Custo dos funcionários = custo da folha menos os benefícios líquidos
-            funcionariosCusto: (folhaBruto - descontos) - (soma('beneficios') - descontos),
+            funcionariosCusto: folhaTotal - beneficiosLiq,
             treinos: dados.treinamentos.reduce((s, t) => s + custoTreinoNoMes(t, ano, m), 0),
             beneficios: soma('beneficios'),
             encargos: soma('encargos'),
@@ -1143,8 +1147,10 @@ const BH_MAPA_COR = { vencido: '#dc2626', critico: '#d97706', atencao: '#d97706'
 
 // Salário para a estimativa de passivo. Resultados não carrega folhaState, então resolve
 // pelo cargo do próprio dados — mesma precedência de salarioDoFunc em bancohoras.js.
+// Mesmo ponto único da folha e do banco de horas: resolve `salarioBase`/`salario` (legado) e
+// o salário mínimo dos cargos marcados como "usa mínimo".
 const resSalarioDoFunc = f =>
-    Number(f?.salario) || Number(resState.dados.cargos.find(c => c.id === f?.cargoId)?.salarioBase) || 0;
+    salarioDe(f, resState.dados.cargos.find(c => c.id === f?.cargoId), resState.dados.params);
 
 // Modo tabela: a série mensal já sai em tabelaMensal; os ciclos individuais precisam de
 // tabela própria — eles não cabem no eixo Jan–Dez, que é o ponto da aba inteira.

@@ -168,6 +168,14 @@ Aba própria em Lançamentos. Planejamento detalhado em `PLANEJAMENTO-ASO.md`.
   meses do aquisitivo, não só os meses COM extra — dividir pelos meses com valor inflaria a base.
   **Desligável** (`feriasMediaHe`): é o único item cuja regra varia por convenção coletiva
 - **Memória de cálculo congelada** no lançamento: promoção posterior não reescreve o que já foi pago
+- **Janela de competências** (clique na linha da Programação): a tabela mostra só a competência
+  CORRENTE — as vencidas e não gozadas continuam existindo e devendo. `competenciasFerias` enumera
+  todas pela mesma régua derivada (12 em 12 meses desde a admissão), com o estado de cada uma
+  (`gozada` / `vencida` / `vigente` / `formacao`) e quais lançamentos a tocaram. Mesma relação de
+  `ciclosAbertosBh` com `cicloBhFunc` no banco de horas
+- **Fracionada vencida não é "gozada"**: 15 de 30 é competência aberta. E a **dobra do art. 137
+  incide sobre o que falta conceder**, não sobre a competência inteira — quem gozou 20 de 30 deve
+  10, não 30
 
 ## Banco de horas (CLT art. 59, §2º)
 
@@ -227,6 +235,30 @@ Aba própria em Lançamentos + aba de relatório em Resultados. Planejamento det
   Extra Banco alimentam a coluna `heBanco` ("HE (banco)"), read-only, recalculada a cada render. A
   célula "Hora extra" manual continua intocada — somar as duas faria a primeira correção manual
   apagar o que o sistema lançou. Mês de referência = data do pagamento, não fim do ciclo
+- **Perfil de remuneração do cargo ≠ tipo de cargo**: `tipo` (Operacional/Administrativo/Gestão/…)
+  é classificação organizacional e alimenta os gráficos do Dashboard; `perfil`
+  (Funcionário/Estagiário/Diretor) decide só QUAIS verbas o cargo tem. Antes existia **um campo
+  `salario` que mudava de significado conforme o tipo** — o mesmo número virava bolsa, pró-labore ou
+  salário, e por isso um diretor não conseguia ter salário base *e* pró-labore. `perfilCargo` migra
+  os cargos antigos pelo tipo (Estágio→estagiario, Diretoria→diretor, resto→funcionario)
+- **`usaSalarioMinimo` grava a intenção, não o valor** (`salarioBaseCargo`): quando o mínimo muda em
+  Parâmetros, todo cargo marcado acompanha sozinho. Gravar o número faria cada reajuste exigir
+  reabrir e salvar cargo por cargo — e nada avisaria os defasados. Mesmo princípio do `heBanco` e do
+  `feriasCalc`: derivado se autocorrige
+- **`salarioDe` é o ponto único** de resolução (funcionário → cargo → mínimo). Antes cada arquivo
+  resolvia à sua maneira, e **`bancohoras.js` e `resultados.js` liam `cargo.salarioBase` num form que
+  só gravava `cargo.salario`** — nunca achavam o valor, e o passivo de quem não tinha salário
+  individual saía zerado
+- **Bolsa de estágio não gera insalubridade nem encargos** (Lei 11.788: bolsa não é salário).
+  **Pró-labore fica fora da base de encargos**: é remuneração de sócio, com regime de contribuição
+  próprio — somá-lo inflaria o encargo com uma base que não é dele
+- **Coparticipação abate o benefício, não o bruto** (`descontoEfetivoLinha`): o desconto só pode
+  reduzir aquilo que ele custeia. `totalLinha = brutoLinha − descontoLinha` criava economia do nada
+  — R$ 100 de coparticipação numa linha sem benefício derrubava o custo de 3.000 para 2.900, como se
+  o funcionário tivesse pago parte do próprio salário de volta. Ele não pagou: a coparticipação sai
+  do líquido dele, e o bruto continua custando o mesmo. O teto é o valor do benefício, e
+  `beneficioLinha` tem piso zero (benefício 440 com desconto 600 custa 0, não −160). A coluna
+  continua mostrando o **lançado**; um `*` marca a linha onde lançado ≠ efetivo
 - **Coluna "Hora extra" manual aposentada**: com HE (banco) cobrindo o ciclo e Extra Banco cobrindo
   o resto, ter as duas convidava ao lançamento em dobro — o mesmo dinheiro digitado à mão e postado
   pelo sistema. O campo (`FOLHA_HE_MANUAL`) sai de `FOLHA_COLS` mas **continua somando** em

@@ -1194,6 +1194,93 @@
 }
 .dq-mes-sm { padding: 2px 7px; font-size: 10.5px; margin-right: 3px; }
 
+/* ---- Janela de férias do funcionário (clique na linha da Programação) ---- */
+.df-hero {
+    border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 12px; padding: 15px 17px; margin-bottom: 16px; background: var(--surface-2);
+}
+.df-hero.is-vencida { border-left-color: var(--danger); background: var(--danger-soft); }
+.df-hero.is-critica { border-left-color: var(--warning); background: var(--warning-soft); }
+.df-hero.is-ok { border-left-color: var(--success); }
+.df-hero-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+/* O número grande é o direito em aberto: é a resposta que o RH veio buscar. */
+.df-saldo {
+    font-size: 30px; font-weight: 800; line-height: 1.1; letter-spacing: -.5px;
+    font-variant-numeric: tabular-nums; display: flex; align-items: baseline; gap: 5px;
+}
+.df-saldo small { font-size: 13px; font-weight: 600; color: var(--muted); }
+.df-decomp { font-size: 11.5px; color: var(--text-2); margin-top: 3px; }
+.df-emcurso {
+    display: flex; align-items: center; gap: 5px; margin-top: 7px;
+    font-size: 11px; font-weight: 700; color: var(--accent);
+}
+.df-emcurso svg { width: 12px; height: 12px; }
+.df-dobra {
+    display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; padding-top: 11px;
+    border-top: 1px dashed var(--border); font-size: 11.5px; line-height: 1.45; color: var(--text-2);
+}
+.df-dobra svg { width: 14px; height: 14px; color: var(--danger); flex-shrink: 0; margin-top: 1px; }
+
+.df-comps { display: flex; flex-direction: column; gap: 11px; }
+.df-comp {
+    border: 1px solid var(--border); border-radius: 10px; padding: 12px 13px;
+    border-left: 3px solid var(--border);
+}
+/* Vencida devendo é o que custa dinheiro; gozada é história; formação ainda não é assunto. */
+.df-comp.is-vencida { border-left-color: var(--danger); }
+.df-comp.is-vigente { border-left-color: var(--info); }
+.df-comp.is-gozada { border-left-color: var(--success); opacity: .78; }
+.df-comp.is-formacao { border-left-color: var(--border); opacity: .68; }
+.df-comp-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 9px; }
+.df-comp-top strong { font-size: 12.5px; }
+.df-comp-top .muted { font-size: 11px; margin-top: 2px; }
+
+.df-comp-bar {
+    height: 6px; border-radius: 4px; background: var(--surface-2);
+    overflow: hidden; border: 1px solid var(--border);
+}
+.df-comp-fill { height: 100%; border-radius: 3px; background: var(--accent); }
+.df-comp-fill.is-gozada { background: var(--success); }
+.df-comp-fill.is-vencida { background: var(--danger); }
+.df-comp-fill.is-vigente { background: var(--accent); }
+.df-comp-nums {
+    display: flex; align-items: center; gap: 8px; margin-top: 7px;
+    font-size: 11px; color: var(--text-2); font-variant-numeric: tabular-nums;
+}
+.df-comp-nums strong { margin-left: auto; }
+.df-frac {
+    background: var(--warning-soft); color: var(--warning); border-radius: 20px;
+    padding: 1px 7px; font-size: 10px; font-weight: 700;
+}
+
+.df-comp-lancs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.df-lanc {
+    display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+    border: 1px solid var(--border); border-radius: 7px; background: var(--surface);
+    padding: 4px 9px; font-size: 10.5px; font-weight: 600; color: var(--text-2);
+}
+.df-lanc:hover { border-color: var(--accent); color: var(--accent); }
+.df-lanc svg { width: 11px; height: 11px; }
+.df-lanc span { color: var(--muted); font-weight: 700; }
+
+.df-hist { display: flex; flex-direction: column; gap: 8px; }
+.df-hist-item {
+    display: flex; align-items: center; gap: 10px; cursor: pointer;
+    border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px;
+}
+.df-hist-item:hover { border-color: var(--accent); background: var(--surface-2); }
+.df-hist-item.is-curso { border-color: var(--accent); background: var(--accent-soft); }
+.df-hist-item.is-futura { border-style: dashed; }
+.df-hist-item strong { font-size: 12.5px; }
+.df-hist-item .muted { font-size: 11px; margin-top: 2px; }
+.df-hist-item .badge { margin-left: 6px; }
+.df-hist-item > svg:last-child { width: 14px; height: 14px; color: var(--muted); flex-shrink: 0; }
+.df-hist-ico {
+    display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px;
+    background: var(--accent-soft); color: var(--accent); flex-shrink: 0;
+}
+.df-hist-ico svg { width: 13px; height: 13px; }
+
 /* ---- Férias: efeito do lançamento na competência ---- */
 .fa-comp { margin: 10px 0 4px; }
 .fa-comp-box {
@@ -1221,6 +1308,30 @@
     border-top: 1px dashed var(--border); font-size: 11px; line-height: 1.4;
 }
 .fa-comp-acum svg { width: 12px; height: 12px; margin-top: 2px; color: var(--text-2); }
+
+/* ---- Cargo: perfil de remuneração ---- */
+.fc-perfil-btn { width: 100%; justify-content: space-between; }
+.fc-perfil-btn span { flex: 1; text-align: left; }
+/* As verbas trocam conforme o perfil; a área não pode saltar a cada troca. */
+.cargo-verbas { display: flex; flex-direction: column; }
+.fc-min {
+    display: flex; align-items: center; gap: 8px; margin-top: 8px;
+    cursor: pointer; font-size: 12px; color: var(--text-2);
+}
+/* Campo travado pelo mínimo: visível (o RH precisa ver o valor), mas claramente não editável. */
+.cargo-verbas .input:disabled {
+    background: var(--surface-2); color: var(--text-2); cursor: not-allowed;
+}
+.fc-min-tag {
+    background: var(--accent-soft); color: var(--accent); border-radius: 20px;
+    padding: 1px 6px; font-size: 9.5px; font-weight: 800; cursor: help;
+}
+
+/* Coparticipação maior que o benefício: o excedente sai do salário do funcionário e não
+   abate o custo da empresa. O asterisco marca a linha onde lançado ≠ efetivo. */
+.folha-desc-x, .txt-warn {
+    color: var(--warning); font-weight: 800; cursor: help;
+}
 
 /* Valor legado na folha: existe, soma, mas não se edita mais. */
 .folha-legado {

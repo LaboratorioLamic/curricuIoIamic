@@ -112,8 +112,21 @@ const brutoLinha = l => FOLHA_COLS.reduce((s, [k]) => s + (Number(l?.[k]) || 0),
     + (Number(l?.[FOLHA_HE_BANCO]) || 0)
     + (Number(l?.[FOLHA_HE_MANUAL]) || 0)
     + (Number(l?.[FOLHA_FERIAS_CALC]) || 0);
+// Coparticipação lançada: o que o funcionário paga do próprio benefício.
 const descontoLinha = l => Number(l?.[FOLHA_DESC]) || 0;
-const totalLinha = l => brutoLinha(l) - descontoLinha(l);
+
+// Quanto da coparticipação REALMENTE abate o custo da empresa.
+//
+// O desconto só pode abater aquilo que ele custeia — o benefício. Descontar do bruto inteiro
+// (o que se fazia aqui) criava economia do nada: R$ 100 de coparticipação numa linha sem
+// benefício nenhum derrubava o custo da empresa de 3.000 para 2.900, como se o funcionário
+// tivesse pago parte do próprio salário de volta. Ele não pagou: a coparticipação sai do
+// salário líquido dele, e o salário bruto continua custando o mesmo para a empresa.
+//
+// Por isso o teto é o valor do benefício. Desconto igual ou maior que o benefício zera o
+// custo daquele benefício — nunca menos que zero.
+const descontoEfetivoLinha = l => Math.min(descontoLinha(l), Number(l?.beneficios) || 0);
+const totalLinha = l => brutoLinha(l) - descontoEfetivoLinha(l);
 
 // Injeta a HE derivada do banco nas linhas de um mês. Recebe o objeto {fid: linha} da folha
 // e devolve um NOVO objeto — mutar o original faria o valor derivado vazar para o próximo
@@ -157,8 +170,10 @@ function folhaComHeBanco(dados, mesKey, fechamentos, extras, quitacoes, ctx) {
     });
     return out;
 }
-// Custo dos benefícios para a empresa nesta linha (coluna benefícios − coparticipação do funcionário)
-const beneficioLinha = l => (Number(l?.beneficios) || 0) - descontoLinha(l);
+// Custo dos benefícios para a empresa nesta linha (coluna benefícios − coparticipação).
+// Piso zero: benefício 440 com desconto 600 custa 0 à empresa, não −160. Coparticipação que
+// excede o benefício sai do salário do funcionário — não vira crédito para a empresa.
+const beneficioLinha = l => Math.max(0, (Number(l?.beneficios) || 0) - descontoLinha(l));
 // Custo do funcionário para a empresa (folha sem os benefícios líquidos)
 const funcionarioLinha = l => totalLinha(l) - beneficioLinha(l);
 
@@ -186,21 +201,32 @@ function beneficiosDoFunc(f, catalogo) {
 // Pré-preenchimento da linha da folha
 function prefillLinha(f) {
     const cargo = folhaState.cargos.find(c => c.id === f.cargoId);
-    const sal = f.salario ?? cargo?.salario ?? 0;
+    const params = folhaState.params;
     const linha = {};
     FOLHA_COLS.forEach(([k]) => linha[k] = 0);
     linha[FOLHA_DESC] = 0;
 
-    if (cargo?.tipo === 'Estágio') linha.bolsa = sal;
-    else if (cargo?.tipo === 'Diretoria') linha.prolabore = sal;
-    else {
-        linha.salario = sal;
-        // Insalubridade: grau do cargo × base configurada (salário do funcionário ou salário mínimo)
-        const base = (folhaState.params.insalubridadeBase || 'salario') === 'minimo'
-            ? (Number(folhaState.params.salarioMinimo) || 0) : sal;
+    // Verbas vêm do PERFIL do cargo, não do tipo: um diretor pode ter salário base E
+    // pró-labore, o que o campo único `salario` (que mudava de significado) impedia.
+    // O salário do funcionário, quando existe, sobrepõe o do cargo — é o valor individual
+    // negociado; o do cargo é só a referência.
+    const r = remuneracaoCargo(cargo, params);
+    const salBase = Number(f.salario) || r.salarioBase;
+
+    if (r.perfil === 'estagiario') {
+        // Bolsa não é salário (Lei 11.788): sem insalubridade e sem encargos.
+        linha.bolsa = Number(f.salario) || r.bolsa;
+    } else {
+        linha.salario = salBase;
+        linha.prolabore = r.prolabore;
+        // Insalubridade: grau do cargo × base configurada (salário do funcionário ou mínimo)
+        const base = (params.insalubridadeBase || 'salario') === 'minimo'
+            ? (Number(params.salarioMinimo) || 0) : salBase;
         linha.insalubridade = Number(((Number(cargo?.insalubridade) || 0) / 100 * base).toFixed(2));
-        // Encargos sobre remuneração (salário + insalubridade)
-        linha.encargos = Number(((sal + linha.insalubridade) * (Number(folhaState.params.encargosPct) || 0) / 100).toFixed(2));
+        // Encargos sobre a remuneração (salário + insalubridade). Pró-labore fica fora: é
+        // remuneração de sócio, com regime de contribuição próprio — somá-lo aqui inflaria
+        // o encargo com uma base que não é dele.
+        linha.encargos = Number(((salBase + linha.insalubridade) * (Number(params.encargosPct) || 0) / 100).toFixed(2));
     }
     const ben = beneficiosDoFunc(f);
     linha.beneficios = ben.total;
@@ -295,8 +321,12 @@ async function relFolhaMensal() {
         .sort((a, b) => (a.f?.nome || '').localeCompare(b.f?.nome || ''));
 
     const bruto = linhas.reduce((s, l) => s + brutoLinha(l.linha), 0);
+    // Lançado × efetivo: o RH lança 264 de coparticipação, mas só a parte que cabe dentro do
+    // benefício abate o custo da empresa. O resto sai do salário do funcionário e não é
+    // economia de ninguém — somar o lançado aqui inventaria uma redução que não aconteceu.
     const descontos = linhas.reduce((s, l) => s + descontoLinha(l.linha), 0);
-    const custoEmpresa = bruto - descontos;
+    const descontosEfetivos = linhas.reduce((s, l) => s + descontoEfetivoLinha(l.linha), 0);
+    const custoEmpresa = bruto - descontosEfetivos;
     const custoBeneficios = linhas.reduce((s, l) => s + beneficioLinha(l.linha), 0);
     const custoFuncionarios = custoEmpresa - custoBeneficios;
     const pctBenef = custoEmpresa ? custoBeneficios / custoEmpresa * 100 : 0;
@@ -304,7 +334,7 @@ async function relFolhaMensal() {
     cont.innerHTML = `
         <div class="flex-between" style="margin-bottom:16px">${nav}<div></div></div>
         <div class="grid grid-4">
-            <div class="kpi"><span class="kpi-label">Custo empresa (folha)</span><span class="kpi-value" style="font-size:20px">${fmtBRL(custoEmpresa)}</span><span class="kpi-delta">bruto ${fmtBRL(bruto)} − ${fmtBRL(descontos)} coparticipação</span></div>
+            <div class="kpi"><span class="kpi-label">Custo empresa (folha)</span><span class="kpi-value" style="font-size:20px">${fmtBRL(custoEmpresa)}</span><span class="kpi-delta" ${descontos > descontosEfetivos ? `title="Foram lançados ${fmtBRL(descontos)} de coparticipação, mas só ${fmtBRL(descontosEfetivos)} abatem o custo: o excedente sai do salário do funcionário, não do benefício."` : ''}>bruto ${fmtBRL(bruto)} − ${fmtBRL(descontosEfetivos)} coparticipação${descontos > descontosEfetivos ? ` <span class="txt-warn">*</span>` : ''}</span></div>
             <div class="kpi"><span class="kpi-label">Custo dos funcionários</span><span class="kpi-value" style="font-size:20px">${fmtBRL(custoFuncionarios)}</span><span class="kpi-delta">remuneração, encargos e demais custos</span></div>
             <div class="kpi"><span class="kpi-label">Custo dos benefícios</span><span class="kpi-value" style="font-size:20px">${fmtBRL(custoBeneficios)}</span><span class="kpi-delta">${fmtPct(pctBenef)} do custo da folha</span></div>
             <div class="kpi"><span class="kpi-label">Treinamentos (parcelas)</span><span class="kpi-value" style="font-size:20px">${fmtBRL(treinosMes)}</span></div>
@@ -328,7 +358,11 @@ async function relFolhaMensal() {
                         <tr>
                             <td style="white-space:nowrap"><strong>${escapeHtml(f?.nome || '(removido)')}</strong></td>
                             ${FOLHA_COLS.map(([k]) => `<td class="num col-${k}">${Number(linha[k]) ? fmtBRL(linha[k]) : '—'}</td>`).join('')}
-                            <td class="num col-${FOLHA_DESC}" style="color:var(--danger)">${descontoLinha(linha) ? '− ' + fmtBRL(descontoLinha(linha)) : '—'}</td>
+                            <td class="num col-${FOLHA_DESC}" style="color:var(--danger)">${descontoLinha(linha)
+                                ? `− ${fmtBRL(descontoLinha(linha))}${descontoLinha(linha) > descontoEfetivoLinha(linha)
+                                    ? ` <span class="folha-desc-x" title="Coparticipação de ${fmtBRL(descontoLinha(linha))} maior que o benefício de ${fmtBRL(Number(linha.beneficios) || 0)}. Só ${fmtBRL(descontoEfetivoLinha(linha))} abatem o custo da empresa — o excedente sai do salário do funcionário.">*</span>`
+                                    : ''}`
+                                : '—'}</td>
                             <td class="num"><strong>${fmtBRL(totalLinha(linha))}</strong></td>
                         </tr>`).join('')}
                     </tbody>
@@ -381,17 +415,24 @@ async function relFolhaAnual() {
 
     const rows = { bruto: [], descontos: [], empresa: [], funcionarios: [], beneficios: [], treinos: [] };
     for (let m = 0; m < 12; m++) {
-        const dados = folhaAll?.[mesKey(ano, m)] || {};
+        const mk = mesKey(ano, m);
+        // Colunas derivadas (HE do banco, férias) precisam ser injetadas: sem isso o gráfico
+        // soma a folha crua e mostra custo menor que a tela de Folha mensal — mesma empresa,
+        // dois números.
+        const dados = folhaComHeBanco(folhaAll?.[mk] || {}, mk, folhaState.bhFechamentos,
+            folhaState.extras, folhaState.bhQuitacoes, feriasCtx(folhaState));
         const linhas = Object.values(dados);
         const bruto = linhas.reduce((s, l) => s + brutoLinha(l), 0);
         const desc = linhas.reduce((s, l) => s + descontoLinha(l), 0);
+        // Só o desconto EFETIVO abate o custo — ver descontoEfetivoLinha.
+        const descEf = linhas.reduce((s, l) => s + descontoEfetivoLinha(l), 0);
         const beneficios = linhas.reduce((s, l) => s + beneficioLinha(l), 0);
         const treinos = folhaState.treinamentos.reduce((s, t) => s + custoTreinoNoMes(t, ano, m), 0);
         rows.bruto.push(bruto);
         rows.descontos.push(desc);
-        rows.empresa.push(bruto - desc);
+        rows.empresa.push(bruto - descEf);
         rows.beneficios.push(beneficios);
-        rows.funcionarios.push(bruto - desc - beneficios);
+        rows.funcionarios.push(bruto - descEf - beneficios);
         rows.treinos.push(treinos);
     }
 
