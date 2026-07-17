@@ -131,7 +131,14 @@ async function bhReload() {
     // A folha lê fechamentos/extras do folhaState para a coluna derivada — invalidar aqui
     // evita que a grade da folha mostre um total defasado depois de um fechamento.
     folhaState.carregado = false;
-    renderLancTab();
+    // Os forms de fechamento/quitação também abrem a partir da ficha do funcionário
+    // (aba Horas), fora da página de Lançamentos — lá #lancContent não existe no DOM, e
+    // renderLancTab() quebraria em cima de um innerHTML de elemento nulo.
+    if (document.getElementById('lancContent')) renderLancTab();
+    // Mesma ideia do lado da ficha: se a aba Horas estiver aberta no drawer, redesenha com
+    // os dados frescos em vez de deixar o saldo antigo na tela até o usuário trocar de aba.
+    const fdCont = document.getElementById('fdContent');
+    if (fdCont?.dataset.fdTab === 'horas' && fdHorasRefresh) fdHorasRefresh();
 }
 
 // ============ SUB-ABA: PROGRAMAÇÃO ============
@@ -880,50 +887,66 @@ function detalheCicloBh(f, sit) {
 }
 
 // ============ FORM: QUITAÇÃO ============
-// Paga meses específicos DURANTE o ciclo. Não encerra nada: os meses saem do saldo em
-// aberto, travam para edição, e o ciclo continua correndo com o restante.
+// Paga o SALDO LÍQUIDO do ciclo em aberto — todos os meses ainda não quitados, extras e
+// atrasos somados entre si. Não encerra nada: os meses saem do saldo em aberto, travam para
+// edição, e o ciclo continua correndo (sem meses restantes, até o próximo lançamento).
+//
+// Antes disto pagava-se mês a mês, só os meses com saldo positivo isolado — o que ignorava
+// atraso de outros meses do mesmo ciclo e podia pagar hora que o atraso de um mês vizinho já
+// tinha coberto. O banco de horas é um saldo ÚNICO por ciclo (CLT art. 59, §2º: compensação
+// entre excesso e falta), não uma fila de pagamentos mensais independentes.
 function formQuitacaoBh(f, sit) {
     const fin = can('ver_financeiro');
-    // Só meses em aberto podem ser quitados — os já quitados não aparecem para não
-    // permitir pagar duas vezes a mesma hora.
-    const disponiveis = sit.abertos.filter(m => m.saldoMin > 0);
+    // Todo o ciclo em aberto quita de uma vez — não há seleção parcial: pagar só o excesso
+    // sem descontar o atraso do mesmo ciclo dobraria a conta.
+    const disponiveis = sit.abertos;
+    const saldo = sit.acumuladoMin;
 
     if (!disponiveis.length) {
-        return toast(sit.abertos.length
-            ? 'Nenhum mês com saldo positivo para quitar neste ciclo. Só há horas a pagar quando a extra supera o atraso no mês.'
-            : 'Todos os meses deste ciclo já foram quitados.', 'error');
+        return toast('Todos os meses deste ciclo já foram quitados.', 'error');
     }
+    if (saldo === 0) {
+        return toast('O saldo em aberto do ciclo está zerado — extra e atraso se compensam. Nada a quitar.', 'error');
+    }
+
+    // O destino depende do SINAL do saldo: positivo é dívida da empresa (só se paga), negativo
+    // é dívida do funcionário (só se desconta ou se perdoa) — misturar as duas listas deixaria
+    // escolher "Pago como hora extra" para um saldo que a empresa não deve, ou "Descontado"
+    // para um saldo que ela já deve como extra.
+    const positivo = saldo > 0;
+    const destinosDisp = positivo ? [BH_DESTINO_PAGO] : ['Descontado', 'Perdoado'];
 
     const m = openModal({
         title: `Quitar horas — ${f.nome}`,
         size: 'md',
         body: `
             <p class="muted" style="font-size:12px;margin-bottom:14px">
-                A quitação paga os meses selecionados <strong>sem encerrar o ciclo</strong>: eles saem do saldo em aberto,
-                ficam bloqueados para edição e o ciclo ${mesLabel(sit.inicio)} → ${mesLabel(sit.fimMes)} continua correndo com o restante.
+                A quitação resolve o <strong>saldo líquido do ciclo em aberto</strong> (extra menos atraso de todos os
+                meses ainda não quitados) <strong>sem encerrar o ciclo</strong>: os meses saem do saldo em aberto,
+                ficam bloqueados para edição e o ciclo ${mesLabel(sit.inicio)} → ${mesLabel(sit.fimMes)} continua correndo.
             </p>
-            <div class="field">
-                <label>Meses a quitar <span class="req">*</span></label>
-                <div class="qt-meses" id="qtMeses">
-                    ${disponiveis.map(mm => `
-                        <label class="qt-mes">
-                            <input type="checkbox" data-mes="${mm.mes}" value="${mm.saldoMin}">
-                            <span class="qt-mes-box">
-                                <span class="qt-mes-lbl">${mesLabel(mm.mes)}</span>
-                                <span class="qt-mes-val bh-pos">${fmtHHMM(mm.saldoMin)}</span>
-                                <span class="qt-mes-dec">${fmtHHMM(mm.extraMin)} extra · ${fmtHHMM(mm.atrasoMin)} atraso</span>
-                            </span>
-                        </label>`).join('')}
+            <div class="bh-fech-resumo">
+                <div>
+                    <span class="bh-fech-lbl">Meses a quitar</span>
+                    <strong>${disponiveis.length} ${disponiveis.length === 1 ? 'mês' : 'meses'}</strong>
+                    <div class="prog-aq">${disponiveis.map(mm => mesLabel(mm.mes)).join(', ')}</div>
                 </div>
-                <div class="field-hint">Meses com saldo positivo do ciclo corrente. Quitar um mês trava a edição das horas dele.</div>
+                <div>
+                    <span class="bh-fech-lbl">Saldo líquido do ciclo</span>
+                    <strong class="bh-saldo-big">${bhSaldoHtml(saldo)}</strong>
+                    <div class="prog-aq">${fmtHHMM(sit.extraMin)} extra · ${fmtHHMM(sit.atrasoMin)} atraso</div>
+                </div>
             </div>
             <div class="field">
                 <label>Destino do saldo <span class="req">*</span></label>
                 <select class="select" id="qtDestino">
-                    ${BH_DESTINOS_QUITACAO.map(d => `<option value="${d}">${d}</option>`).join('')}
+                    ${destinosDisp.map(d => `<option value="${d}">${d}</option>`).join('')}
                 </select>
-                <div class="field-hint">Como estes meses foram resolvidos. Só "Pago como hora extra" soma na folha.</div>
+                <div class="field-hint">${positivo
+                    ? 'Saldo positivo: a empresa deve horas — a quitação paga como hora extra.'
+                    : 'Saldo negativo: o funcionário deve horas — descontado abate a folha, perdoado só zera o banco.'}</div>
             </div>
+            ${positivo ? `
             <div class="form-row">
                 <div class="field">
                     <label>Data do pagamento <span class="req">*</span></label>
@@ -935,10 +958,15 @@ function formQuitacaoBh(f, sit) {
                     <input class="input" id="qtPct" type="number" min="0" max="300" step="1" value="${bhParams.adicionalPct}">
                     <div class="field-hint">Mínimo legal: 50%.</div>
                 </div>
-            </div>
+            </div>` : `
+            <div class="field">
+                <label>Data do pagamento <span class="req">*</span></label>
+                <input class="input" id="qtData" type="date" value="${hoje()}">
+                <div class="field-hint">Define a folha que recebe o valor (quando descontado).</div>
+            </div>`}
             <div class="bx-calc" id="qtCalc"></div>
             <div class="field" id="qtValorWrap" ${!fin ? 'hidden' : ''}>
-                <label>Valor pago (R$) <span class="req">*</span></label>
+                <label id="qtValorLbl">Valor pago (R$) <span class="req">*</span></label>
                 <input class="input" id="qtValor" type="number" min="0" step="0.01">
                 <div class="field-hint" id="qtValorHint">Sugerido pelos dados do funcionário — ajuste se a folha divergir.</div>
             </div>
@@ -950,7 +978,7 @@ function formQuitacaoBh(f, sit) {
             <div class="field">
                 <label>Documentação</label>
                 <div id="qtAnexos"></div>
-                <div class="field-hint">Recibo ou acordo — a prova de que estas horas foram pagas.</div>
+                <div class="field-hint">Recibo ou acordo — a prova de que estas horas foram resolvidas.</div>
             </div>`,
         footer: `
             <button class="btn btn-secondary" data-cancel>Cancelar</button>
@@ -962,10 +990,16 @@ function formQuitacaoBh(f, sit) {
     const pctEl = m.body.querySelector('#qtPct');
     const destEl = m.body.querySelector('#qtDestino');
     const valorEl = m.body.querySelector('#qtValor');
+    const valorWrap = m.body.querySelector('#qtValorWrap');
+    const valorLbl = m.body.querySelector('#qtValorLbl');
     const valorHint = m.body.querySelector('#qtValorHint');
     const dataEl = m.body.querySelector('#qtData');
     const avisoEl = m.body.querySelector('#qtFolhaAviso');
-    const checks = () => [...m.body.querySelectorAll('[data-mes]:checked')];
+
+    // Meses e minutos são fixos (é o ciclo inteiro em aberto) — só o destino (e o % quando
+    // pago) mudam o cálculo, então o "sel" de antes vira um valor constante.
+    const min = saldo;
+    const mesesQuitar = disponiveis.map(mm => mm.mes).sort();
 
     // Sugerido e pago são campos distintos: o sugerido é a conta do sistema, o pago é o que
     // saiu do caixa. Enquanto o RH não digita, o pago acompanha a sugestão; ao digitar, o
@@ -973,21 +1007,25 @@ function formQuitacaoBh(f, sit) {
     // silenciosamente o valor negociado.
     let valorTocado = false;
     let sugerido = 0;
-    valorEl.oninput = () => { valorTocado = true; syncAviso(); };
 
     const recalc = () => {
-        const sel = checks();
-        const min = sel.reduce((s, c) => s + Number(c.value), 0);
-        const pct = Number(pctEl.value) || 0;
-        if (!sel.length) {
-            calcEl.innerHTML = `<div class="bx-calc-vazio">${icon('info')} Selecione ao menos um mês para ver o cálculo.</div>`;
+        const destino = destEl.value;
+
+        // Perdoado não move dinheiro: zera o saldo negativo do banco (os meses marcam
+        // quitados do mesmo jeito) sem gerar valor nem tocar a folha.
+        if (destino === 'Perdoado') {
+            calcEl.innerHTML = `<div class="bx-calc-vazio">${icon('info')} Perdoado: o saldo negativo é zerado no banco de horas, sem valor associado.</div>`;
             sugerido = 0;
-            if (!valorTocado) valorEl.value = '';
             syncAviso();
-            return null;
+            return { c: null, min, sel: mesesQuitar };
         }
-        const c = calculoHoraExtra(f, bhCargoDoFunc(f), folhaState.params, min, pct);
-        const restante = sit.acumuladoMin - min;
+
+        // "Descontado" é dívida do funcionário: valor pelo preço-hora simples, SEM o
+        // adicional de hora extra — cobrar adicional na cobrança de uma dívida inverteria a
+        // lógica do adicional (que remunera o excesso trabalhado, não o que se deve).
+        const pct = positivo ? (Number(pctEl.value) || 0) : 0;
+        const minutosCalc = positivo ? min : Math.abs(min);
+        const c = calculoHoraExtra(f, bhCargoDoFunc(f), folhaState.params, minutosCalc, pct);
         sugerido = c.total;
         if (!valorTocado) valorEl.value = c.total ? c.total.toFixed(2) : '';
         calcEl.innerHTML = `
@@ -998,24 +1036,28 @@ function formQuitacaoBh(f, sit) {
                 <span>= Base de cálculo</span><strong>${fmtBRL(c.base)}</strong>
                 <span>÷ Jornada mensal${f.jornadaMensal ? '' : ' <em class="bx-calc-nota">(padrão)</em>'}</span><strong>${c.jornadaMes} h</strong>
                 <span>= Valor da hora</span><strong>${fmtBRL(c.valorHora)}</strong>
-                <span>+ Adicional de ${fmtPct(pct, 0)}</span><strong>${fmtBRL(c.valorHoraExtra)}</strong>
-                <span>× ${fmtHHMM(min)} (${sel.length} ${sel.length === 1 ? 'mês' : 'meses'})</span><strong>${c.horas.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} h</strong>
+                ${positivo ? `<span>+ Adicional de ${fmtPct(pct, 0)}</span><strong>${fmtBRL(c.valorHoraExtra)}</strong>` : ''}
+                <span>× ${fmtHHMM(minutosCalc)} ${positivo ? '(saldo líquido do ciclo)' : '(saldo devido, sem adicional)'}</span><strong>${c.horas.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} h</strong>
             </div>
-            <div class="bx-calc-total"><span>Valor sugerido</span><strong>${fin ? fmtBRL(c.total) : '—'}</strong></div>
-            <div class="qt-restante">
-                ${icon('refresh')} Após a quitação, o ciclo continua com <strong>${fmtHHMM(restante)}</strong> em aberto até ${fmtDate(sit.fim)}.
-            </div>`;
+            <div class="bx-calc-total"><span>Valor sugerido</span><strong>${fin ? fmtBRL(c.total) : '—'}</strong></div>`;
         syncAviso();
-        return { c, min, sel };
+        return { c, min, sel: mesesQuitar };
     };
 
     // O RH tem que enxergar, antes de confirmar, em qual folha isto vira custo — e quando o
-    // destino não paga, tem que ver que a folha NÃO muda.
+    // destino não move dinheiro, tem que ver que a folha NÃO muda.
     function syncAviso() {
-        const pago = destEl.value === BH_DESTINO_PAGO;
+        const destino = destEl.value;
+        const perdoado = destino === 'Perdoado';
+        valorWrap.hidden = perdoado || !fin;
+        if (perdoado) { avisoEl.hidden = false; avisoEl.innerHTML = `${icon('info')} <span><strong>Perdoado</strong> zera o saldo negativo no banco de horas — os meses travam do mesmo jeito, mas nenhum valor é registrado nem soma na folha.</span>`; return; }
+
         const v = fin ? (Number(valorEl.value) || 0) : 0;
         const divergiu = valorTocado && sugerido && v && Math.abs(v - sugerido) >= 0.01;
 
+        valorLbl.innerHTML = destino === BH_DESTINO_PAGO
+            ? 'Valor pago (R$) <span class="req">*</span>'
+            : 'Valor a descontar (R$) <span class="req">*</span>';
         valorHint.innerHTML = divergiu
             ? `${fin ? `Sugerido: <strong>${fmtBRL(sugerido)}</strong> — ` : ''}valor ajustado manualmente. O sugerido fica registrado para auditoria.`
             : 'Sugerido pelos dados do funcionário — ajuste se a folha divergir.';
@@ -1023,25 +1065,14 @@ function formQuitacaoBh(f, sit) {
 
         const mesRef = mesLabel(mesDe(dataEl.value || hoje()));
         avisoEl.hidden = false;
-        avisoEl.innerHTML = pago
+        avisoEl.innerHTML = destino === BH_DESTINO_PAGO
             ? `${icon('info')} <span>Ao quitar, <strong>${fin ? fmtBRL(v) : 'o valor pago'}</strong> soma automaticamente na coluna <strong>HE (banco)</strong> da folha de <strong>${mesRef}</strong> — definida pela data do pagamento.</span>`
-            : `${icon('info')} <span><strong>Descontado</strong> não soma na folha como hora extra: é saldo devido pelo funcionário, e o desconto é rubrica própria. Os meses travam do mesmo jeito e o valor fica registrado aqui.</span>`;
+            : `${icon('info')} <span>Ao quitar, <strong>${fin ? fmtBRL(v) : 'o valor descontado'}</strong> é descontado automaticamente na coluna <strong>Desc. Atraso</strong> da folha de <strong>${mesRef}</strong> — definida pela data do pagamento.</span>`;
     }
 
-    const syncDestino = () => {
-        // "Descontado" abate horas que o funcionário deve. O adicional de HE não se aplica —
-        // deixar 50% ali sugeriria descontar 50% a mais do que ele deve.
-        const pago = destEl.value === BH_DESTINO_PAGO;
-        pctEl.disabled = !pago;
-        if (!pago && Number(pctEl.value) !== 0) pctEl.value = 0;
-        if (pago && Number(pctEl.value) === 0) pctEl.value = bhParams.adicionalPct;
-        recalc();
-    };
-
-    m.body.querySelectorAll('[data-mes]').forEach(c => c.onchange = recalc);
-    pctEl.oninput = recalc;
+    if (pctEl) pctEl.oninput = recalc;
     dataEl.onchange = syncAviso;
-    destEl.onchange = syncDestino;
+    destEl.onchange = () => { valorTocado = false; recalc(); };
     recalc();
 
     m.footer.querySelector('[data-cancel]').onclick = m.close;
@@ -1049,17 +1080,22 @@ function formQuitacaoBh(f, sit) {
     btnSave.onclick = async () => {
         const data = m.body.querySelector('#qtData').value;
         const destino = destEl.value;
+        const perdoado = destino === 'Perdoado';
         if (!data) return toast('Informe a data do pagamento.', 'error');
         if (data > hoje()) return toast('A data do pagamento não pode ser futura.', 'error');
         const r = recalc();
-        if (!r) return toast('Selecione ao menos um mês para quitar.', 'error');
 
-        // O que é gravado é o valor pago, não o sugerido: a quitação é o registro do que
-        // saiu do caixa. Sem permissão financeira o campo nem aparece — cai na sugestão.
-        const valor = fin ? (Number(valorEl.value) || 0) : r.c.total;
-        if (fin && !(valor > 0))
-            return toast('Informe o valor pago — é o registro do que saiu do caixa nesta quitação.', 'error');
-        if (!valor) return toast('O valor calculou zero — confira o salário do funcionário.', 'error');
+        // O que é gravado é o valor pago/descontado, não o sugerido: a quitação é o registro
+        // do que efetivamente moveu. Perdoado não move nada — valor fica sempre zero. Sem
+        // permissão financeira o campo nem aparece — cai na sugestão.
+        const valor = perdoado ? 0 : fin ? (Number(valorEl.value) || 0) : (r.c ? r.c.total : 0);
+        if (!perdoado) {
+            if (fin && !(valor > 0))
+                return toast(destino === BH_DESTINO_PAGO
+                    ? 'Informe o valor pago — é o registro do que saiu do caixa nesta quitação.'
+                    : 'Informe o valor a descontar.', 'error');
+            if (!valor) return toast('O valor calculou zero — confira o salário do funcionário.', 'error');
+        }
 
         btnSave.disabled = true;
         btnSave.innerHTML = '<span class="spinner"></span> Quitando...';
@@ -1068,24 +1104,26 @@ function formQuitacaoBh(f, sit) {
             await DB.save(PATHS.bancoHorasQuitacoes, null, {
                 funcionarioId: f.id,
                 cicloInicio: sit.inicio,
-                meses: r.sel.map(c => c.dataset.mes).sort(),
+                meses: r.sel,
                 minutos: r.min,
-                adicionalPct: Number(pctEl.value) || 0,
+                adicionalPct: positivo ? (Number(pctEl?.value) || 0) : 0,
                 destino,
                 valor,
                 // Sugerido junto do pago: a diferença entre os dois é a decisão humana, e é
                 // exatamente o que uma auditoria vai querer ver justificado.
-                valorSugerido: r.c.total,
+                valorSugerido: r.c ? r.c.total : 0,
                 data,
                 // Congelado, como no fechamento: promoção posterior não reescreve o que foi pago.
-                calculo: { salario: r.c.salario, insalubridade: r.c.insalubridade, base: r.c.base, valorHora: r.c.valorHora, jornadaMes: r.c.jornadaMes },
+                calculo: r.c ? { salario: r.c.salario, insalubridade: r.c.insalubridade, base: r.c.base, valorHora: r.c.valorHora, jornadaMes: r.c.jornadaMes } : null,
                 obs: m.body.querySelector('#qtObs').value.trim(),
                 anexos
             });
             await excluirAnexoRemoto(removidos);
             toast(destino === BH_DESTINO_PAGO
                 ? `${fmtHHMM(r.min)} quitados — ${fmtBRL(valor)} na folha de ${mesLabel(mesDe(data))}.`
-                : `${fmtHHMM(r.min)} quitados — ${destino.toLowerCase()}, sem efeito na folha.`);
+                : destino === 'Descontado'
+                    ? `${fmtHHMM(r.min)} quitados — ${fmtBRL(valor)} descontados na folha de ${mesLabel(mesDe(data))}.`
+                    : `${fmtHHMM(r.min)} quitados — perdoados, sem efeito na folha.`);
             m.close();
             bhReload();
         } catch (e) {

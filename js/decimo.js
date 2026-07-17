@@ -13,6 +13,8 @@ const decimoState = {
     funcionarios: [], cargos: [], unidades: [], ausencias: [], demissoes: [],
     decimos: [], params: {},
     bhFechamentos: [], bhQuitacoes: [], extras: [],
+    // Âncora do 13º: primeiro mês de folha publicado por funcionário — ver anoAncoraFolha.
+    folha: {},
     carregado: false
 };
 let decimoSub = 'programacao';     // programacao | parcelas
@@ -44,6 +46,9 @@ const decimoCtx = () => ({
     demissoes: decimoState.demissoes,
     decimos: decimoState.decimos,
     params: decimoState.params,
+    // Âncora do 13º (ver anoAncoraFolha em utils.js) — sem isto, uma empresa que adere ao
+    // sistema com funcionários antigos veria pendência de 13º de anos anteriores à adoção.
+    folha: decimoState.folha,
     mediaHe13: (f, ano) => {
         if (!feriasParams.mediaHe) return 0;
         return mediaHeFerias(f.id, `${ano}-01-01`, `${ano}-12-31`,
@@ -54,17 +59,19 @@ const decimoCtx = () => ({
 async function loadDecimoBase(force) {
     if (decimoState.carregado && !force) return;
     const [funcionarios, cargos, unidades, ausencias, demissoes, decimos, params,
-           bhFechamentos, bhQuitacoes, extras] = await Promise.all([
+           bhFechamentos, bhQuitacoes, extras, folha] = await Promise.all([
         DB.getAll(PATHS.funcionarios), DB.getAll(PATHS.cargos), DB.getAll(PATHS.unidades),
         DB.getAll(PATHS.ausencias), DB.getAll(PATHS.demissoes), DB.getAll(PATHS.decimos),
         DB.getObj(PATHS.parametros),
         // Fontes da média de HE (Súmula 45) — as mesmas da folha
         DB.getAll(PATHS.bancoHorasFechamentos), DB.getAll(PATHS.bancoHorasQuitacoes),
-        DB.getAll(PATHS.extraBanco)
+        DB.getAll(PATHS.extraBanco),
+        // Âncora do 13º: primeiro mês de folha publicado por funcionário — ver anoAncoraFolha.
+        DB.getObj(PATHS.folha)
     ]);
     Object.assign(decimoState, {
         funcionarios, cargos, unidades, ausencias, demissoes, decimos,
-        params: params || {}, bhFechamentos, bhQuitacoes, extras, carregado: true
+        params: params || {}, bhFechamentos, bhQuitacoes, extras, folha: folha || {}, carregado: true
     });
 }
 
@@ -80,6 +87,14 @@ const DECIMO_ESTADOS = {
 async function renderDecimo() {
     await loadDecimoBase();
     const cont = document.getElementById('lancContent');
+    // formDecimo (lançar/editar/excluir parcela) chama renderDecimo() diretamente ao salvar —
+    // inclusive quando aberto a partir da ficha do funcionário (aba Dados → 13º Salário), fora
+    // da página de Lançamentos, onde #lancContent não existe.
+    if (!cont) {
+        const fdCont = document.getElementById('fdContent');
+        if (fdCont?.dataset.fdDadosSub === 'decimo13' && fdDadosRefresh) fdDadosRefresh();
+        return;
+    }
     const anos = new Set([new Date().getFullYear(), decimoState.ano]);
     decimoState.decimos.forEach(d => anos.add(Number(d.ano)));
     decimoState.funcionarios.forEach(f => { if (f.admissao) anos.add(Number(f.admissao.slice(0, 4))); });

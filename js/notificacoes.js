@@ -41,6 +41,10 @@ async function refreshNotificacoes(dadosOpt) {
         funcionarios: dados.funcionarios, cargos: cargos13, ausencias: dados.ausencias,
         demissoes: dados.demissoes || await DB.getAll(PATHS.demissoes),
         decimos, params: params13 || {},
+        // Âncora do 13º (ver anoAncoraFolha, utils.js) — sem isto o sino alertaria sobre
+        // competências de anos anteriores à empresa aderir ao sistema, para funcionários
+        // cadastrados com admissão retroativa.
+        folha: dados.folha || await DB.getObj(PATHS.folha),
         // A média de HE exige as fontes do banco; o sino não as tem sempre. Sem ela o valor
         // sai um pouco menor — aceitável aqui: o sino alerta sobre PRAZO, e o valor exato
         // está na aba. Nunca o contrário: um sino que não abre é pior que um valor redondo.

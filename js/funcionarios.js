@@ -38,6 +38,24 @@ const FD_DOC_ABAS = [
     ...TIPOS_DOCUMENTO.map(t => ({ id: t, label: FD_DOC_LABEL[t] || t }))
 ];
 let fdDocAba = 'aso';
+// Redesenha a aba Horas do drawer aberto, se for a ativa — setada por drawerFuncionario,
+// chamada por bhReload() (bancohoras.js) depois de um fechamento/quitação salvo pela ficha.
+let fdHorasRefresh = null;
+// Sub-aba ativa dentro de Horas: ciclo vigente (o que está correndo agora) vs. ciclos
+// anteriores (histórico fechado/liquidado) — mesmo padrão de fdDocAba/fdHistSub.
+let fdHorasSub = 'vigente';
+// Sub-aba ativa dentro de Dados: Informações / Pagamentos / 13º Salário / Férias.
+let fdDadosSub = 'informacoes';
+// Redesenha a aba Dados do drawer aberto — setada por drawerFuncionario, chamada por
+// renderLancTab() (lancamentos.js) e renderDecimo() (decimo.js) quando um formulário de
+// férias ou de parcela do 13º é salvo a partir da ficha (fdDadosSub === 'ferias'/'decimo13'),
+// fora da página de Lançamentos onde essas funções normalmente redesenham a própria página.
+let fdDadosRefresh = null;
+// Ano selecionado na sub-aba Pagamentos — null até o primeiro render, quando cai no ano mais
+// recente com dado. Persiste entre trocas de sub-aba (mesmo padrão de fdHorasSub/fdDadosSub).
+let fdPagAno = null;
+// Mesma ideia para a sub-aba 13º Salário — ano selecionado, null até o primeiro render.
+let fdDecimo13Ano = null;
 
 // Tipo gravado antes de o ASO virar aba própria (lia-se de f.documentos, não de rh_asos).
 // Sem isto o registro existiria no banco sem nenhuma aba que o exibisse — sumiria da tela
@@ -251,7 +269,10 @@ function drawerFuncionario(f, abaInicial = 'dados') {
                     </div>
                 </div>
                 ${podeEditar ? `<button class="btn btn-secondary btn-sm" id="fdEdit">${icon('edit')} Editar</button>` : ''}
-            </div>`
+            </div>`,
+        // Sem isto, um fechamento/quitação/parcela/férias salvos depois que o drawer já
+        // fechou chamariam setTab num #fdContent que não existe mais no DOM.
+        onClose: () => { fdHorasRefresh = null; fdDadosRefresh = null; chartDestroy('fdHoras'); chartDestroy('fdDados'); }
     });
 
     d.body.innerHTML = `
@@ -259,6 +280,7 @@ function drawerFuncionario(f, abaInicial = 'dados') {
             <div class="tab" data-tab="dados">Dados</div>
             <div class="tab" data-tab="beneficios">Benefícios</div>
             <div class="tab" data-tab="documentos">Documentos</div>
+            <div class="tab" data-tab="horas">Horas</div>
             <div class="tab" data-tab="historico">Histórico</div>
         </div>
         <div class="mt-16" id="fdContent"></div>`;
@@ -269,13 +291,58 @@ function drawerFuncionario(f, abaInicial = 'dados') {
     const tabs = d.body.querySelectorAll('#fdTabs .tab');
     const setTab = id => {
         tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === id));
-        ({ dados: fdDados, beneficios: fdBeneficios, documentos: fdDocumentos, historico: fdHistorico })[id](f, d.body.querySelector('#fdContent'));
+        const contEl = d.body.querySelector('#fdContent');
+        contEl.dataset.fdTab = id;
+        ({ dados: fdDados, beneficios: fdBeneficios, documentos: fdDocumentos, horas: fdHoras, historico: fdHistorico })[id](f, contEl);
     };
     tabs.forEach(t => t.onclick = () => setTab(t.dataset.tab));
     setTab(abaInicial);
+    // Fechamento/quitação de banco de horas abertos a partir desta aba precisam redesenhar
+    // a mesma aba depois de salvar — bhReload() (bancohoras.js) chama isto se a aba Horas
+    // estiver ativa no momento.
+    fdHorasRefresh = () => setTab('horas');
+    // Mesma ideia para férias/13º, que vivem dentro da aba Dados — renderLancTab()
+    // (lancamentos.js) e renderDecimo() (decimo.js) chamam isto se a sub-aba certa estiver ativa.
+    fdDadosRefresh = () => setTab('dados');
 }
 
-function fdDados(f, cont) {
+// ---- Dados: shell de sub-abas ----
+// Informações é o antigo conteúdo único da aba; Pagamentos/13º Salário/Férias são views novas
+// que reaproveitam os motores de folha.js, decimo.js e utils.js — mesmo padrão de fdHoras.
+async function fdDados(f, cont) {
+    const subs = [
+        { id: 'informacoes', label: 'Informações' },
+        { id: 'pagamentos', label: 'Pagamentos' },
+        { id: 'decimo13', label: '13º Salário' },
+        { id: 'ferias', label: 'Férias' }
+    ];
+
+    cont.innerHTML = `
+        <div class="tabs tabs-sub" id="fdDadosSubs">${subs.map(s => `
+            <div class="tab" data-sub="${s.id}">${s.label}</div>`).join('')}
+        </div>
+        <div class="mt-12" id="fdDadosBody"></div>`;
+
+    const box = cont.querySelector('#fdDadosBody');
+    const views = {
+        informacoes: () => fdInformacoes(f, box),
+        pagamentos: () => fdPagamentos(f, box),
+        decimo13: () => fdDecimo13(f, box),
+        ferias: () => fdFeriasAba(f, box)
+    };
+
+    const subEls = cont.querySelectorAll('#fdDadosSubs .tab');
+    const setSub = id => {
+        fdDadosSub = id;
+        cont.dataset.fdDadosSub = id;
+        subEls.forEach(t => t.classList.toggle('active', t.dataset.sub === id));
+        views[id]();
+    };
+    subEls.forEach(t => t.onclick = () => setSub(t.dataset.sub));
+    setSub(views[fdDadosSub] ? fdDadosSub : 'informacoes');
+}
+
+function fdInformacoes(f, cont) {
     const cargo = cargoDe(f);
     const idadeF = idade(f.nascimento);
     const fin = can('ver_financeiro');
@@ -309,6 +376,482 @@ function fdDados(f, cont) {
             <div class="fd-section-body">${s.itens.map(([l, v]) => `
                 <div class="fd-row"><span class="fd-k">${l}</span><span class="fd-v">${escapeHtml(v)}</span></div>`).join('')}</div>
         </div>`).join('');
+}
+
+// ---- Pagamentos (histórico da folha) ----
+// Reusa o motor de folha.js (folhaComHeBanco, brutoLinha, totalLinha, feriasCtx) — nenhuma
+// regra nova, só a leitura por-funcionário do que já é lançado em Lançamentos → Folha mensal.
+// Sensível: mesmo gate de permissão da própria página Folha & Custos.
+async function fdPagamentos(f, box) {
+    if (!can('ver_folha') || !can('ver_financeiro')) {
+        box.innerHTML = emptyState({
+            icon: 'lock', title: 'Acesso restrito',
+            text: 'Ver o histórico de pagamentos exige as permissões "Ver Folha & Custos" e "Ver valores financeiros".'
+        });
+        return;
+    }
+    box.innerHTML = '<div class="loading-center"><div class="spinner-dark"></div></div>';
+    const [folhaAll, bhFechamentos, bhQuitacoes, extras, decimos, params] = await Promise.all([
+        DB.getObj(PATHS.folha),
+        DB.getAll(PATHS.bancoHorasFechamentos),
+        DB.getAll(PATHS.bancoHorasQuitacoes),
+        DB.getAll(PATHS.extraBanco),
+        DB.getAll(PATHS.decimos),
+        DB.getObj(PATHS.parametros)
+    ]);
+
+    // Mesmo ctx que a Folha usa para as colunas derivadas (HE banco, férias, 13º) — sem ele o
+    // total ficaria menor do que o que a folha mensal realmente mostra para este mês.
+    const ctx = feriasCtx({
+        ausencias: funcState.ausencias, funcionarios: funcState.funcionarios, cargos: funcState.cargos,
+        params: params || {}, decimos, bhFechamentos, extras, bhQuitacoes
+    });
+
+    const todosMeses = Object.keys(folhaAll || {})
+        .filter(mk => folhaAll[mk]?.[f.id])
+        .sort((a, b) => b.localeCompare(a))
+        .map(mk => {
+            const linha = folhaComHeBanco({ [f.id]: folhaAll[mk][f.id] }, mk, bhFechamentos, extras, bhQuitacoes, ctx)[f.id];
+            const total = totalLinha(linha);
+            // Mesma conta simplificada de detalheFolhaMes: custo total menos Encargos (FGTS +
+            // INSS patronal), que é custo da empresa e nunca passa pelo bolso do funcionário.
+            const liquido = total - (Number(linha.encargos) || 0);
+            return { mk, linha, total, liquido };
+        });
+
+    if (!todosMeses.length) {
+        box.innerHTML = emptyState({
+            icon: 'money', title: 'Nenhum pagamento lançado',
+            text: 'Nenhum mês de folha lançado para este funcionário ainda. Os lançamentos são feitos em Lançamentos → Folha mensal.'
+        });
+        return;
+    }
+
+    // Anos com dado, do mais recente para o mais antigo — só estes entram na navegação, um
+    // ano sem nenhum mês lançado não é um "anterior"/"próximo" válido para o funcionário.
+    const anosComDados = [...new Set(todosMeses.map(m => Number(m.mk.slice(0, 4))))].sort((a, b) => b - a);
+    if (!anosComDados.includes(fdPagAno)) fdPagAno = anosComDados[0];
+
+    const render = () => {
+        const meses = todosMeses.filter(m => Number(m.mk.slice(0, 4)) === fdPagAno);
+        const idxAno = anosComDados.indexOf(fdPagAno);
+        const temAnterior = idxAno < anosComDados.length - 1;   // existe ano mais antigo com dado
+        const temProximo = idxAno > 0;                          // existe ano mais recente com dado
+
+        // Gráfico em ordem cronológica (mais antigo → mais recente); os cards abaixo continuam
+        // do mais recente para o mais antigo, que é a ordem de leitura natural de um histórico.
+        const doGrafico = meses.slice().reverse();
+
+        box.innerHTML = `
+            <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+                <div class="month-nav">
+                    ${temAnterior ? `<button id="fdPagAnoPrev" title="Ano anterior com pagamentos">‹</button>` : ''}
+                    <span class="month-label">${fdPagAno}</span>
+                    ${temProximo ? `<button id="fdPagAnoNext" title="Próximo ano com pagamentos">›</button>` : ''}
+                </div>
+            </div>
+            <div class="chart-grid chart-grid-full">
+                ${chartCard({
+                    id: 'fdPagFluxo', titulo: 'Custo total por mês',
+                    sub: 'Remuneração + encargos + benefícios + HE (banco) + férias + 13º — meses lançados',
+                    total: fmtBRL(meses.reduce((s, m) => s + m.total, 0)),
+                    acao: `<button class="chart-legenda-btn" id="fdPagToggle" title="Alternar entre custo total (empresa) e valor líquido (o que o funcionário recebeu)">${icon('money')}<span>Custo total</span></button>`
+                })}
+            </div>
+            <div class="bh-ciclos-grid" id="fdPagGrid">
+                ${meses.map(m => {
+                    const l = m.linha;
+                    const partes = [
+                        l.salario ? `${fmtBRL(l.salario)} salário` : '',
+                        l[FOLHA_HE_BANCO] ? `${fmtBRL(l[FOLHA_HE_BANCO])} HE` : '',
+                        l[FOLHA_FERIAS_CALC] ? `${fmtBRL(l[FOLHA_FERIAS_CALC])} férias` : '',
+                        l[FOLHA_DECIMO_CALC] ? `${fmtBRL(l[FOLHA_DECIMO_CALC])} 13º` : '',
+                        l[FOLHA_DESC_ATRASO] ? `${fmtBRL(l[FOLHA_DESC_ATRASO])} desc. atraso` : '',
+                        `${fmtBRL(m.liquido)} líquido`
+                    ].filter(Boolean);
+                    return `
+                    <div class="bh-ciclo-card row-clickable" data-mk="${m.mk}">
+                        <div class="bh-ciclo-head">
+                            <div><strong>${mesLabel(m.mk)}</strong></div>
+                            ${icon('chevronRight')}
+                        </div>
+                        <div class="bh-ciclo-saldo">
+                            <div class="bh-saldo-big">${fmtBRL(m.total)}</div>
+                            <div class="bh-saldo-comp">${escapeHtml(partes.join(' · '))}</div>
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>`;
+
+        // Alterna o gráfico entre custo total (empresa) e valor líquido (o que o funcionário
+        // recebeu), sem refazer os cards abaixo — só o gráfico e o total do cabeçalho mudam.
+        let modoLiquido = false;
+        const desenhaChart = () => {
+            const campo = modoLiquido ? 'liquido' : 'total';
+            const label = modoLiquido ? 'Valor líquido' : 'Custo total';
+            mkChart('fdDados', 'fdPagFluxo', {
+                type: 'bar',
+                data: {
+                    labels: doGrafico.map(m => mesLabel(m.mk)),
+                    datasets: [dvBarra(label, doGrafico.map(m => m[campo]), dvCor(modoLiquido ? 1 : 0))]
+                },
+                options: dvOpts({ fmt: 'brl' })
+            });
+            const totalStat = box.querySelector('.chart-card .cc-total');
+            if (totalStat) totalStat.textContent = fmtBRL(meses.reduce((s, m) => s + m[campo], 0));
+        };
+        desenhaChart();
+
+        const btnToggle = box.querySelector('#fdPagToggle');
+        if (btnToggle) btnToggle.onclick = () => {
+            modoLiquido = !modoLiquido;
+            btnToggle.classList.toggle('active', modoLiquido);
+            // O rótulo diz o que o gráfico ESTÁ mostrando agora, não o que o clique mudaria para.
+            btnToggle.querySelector('span').textContent = modoLiquido ? 'Valor líquido' : 'Custo total';
+            desenhaChart();
+        };
+
+        box.querySelectorAll('[data-mk]').forEach(card => {
+            card.onclick = () => detalheFolhaMes(f, meses.find(m => m.mk === card.dataset.mk));
+        });
+
+        const btnPrev = box.querySelector('#fdPagAnoPrev');
+        if (btnPrev) btnPrev.onclick = () => { fdPagAno = anosComDados[idxAno + 1]; render(); };
+        const btnNext = box.querySelector('#fdPagAnoNext');
+        if (btnNext) btnNext.onclick = () => { fdPagAno = anosComDados[idxAno - 1]; render(); };
+    };
+    render();
+}
+
+// ---- Janela: detalhe do custo de um mês (recibo simplificado) ----
+function detalheFolhaMes(f, item) {
+    const l = item.linha;
+    // Todas as verbas que compõem brutoLinha/totalLinha (folha.js) têm que aparecer aqui —
+    // faltava a HE legada (FOLHA_HE_MANUAL): a soma das linhas mostradas divergia do "Custo
+    // total" sempre que o mês tinha hora extra lançada à mão antes do banco de horas.
+    const linhas = [
+        ...FOLHA_COLS.map(([k, label]) => [label, Number(l[k]) || 0]),
+        [FOLHA_COL_LABEL[FOLHA_HE_BANCO], Number(l[FOLHA_HE_BANCO]) || 0],
+        [FOLHA_COL_LABEL[FOLHA_HE_MANUAL], Number(l[FOLHA_HE_MANUAL]) || 0],
+        [FOLHA_COL_LABEL[FOLHA_FERIAS_CALC], Number(l[FOLHA_FERIAS_CALC]) || 0],
+        [FOLHA_COL_LABEL[FOLHA_DECIMO_CALC], Number(l[FOLHA_DECIMO_CALC]) || 0],
+        [FOLHA_COL_LABEL[FOLHA_DESC_ATRASO], Number(l[FOLHA_DESC_ATRASO]) || 0]
+    ].filter(([, v]) => v);
+    const desconto = descontoEfetivoLinha(l);
+
+    // Custo líquido: o que chega às mãos do funcionário — o custo total MENOS os Encargos
+    // (FGTS + INSS patronal), que são custo da empresa e nunca passam pelo bolso dele.
+    // Simplificado: o sistema não lança INSS/IRRF do funcionário (retenções na fonte), então
+    // isto não é o líquido do holerite — é "quanto do custo da empresa virou pagamento",
+    // por isso o aviso explícito abaixo do valor.
+    const encargos = Number(l.encargos) || 0;
+    const liquido = item.total - encargos;
+
+    const m = openModal({
+        title: `Custo de ${mesLabel(item.mk)} — ${f.nome}`,
+        size: 'md',
+        body: `
+            <div class="bx-calc">
+                <div class="bx-calc-tit">${icon('money')} Composição do custo</div>
+                <div class="bx-calc-grid">
+                    ${linhas.map(([label, v]) => `<span>${escapeHtml(label)}</span><strong>${fmtBRL(v)}</strong>`).join('')}
+                    ${desconto ? `<span>− Coparticipação do funcionário</span><strong>−${fmtBRL(desconto)}</strong>` : ''}
+                </div>
+                <div class="bx-calc-total"><span>Custo total (empresa)</span><strong>${fmtBRL(item.total)}</strong></div>
+            </div>
+            <div class="bx-calc">
+                <div class="bx-calc-tit">${icon('money')} Custo líquido</div>
+                <div class="bx-calc-grid">
+                    <span>Custo total</span><strong>${fmtBRL(item.total)}</strong>
+                    ${encargos ? `<span>− Encargos (FGTS + INSS patronal)</span><strong>−${fmtBRL(encargos)}</strong>` : ''}
+                </div>
+                <div class="bx-calc-total"><span>Custo líquido</span><strong>${fmtBRL(liquido)}</strong></div>
+                <p class="muted" style="font-size:11px;margin-top:8px">
+                    O que chega às mãos do funcionário, sem os encargos que são custo da empresa e nunca passam pelo bolso dele.
+                    Não desconta INSS/IRRF do funcionário — o sistema não lança as retenções na fonte, então este não é o líquido exato do holerite.
+                </p>
+            </div>`,
+        footer: `<button class="btn btn-secondary" data-cancel>Fechar</button>`
+    });
+    m.footer.querySelector('[data-cancel]').onclick = m.close;
+}
+
+// ---- 13º Salário ----
+// Reusa situacao13Func (utils.js) — o mesmo motor da aba Lançamentos → 13º Salário — e o
+// HTML de janelaDecimo (decimo.js). Filtro de ano com navegação ‹ › (mesmo padrão da aba
+// Pagamentos): mostra a competência do ano selecionado, começando no ano corrente, ciclando
+// só entre anos com competência aplicável.
+async function fdDecimo13(f, box) {
+    box.innerHTML = '<div class="loading-center"><div class="spinner-dark"></div></div>';
+    const podeEditar = can('editar_lancamentos');
+    const anoCorrente = new Date().getFullYear();
+
+    const [demissoes, decimos, bhFechamentos, bhQuitacoes, extras, params, folha] = await Promise.all([
+        DB.getAll(PATHS.demissoes), DB.getAll(PATHS.decimos),
+        DB.getAll(PATHS.bancoHorasFechamentos), DB.getAll(PATHS.bancoHorasQuitacoes), DB.getAll(PATHS.extraBanco),
+        DB.getObj(PATHS.parametros),
+        // Âncora do 13º: primeiro mês de folha publicado para o funcionário — ver
+        // anoAncoraFolha (utils.js). Sem isso, um funcionário antigo cadastrado com dados
+        // retroativos mostraria pendência de anos que a empresa nunca gerenciou no sistema.
+        DB.getObj(PATHS.folha)
+    ]);
+
+    // Mesmas chaves de decimoCtx() (decimo.js), montadas aqui para não depender de
+    // decimoState estar carregado só para LER a situação do funcionário.
+    const ctx = {
+        funcionarios: funcState.funcionarios, cargos: funcState.cargos,
+        ausencias: funcState.ausencias, demissoes, decimos, params: params || {}, folha: folha || {},
+        mediaHe13: (ff, ano) => {
+            if (!feriasParams.mediaHe) return 0;
+            return mediaHeFerias(ff.id, `${ano}-01-01`, `${ano}-12-31`, bhFechamentos, extras, bhQuitacoes).media;
+        }
+    };
+
+    // Anos candidatos: da admissão até o ano corrente, mais qualquer ano com parcela lançada
+    // (cobre o caso de o funcionário ter saído antes do ano corrente). Só entram na navegação
+    // os que de fato têm competência aplicável — situacao13Func null (estagiário, admissão
+    // futura) não é um ano "anterior"/"próximo" válido.
+    const anosCand = new Set([anoCorrente]);
+    if (f.admissao) for (let a = Number(f.admissao.slice(0, 4)); a <= anoCorrente; a++) anosCand.add(a);
+    decimos.filter(d => d.funcionarioId === f.id).forEach(d => anosCand.add(Number(d.ano)));
+    const anosComSit = [...anosCand].filter(Boolean)
+        .sort((a, b) => b - a)
+        .map(a => ({ ano: a, sit: situacao13Func(f, a, ctx) }))
+        .filter(x => x.sit);
+
+    if (!anosComSit.length) {
+        box.innerHTML = emptyState({
+            icon: 'gift', title: 'Sem 13º salário',
+            text: 'Este funcionário não tem direito a 13º (estagiário) ou ainda não tem competência aplicável.'
+        });
+        return;
+    }
+
+    const anosDisp = anosComSit.map(x => x.ano);
+    if (!anosDisp.includes(fdDecimo13Ano)) fdDecimo13Ano = anosDisp.includes(anoCorrente) ? anoCorrente : anosDisp[0];
+
+    const heroHtml = s => {
+        const e = DECIMO_ESTADOS[s.estado];
+        const mesesHtml = s.meses.map(m => {
+            const cls = m.conta ? 'is-on' : m.dias > 0 ? 'is-parcial' : 'is-off';
+            return `<div class="dc-mes ${cls}"><span>${MESES[m.mes]}</span><em>${m.dias === 0 ? '—' : m.conta ? '1/12' : '0'}</em></div>`;
+        }).join('');
+        return `
+            <div class="dc-hero ${s.estado === 'rescisao' || s.saldo > 0.01 ? 'is-critico' : 'is-ok'}">
+                <div class="dc-hero-top">
+                    <div>
+                        <span class="dc-lbl">13º devido — ${s.ano}</span>
+                        <div class="dc-saldo">${fmtBRL(s.devido)}</div>
+                        <div class="dc-decomp">${s.avos}/12 avos${s.pagoTotal ? ` · ${fmtBRL(s.pagoTotal)} já pago` : ''}</div>
+                    </div>
+                    <div class="dc-hero-right">
+                        <span class="badge ${e.cls}">${e.txt}</span>
+                        ${s.saldo > 0.01 ? `<div class="dc-passivo">${fmtBRL(Math.max(0, s.saldo))}<span>saldo a pagar</span></div>` : ''}
+                    </div>
+                </div>
+                ${s.semDireito ? `<p class="dc-desc">Sem direito a 13º proporcional — desligado por ${escapeHtml(s.motivoSemDireito)} (Súmula 14 TST).</p>` : ''}
+            </div>
+            <div class="dc-sec">
+                <div class="dc-sec-tit">${icon('calendar')} Avos da competência</div>
+                <div class="dc-meses">${mesesHtml}</div>
+            </div>
+            <div class="dc-sec">
+                <div class="dc-sec-tit">${icon('money')} Composição da base</div>
+                <div class="bx-calc">
+                    <div class="bx-calc-grid">
+                        <span>Salário</span><strong>${fmtBRL(s.salario)}</strong>
+                        ${s.insalubridade ? `<span>+ Insalubridade</span><strong>${fmtBRL(s.insalubridade)}</strong>` : ''}
+                        ${s.mediaHe ? `<span>+ Média de HE</span><strong>${fmtBRL(s.mediaHe)}</strong>` : ''}
+                        <span>= Base</span><strong>${fmtBRL(s.base)}</strong>
+                        ${s.adiantamentoFerias ? `<span>− Adiantado nas férias</span><strong>−${fmtBRL(s.adiantamentoFerias)}</strong>` : ''}
+                        ${s.pagoParcelas ? `<span>− Parcelas lançadas</span><strong>−${fmtBRL(s.pagoParcelas)}</strong>` : ''}
+                    </div>
+                    <div class="bx-calc-total"><span>Saldo a pagar</span><strong>${fmtBRL(Math.max(0, s.saldo))}</strong></div>
+                </div>
+            </div>
+            <div class="dc-sec">
+                <div class="dc-sec-tit">${icon('table')} Parcelas lançadas</div>
+                ${s.parcelas.length ? `
+                <div class="dc-lista">
+                    ${s.parcelas.map(p => `
+                        <div class="dc-item is-link" data-parc="${p.id}">
+                            <span class="dc-item-ico">${icon('gift')}</span>
+                            <div class="grow">
+                                <strong>${escapeHtml(decimoTipo(p.tipo).label)}</strong>
+                                <div class="muted">Pago em ${fmtDate(p.data)}${p.obs ? ` — ${escapeHtml(p.obs)}` : ''}</div>
+                            </div>
+                            <strong class="num">${fmtBRL(p.bruto)}</strong>
+                            ${icon('chevronRight')}
+                        </div>`).join('')}
+                </div>` : `<div class="dc-vazio">${icon('gift')} Nenhuma parcela lançada nesta competência.</div>`}
+            </div>
+            ${podeEditar && !s.semDireito && s.saldo > 0.01 ? `
+            <div class="flex" style="gap:8px;margin-bottom:18px">
+                <button class="btn btn-primary btn-sm" data-lancar-ano="${s.ano}">${icon('plus')} Lançar parcela</button>
+            </div>` : ''}`;
+    };
+
+    const abrirDecimoForm = async (seed) => {
+        // formDecimo (decimo.js) lê decimoState internamente (funcionários, contexto) — sem
+        // carregar antes, abrir pela ficha (fora de Lançamentos) apresentaria a lista vazia.
+        if (typeof decimoState !== 'undefined' && !decimoState.carregado) await loadDecimoBase();
+        formDecimo(seed);
+    };
+
+    const render = () => {
+        const idxAno = anosDisp.indexOf(fdDecimo13Ano);
+        const temAnterior = idxAno < anosDisp.length - 1;   // existe ano mais antigo com competência
+        const temProximo = idxAno > 0;                      // existe ano mais recente com competência
+        const sit = anosComSit.find(x => x.ano === fdDecimo13Ano).sit;
+
+        box.innerHTML = `
+            <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+                <div class="month-nav">
+                    ${temAnterior ? `<button id="fdDec13Prev" title="Ano anterior com competência">‹</button>` : ''}
+                    <span class="month-label">${fdDecimo13Ano}</span>
+                    ${temProximo ? `<button id="fdDec13Next" title="Próximo ano com competência">›</button>` : ''}
+                </div>
+            </div>
+            ${heroHtml(sit)}`;
+
+        const bLancar = box.querySelector('[data-lancar-ano]');
+        if (bLancar) bLancar.onclick = () => abrirDecimoForm({ funcionarioId: f.id, ano: Number(bLancar.dataset.lancarAno) });
+        box.querySelectorAll('[data-parc]').forEach(el => {
+            el.onclick = () => {
+                const p = sit.parcelas.find(x => x.id === el.dataset.parc);
+                if (p) abrirDecimoForm(p);
+            };
+        });
+
+        const btnPrev = box.querySelector('#fdDec13Prev');
+        if (btnPrev) btnPrev.onclick = () => { fdDecimo13Ano = anosDisp[idxAno + 1]; render(); };
+        const btnNext = box.querySelector('#fdDec13Next');
+        if (btnNext) btnNext.onclick = () => { fdDecimo13Ano = anosDisp[idxAno - 1]; render(); };
+    };
+    render();
+}
+
+// ---- Férias ----
+// Reusa situacaoFeriasFunc/competenciasFerias/tetoDiasFerias (utils.js) e o HTML de
+// detalheFeriasFunc (lancamentos.js) — mesmo motor da Programação de férias — num painel
+// único (competência vigente + histórico), sem a divisão em abas daquela janela.
+// funcState.ausencias já está carregado (drawerFuncionario/render da lista): nenhum fetch novo.
+function fdFeriasAba(f, box) {
+    const ausencias = funcState.ausencias;
+    const sit = situacaoFeriasFunc(f, ausencias);
+    const publicadas = ausencias
+        .filter(a => a.funcionarioId === f.id && a.tipo === TIPO_FERIAS)
+        .sort((a, b) => (b.inicio || '').localeCompare(a.inicio || ''));
+
+    if (!sit && !publicadas.length) {
+        box.innerHTML = emptyState({
+            icon: 'sun', title: 'Sem férias',
+            text: f.demissao ? 'Funcionário desligado — sem ciclo de férias em aberto.' : 'Nenhum período aquisitivo aplicável ainda.'
+        });
+        return;
+    }
+
+    const podeEditar = can('editar_lancamentos');
+    const comps = sit ? competenciasFerias(f, ausencias) : [];
+    const fer = feriasVigente(f.id, ausencias);
+    const t = sit ? tetoDiasFerias(f, ausencias) : null;
+    const diasDevidos = comps.reduce((acc, c) => acc + c.emDobra, 0);
+
+    const ESTADO = {
+        vencida:  { cls: 'badge-danger',  txt: 'Vencida' },
+        vigente:  { cls: 'badge-info',    txt: 'Vigente' },
+        formacao: { cls: 'badge-neutral', txt: 'Em formação' },
+        gozada:   { cls: 'badge-success', txt: 'Gozada' }
+    };
+
+    box.innerHTML = `
+        ${sit ? `
+        <div class="df-hero ${sit.status === 'vencida' ? 'is-vencida' : sit.status === 'critica' ? 'is-critica' : 'is-ok'}">
+            <div class="df-hero-top">
+                <div>
+                    <span class="dc-lbl">${sit.status === 'aquisitivo' ? 'Direito em formação' : 'Dias em aberto'}</span>
+                    <div class="df-saldo">${t.max}<small>dias</small></div>
+                    <div class="df-decomp">${t.competencias} competência${t.competencias > 1 ? 's' : ''} em aberto${t.vencidas ? ` · <strong class="txt-danger">${t.vencidas} atrasada${t.vencidas > 1 ? 's' : ''}</strong>` : ''}</div>
+                </div>
+                <div class="dc-hero-right">
+                    <span class="badge ${FERIAS_STATUS[sit.status].cls}">${escapeHtml(sit.label)}</span>
+                    ${fer ? `<div class="df-emcurso">${icon('sun')} De férias até ${fmtDate(fer.retorno)}</div>` : ''}
+                </div>
+            </div>
+            <p class="dc-desc">${escapeHtml(sit.desc)}</p>
+            ${diasDevidos ? `<div class="df-dobra">${icon('alert')} <span><strong>${diasDevidos} dias</strong> já vencidos são devidos <strong>em dobro</strong> (art. 137 CLT).</span></div>` : ''}
+        </div>
+        ${podeEditar && !fer ? `<div class="flex" style="gap:8px;margin-bottom:18px"><button class="btn btn-primary btn-sm" id="fdFerLancar">${icon('plus')} Lançar férias</button></div>` : ''}
+        <div class="dc-sec">
+            <div class="dc-sec-tit">${icon('calendar')} Períodos aquisitivos</div>
+            <div class="df-comps">
+                ${comps.slice().reverse().map(c => {
+                    const e = ESTADO[c.estado];
+                    const pct = Math.round(c.usados / c.total * 100);
+                    return `
+                    <div class="df-comp is-${c.estado}">
+                        <div class="df-comp-top">
+                            <div>
+                                <strong>${fmtDate(c.aquisitivoIni)} → ${fmtDate(c.aquisitivoFim)}</strong>
+                                <div class="muted">${c.estado === 'formacao'
+                                    ? `Direito completo em ${fmtDate(c.aquisitivoFim)}`
+                                    : `Conceder até ${fmtDate(c.concessivoFim)}${c.dias < 0 ? ` — venceu há ${prazoTexto(c.dias)}` : c.estado === 'gozada' ? '' : ` — ${prazoTexto(c.dias)} restantes`}`}</div>
+                            </div>
+                            <span class="badge ${e.cls}">${e.txt}</span>
+                        </div>
+                        <div class="df-comp-bar" title="${c.usados} de ${c.total} dias">
+                            <div class="df-comp-fill is-${c.estado}" style="width:${pct}%"></div>
+                        </div>
+                        <div class="df-comp-nums">
+                            <span>${c.usados} de ${c.total} dias gozados</span>
+                            ${c.restantes && c.estado !== 'formacao' ? `<strong class="${c.estado === 'vencida' ? 'txt-danger' : ''}">faltam ${c.restantes}</strong>` : ''}
+                            ${c.fracionada ? '<span class="df-frac">fracionada</span>' : ''}
+                        </div>
+                        ${c.lancamentos.length ? `
+                        <div class="df-comp-lancs">
+                            ${c.lancamentos.map(l => `
+                                <button class="df-lanc" data-lanc="${l.id}">
+                                    ${icon('sun')} ${fmtDate(l.inicio)} → ${fmtDate(l.retorno)}
+                                    <span>${l.diasNaCompetencia}d${l.abonoDias ? ` · ${l.abonoDias} abono` : ''}</span>
+                                </button>`).join('')}
+                        </div>` : ''}
+                    </div>`;
+                }).join('')}
+            </div>
+        </div>` : `<div class="dc-vazio">${icon('sun')} ${f.demissao ? 'Funcionário desligado — sem ciclo de férias em aberto.' : 'Sem período aquisitivo aplicável.'}</div>`}
+
+        <div class="dc-sec">
+            <div class="dc-sec-tit">${icon('clock')} Histórico de férias gozadas <span class="dc-sec-badge">${publicadas.length}</span></div>
+            ${publicadas.length ? `
+            <div class="df-hist">
+                ${publicadas.map(a => {
+                    const emCurso = ausenciaVigente(a, hoje());
+                    const futura = a.inicio > hoje();
+                    return `
+                    <div class="df-hist-item ${emCurso ? 'is-curso' : futura ? 'is-futura' : ''}" data-lanc="${a.id}">
+                        <span class="df-hist-ico">${icon('sun')}</span>
+                        <div class="grow">
+                            <strong>${fmtDate(a.inicio)} → ${fmtDate(a.retorno)}</strong>
+                            ${emCurso ? '<span class="badge badge-ferias">em curso</span>' : futura ? '<span class="badge badge-info">programada</span>' : ''}
+                            <div class="muted">${a.dias} dias${a.abonoDias ? ` + ${a.abonoDias} de abono` : ''}${a.adiantar13 ? ' · 13º adiantado' : ''}${a.obs ? ` — ${escapeHtml(a.obs)}` : ''}</div>
+                        </div>
+                        ${a.calculo?.total ? `<strong class="num">${fmtBRL(a.calculo.total)}</strong>` : ''}
+                        ${icon('chevronRight')}
+                    </div>`;
+                }).join('')}
+            </div>` : `<div class="dc-vazio">${icon('sun')} Nenhuma férias publicada ainda.</div>`}
+        </div>`;
+
+    const bLancar = box.querySelector('#fdFerLancar');
+    if (bLancar) bLancar.onclick = () => formAusencia({ funcionarioId: f.id }, true, sit);
+
+    box.querySelectorAll('[data-lanc]').forEach(el => {
+        el.onclick = () => {
+            const a = publicadas.find(x => x.id === el.dataset.lanc)
+                || comps.flatMap(c => c.lancamentos).find(x => x.id === el.dataset.lanc);
+            if (a) detalheAusencia(a, excluirFerias, () => fdDadosRefresh && fdDadosRefresh());
+        };
+    });
 }
 
 // ---- Benefícios do funcionário ----
@@ -638,6 +1181,260 @@ function formDocumento(f, idx, tipo) {
             btnSave.innerHTML = isEdit ? 'Salvar' : 'Adicionar';
         }
     };
+}
+
+// ---- Horas (banco de horas do funcionário) ----
+// Reusa inteiramente o motor de bancohoras.js/utils.js (cicloBhFunc, historicoCiclosBh,
+// passivoBh) — a ficha é só mais um lugar que LÊ o mesmo banco de horas da aba Lançamentos.
+// Nenhuma regra nova aqui: mesmo ciclo, mesmo saldo, mesmas janelas de detalhe/quitação, só
+// que no contexto de "este funcionário" em vez de "todos os funcionários".
+//
+// Duas sub-abas: "Ciclo vigente" (o que está correndo e pede ação) e "Ciclos anteriores"
+// (histórico fechado/liquidado) — misturados numa lista só, o card do ciclo em curso
+// (o que importa agora) ficava perdido no meio de ciclos que já foram resolvidos.
+async function fdHoras(f, cont) {
+    cont.innerHTML = '<div class="loading-center"><div class="spinner-dark"></div></div>';
+    const [banco, fechamentos, quitacoes] = await Promise.all([
+        DB.getObj(PATHS.bancoHoras),
+        DB.getAll(PATHS.bancoHorasFechamentos),
+        DB.getAll(PATHS.bancoHorasQuitacoes)
+    ]);
+    // A grade/quitação de bancohoras.js lê os cargos de lancState — fora daquela aba (ex.:
+    // entrando direto pela lista de funcionários) lancState.cargos pode estar vazio, e o
+    // valor de hora saía zerado sem ninguém perceber. funcState já tem os cargos carregados.
+    if (typeof lancState !== 'undefined' && !lancState.cargos?.length && funcState.cargos?.length) {
+        lancState.cargos = funcState.cargos;
+    }
+
+    const sit = cicloBhFunc(f, banco, fechamentos, null, quitacoes);
+    const hist = historicoCiclosBh(f, banco, fechamentos, null, quitacoes).slice().reverse();
+
+    if (!sit || sit.status === 'sem_ciclo') {
+        cont.innerHTML = emptyState({
+            icon: 'clock', title: 'Sem banco de horas',
+            text: sit?.desc || 'Nenhum saldo lançado. O ciclo nasce no primeiro mês publicado na Grade mensal (Lançamentos → Banco de horas).'
+        });
+        return;
+    }
+
+    const anteriores = hist.filter(c => !c.corrente);
+
+    const subs = [
+        { id: 'vigente', label: 'Ciclo vigente' },
+        { id: 'anteriores', label: 'Ciclos anteriores', n: anteriores.length }
+    ];
+
+    cont.innerHTML = `
+        <div class="tabs tabs-sub" id="fdHorasSubs">${subs.map(s => `
+            <div class="tab" data-sub="${s.id}">${s.label}${s.n ? ` <span class="tab-count">${s.n}</span>` : ''}</div>`).join('')}
+        </div>
+        <div class="mt-12" id="fdHorasBody"></div>`;
+
+    const box = cont.querySelector('#fdHorasBody');
+    const views = {
+        vigente: () => fdHorasVigente(f, box, sit, quitacoes),
+        anteriores: () => fdHorasAnteriores(box, anteriores)
+    };
+
+    const subEls = cont.querySelectorAll('#fdHorasSubs .tab');
+    const setSub = id => {
+        fdHorasSub = id;
+        subEls.forEach(t => t.classList.toggle('active', t.dataset.sub === id));
+        views[id]();
+    };
+    subEls.forEach(t => t.onclick = () => setSub(t.dataset.sub));
+    setSub(views[fdHorasSub] ? fdHorasSub : 'vigente');
+}
+
+// ---- Sub-aba: ciclo vigente ----
+function fdHorasVigente(f, box, sit, quitacoes) {
+    const fin = can('ver_financeiro');
+    const podeEditar = can('editar_lancamentos');
+    const s = BH_STATUS[sit.status];
+    const passivo = passivoBh(sit.acumuladoMin, salarioDoFunc(f), jornadaDe(f));
+    const decorridos = Math.min(bhParams.cicloMeses, Math.max(0, mesDiff(sit.inicio, mesHoje()) + 1));
+    const pct = Math.max(0, Math.min(100, decorridos / bhParams.cicloMeses * 100));
+
+    // Série do ciclo corrente para o gráfico: um ponto por mês do ciclo, extra/atraso/saldo
+    // acumulado — a mesma leitura da barra "Acumulado no ciclo" da grade, mas em curva.
+    const mesesCiclo = Array.from({ length: bhParams.cicloMeses }, (_, i) => mesAdd(sit.inicio, i));
+    let corrida = 0;
+    const extraVals = [], atrasoVals = [], acumVals = [];
+    mesesCiclo.forEach(mk => {
+        const lanc = sit.meses.find(m => m.mes === mk);
+        const q = sit.quitados.some(x => x.mes === mk);
+        extraVals.push(lanc ? lanc.extraMin : null);
+        atrasoVals.push(lanc ? -lanc.atrasoMin : null);
+        if (lanc && !q) corrida += lanc.saldoMin;
+        acumVals.push(lanc ? corrida : null);
+    });
+
+    box.innerHTML = `
+        <div class="dc-hero ${sit.status === 'vencido' ? 'is-vencido' : sit.status === 'critico' || sit.status === 'atencao' ? 'is-critico' : 'is-ok'}">
+            <div class="dc-hero-top">
+                <div>
+                    <span class="dc-lbl">Saldo em aberto</span>
+                    <div class="dc-saldo">${fmtHHMM(sit.acumuladoMin)}</div>
+                    <div class="dc-decomp">
+                        <span class="bh-pos">${fmtHHMM(sit.extraMin)}</span> extra
+                        <span class="bh-sep">·</span>
+                        <span class="bh-neg">${fmtHHMM(sit.atrasoMin)}</span> atraso
+                    </div>
+                </div>
+                <div class="dc-hero-right">
+                    <span class="badge ${s.cls}">${escapeHtml(sit.label)}</span>
+                    ${fin && passivo > 0 ? `<div class="dc-passivo" title="Estimativa: saldo × valor-hora × adicional de ${bhParams.adicionalPct}%">${fmtBRL(passivo)}<span>se não compensar</span></div>` : ''}
+                </div>
+            </div>
+            <p class="dc-desc">${escapeHtml(sit.desc)}</p>
+        </div>
+
+        <div class="chart-grid chart-grid-full">
+            ${chartCard({
+                id: 'fdHorasFluxo', titulo: 'Extra × atraso no ciclo corrente',
+                sub: `Ciclo ${mesLabel(sit.inicio)} → ${mesLabel(sit.fimMes)} · linha é o acumulado em aberto`,
+                total: fmtHHMM(sit.acumuladoMin)
+            })}
+        </div>
+
+        <div class="dc-sec">
+            <div class="dc-sec-tit">${icon('refresh')} Meses do ciclo</div>
+            <div class="bh-prog-bar ${sit.status === 'vencido' ? 'is-estourado' : ''}" style="margin-bottom:8px">
+                <div class="bh-prog-fill ${sit.status === 'vencido' ? 'is-vencido' : sit.status === 'critico' || sit.status === 'atencao' ? 'is-critico' : ''}" style="width:${pct}%"></div>
+            </div>
+            <div class="dc-meses">
+                ${mesesCiclo.map(mk => {
+                    const lanc = sit.meses.find(x => x.mes === mk);
+                    const q = sit.quitados.some(x => x.mes === mk);
+                    const cls = q ? 'is-quitado' : !lanc ? 'is-vazio' : lanc.saldoMin > 0 ? 'is-pos' : lanc.saldoMin < 0 ? 'is-neg' : 'is-zero';
+                    return `
+                    <div class="dc-mes ${cls}">
+                        <span class="dc-mes-lbl">${mesLabel(mk).split('/')[0]}</span>
+                        <span class="dc-mes-val">${lanc ? fmtHHMM(lanc.saldoMin) : '–'}</span>
+                        ${q ? `<span class="dc-mes-tag">${icon('lock')}</span>` : ''}
+                    </div>`;
+                }).join('')}
+            </div>
+            <div class="dc-datas">
+                <span>Início ${fmtDate(sit.inicio + '-01')}</span>
+                <span class="${sit.dias != null && sit.dias < 0 ? 'txt-danger' : ''}">${sit.dias == null ? '' : sit.dias < 0 ? `venceu há ${prazoTexto(sit.dias)}` : `${prazoTexto(sit.dias)} restantes`}</span>
+                <span>Fecha ${fmtDate(sit.fim)}</span>
+            </div>
+        </div>
+
+        <div class="dc-sec">
+            <div class="dc-sec-tit">${icon('money')} Quitações deste ciclo
+                ${sit.quitacoes.length ? `<span class="dc-sec-badge">${fmtHHMM(sit.quitadoMin)}${fin && sit.quitadoValor ? ` · ${fmtBRL(sit.quitadoValor)}` : ''}</span>` : ''}
+            </div>
+            ${sit.quitacoes.length ? `
+            <div class="dc-quits">
+                ${sit.quitacoes.map(q => `
+                    <div class="dc-quit" data-q="${q.id}">
+                        <span class="dc-quit-ico">${icon('check')}</span>
+                        <div class="grow">
+                            <strong>${fmtHHMM(q.minutos)}</strong> — ${(q.meses || []).map(mesLabel).join(', ')}
+                            <div class="muted">${fmtDate(q.data)} · ${escapeHtml(destinoQuitacao(q))}${q.obs ? ` · ${escapeHtml(q.obs)}` : ''}</div>
+                        </div>
+                        ${fin ? `<strong class="num">${fmtBRL(q.valor)}</strong>` : ''}
+                        ${icon('chevronRight')}
+                    </div>`).join('')}
+            </div>` : `
+            <div class="dc-vazio">${icon('info')} Nenhuma hora quitada neste ciclo. O saldo em aberto ainda pode ser compensado com folgas até ${fmtDate(sit.fim)}.</div>`}
+        </div>
+
+        ${sit.fechado ? `
+        <div class="dc-fech">
+            ${icon('check')}
+            <div class="grow">
+                <strong>Ciclo fechado em ${fmtDate(sit.fechado.data)}</strong>
+                <div class="muted">${escapeHtml(sit.fechado.destino)}${fin && sit.fechado.valor ? ` · ${fmtBRL(sit.fechado.valor)}` : ''}${sit.fechado.obs ? ` — ${escapeHtml(sit.fechado.obs)}` : ''}</div>
+            </div>
+        </div>` : podeEditar && sit.acumuladoMin !== 0 ? `
+        <div class="flex" style="gap:8px">
+            ${sit.podeFechar
+                ? `<button class="btn btn-primary btn-sm" id="fdBhFechar">${icon('check')} Fechar ciclo</button>`
+                : `<button class="btn btn-secondary btn-sm" id="fdBhQuitar">${icon('money')} Quitar horas</button>`}
+        </div>` : ''}`;
+
+    mkChart('fdHoras', 'fdHorasFluxo', {
+        type: 'bar',
+        data: {
+            labels: mesesCiclo.map(mk => mesLabel(mk).split('/')[0]),
+            datasets: [
+                dvBarra('Extra', extraVals, dvCor(0)),
+                dvBarra('Atraso', atrasoVals, dvCor(3)),
+                {
+                    type: 'line', label: 'Acumulado em aberto', data: acumVals,
+                    borderColor: '#dc2626', borderWidth: 2, pointRadius: 2.5, tension: .3,
+                    yAxisID: 'y2', order: 0, spanGaps: true
+                }
+            ]
+        },
+        options: dvOpts({
+            fmt: 'hhmm', legenda: true,
+            extras: {
+                scales: {
+                    y2: {
+                        position: 'right', grid: { display: false },
+                        border: { display: false },
+                        ticks: { color: '#dc2626', font: { size: 10 }, callback: v => fmtHorasDec(v) }
+                    }
+                }
+            }
+        })
+    });
+
+    box.querySelectorAll('[data-q]').forEach(el => {
+        el.onclick = () => {
+            const q = quitacoes.find(x => x.id === el.dataset.q);
+            if (q) detalheQuitacao(q);
+        };
+    });
+    const bFechar = box.querySelector('#fdBhFechar');
+    if (bFechar) bFechar.onclick = () => formFechamentoBh(f, sit);
+    const bQuitar = box.querySelector('#fdBhQuitar');
+    if (bQuitar) bQuitar.onclick = () => formQuitacaoBh(f, sit);
+}
+
+// ---- Sub-aba: ciclos anteriores (histórico fechado/liquidado) ----
+function fdHorasAnteriores(box, anteriores) {
+    const fin = can('ver_financeiro');
+
+    if (!anteriores.length) {
+        box.innerHTML = emptyState({
+            icon: 'clock', title: 'Nenhum ciclo anterior',
+            text: 'Este é o primeiro ciclo de banco de horas do funcionário — ainda não há histórico para mostrar.'
+        });
+        return;
+    }
+
+    box.innerHTML = `
+        <div class="dc-hist">
+            ${anteriores.slice().reverse().map(c => {
+                const fech = c.fechamento;
+                const pagoFech = fech?.destino === BH_DESTINO_PAGO ? Number(fech.valor) || 0 : 0;
+                const estado = fech ? 'fechado' : c.acumuladoMin !== 0 ? 'aberto' : 'zerado';
+                const rot = { fechado: 'Fechado', aberto: 'Em aberto', zerado: 'Encerrado sem saldo' }[estado];
+                return `
+                <div class="dc-hist-item is-${estado}">
+                    <div class="dc-hist-per">
+                        <strong>${mesLabel(c.inicio)} → ${mesLabel(c.fimMes)}</strong>
+                        <span class="badge ${estado === 'fechado' ? 'badge-success' : estado === 'aberto' ? 'badge-danger' : ''}">${rot}</span>
+                    </div>
+                    <div class="dc-hist-nums">
+                        <div><span>Saldo${fech ? ' no fechamento' : ' em aberto'}</span>
+                            <strong class="${(fech ? Number(fech.saldoMin) || 0 : c.acumuladoMin) > 0 ? 'bh-pos' : (fech ? Number(fech.saldoMin) || 0 : c.acumuladoMin) < 0 ? 'bh-neg' : ''}">${fmtHHMM(fech ? Number(fech.saldoMin) || 0 : c.acumuladoMin)}</strong></div>
+                        <div><span>Meses lançados</span><strong>${c.meses.length}</strong></div>
+                        <div><span>Quitações</span><strong>${c.quitacoes.length || '—'}</strong></div>
+                        ${fin ? `<div><span>Pago</span><strong>${(c.quitadoValor + pagoFech) ? fmtBRL(c.quitadoValor + pagoFech) : '—'}</strong></div>` : ''}
+                    </div>
+                    ${fech ? `
+                    <div class="dc-hist-fech">
+                        ${icon('check')} <span>Fechado em <strong>${fmtDate(fech.data)}</strong> — ${escapeHtml(fech.destino)}${fin && pagoFech ? ` · ${fmtBRL(pagoFech)}` : ''}${fech.obs ? ` — ${escapeHtml(fech.obs)}` : ''}</span>
+                    </div>` : ''}
+                </div>`;
+            }).join('')}
+        </div>`;
 }
 
 // ---- Histórico (alimentado pelos Lançamentos) ----

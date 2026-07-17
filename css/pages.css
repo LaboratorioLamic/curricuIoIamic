@@ -524,6 +524,7 @@
 }
 .chart-legenda-btn svg.icon { width: 13px; height: 13px; }
 .chart-legenda-btn:hover { background: var(--surface-3); border-color: var(--border-strong); }
+.chart-legenda-btn.active { background: var(--accent-soft); border-color: var(--accent-soft-2); color: var(--accent-strong); }
 
 /* Botão "i" de info no título do card (Resultados) */
 .chart-card-title { display: inline-flex; align-items: center; gap: 6px; }

@@ -44,6 +44,12 @@ const FOLHA_FERIAS_CALC = 'feriasCalc';
 // solta na folha só divergia do que a aba já sabia.
 const FOLHA_DECIMO_CALC = 'decimoCalc';
 
+// Coluna DERIVADA: desconto de atraso do banco de horas — quitação ou fechamento de um ciclo
+// com saldo NEGATIVO e destino "Descontado" (ver descAtrasoDoMes em utils.js). Valor sempre
+// NEGATIVO: reduz o bruto, rubrica própria de desconto, distinta de "HE (banco)" (que só soma
+// o que é PAGO ao funcionário).
+const FOLHA_DESC_ATRASO = 'descAtrasoCalc';
+
 // ---- Grupos de colunas (ocultar/mostrar categorias) ----
 // cols = chaves de FOLHA_COLS/FOLHA_DESC. "aberto padrão" = Remuneração; Custo empresa é sempre fixo.
 const FOLHA_GRUPOS = [
@@ -51,7 +57,7 @@ const FOLHA_GRUPOS = [
     { id: 'feriasDecimo', label: 'Férias e 13º', cols: [FOLHA_FERIAS_CALC, FOLHA_DECIMO_CALC], def: false },
     { id: 'encargos', label: 'Encargos', cols: ['encargos'], def: false },
     { id: 'beneficios', label: 'Benefícios', cols: ['beneficios', FOLHA_DESC], def: false },
-    { id: 'extras', label: 'Extras', cols: [FOLHA_HE_BANCO, FOLHA_HE_MANUAL, 'outros'], def: false }
+    { id: 'extras', label: 'Extras', cols: [FOLHA_HE_BANCO, FOLHA_HE_MANUAL, FOLHA_DESC_ATRASO, 'outros'], def: false }
 ];
 const FOLHA_COL_LABEL = Object.fromEntries([
     ...FOLHA_COLS,
@@ -59,7 +65,8 @@ const FOLHA_COL_LABEL = Object.fromEntries([
     [FOLHA_HE_BANCO, 'HE (banco)'],
     [FOLHA_HE_MANUAL, 'Hora extra (legado)'],
     [FOLHA_FERIAS_CALC, 'Férias (calc)'],
-    [FOLHA_DECIMO_CALC, '13º (calc)']
+    [FOLHA_DECIMO_CALC, '13º (calc)'],
+    [FOLHA_DESC_ATRASO, 'Desc. Atraso']
 ]);
 // Estado de grupos visíveis (compartilhado entre folha mensal e detalhamento)
 const folhaGruposVis = new Set(FOLHA_GRUPOS.filter(g => g.def).map(g => g.id));
@@ -120,7 +127,9 @@ const brutoLinha = l => FOLHA_COLS.reduce((s, [k]) => s + (Number(l?.[k]) || 0),
     + (Number(l?.[FOLHA_HE_BANCO]) || 0)
     + (Number(l?.[FOLHA_HE_MANUAL]) || 0)
     + (Number(l?.[FOLHA_FERIAS_CALC]) || 0)
-    + (Number(l?.[FOLHA_DECIMO_CALC]) || 0);
+    + (Number(l?.[FOLHA_DECIMO_CALC]) || 0)
+    // Desc. Atraso já vem NEGATIVO (ver descAtrasoDoMes) — somar reduz o bruto.
+    + (Number(l?.[FOLHA_DESC_ATRASO]) || 0);
 // Coparticipação lançada: o que o funcionário paga do próprio benefício.
 const descontoLinha = l => Number(l?.[FOLHA_DESC]) || 0;
 
@@ -164,6 +173,10 @@ function folhaComHeBanco(dados, mesKey, fechamentos, extras, quitacoes, ctx) {
     const out = {};
     Object.entries(dados || {}).forEach(([fid, linha]) => {
         const he = heBancoDoMes(fid, mesKey, fechamentos, extras, quitacoes);
+        // Desconto de atraso: quitação/fechamento de saldo negativo com destino "Descontado".
+        // Mesma arquitetura da HE do banco, mas em rubrica própria e sempre negativa — ver
+        // descAtrasoDoMes em utils.js.
+        const da = descAtrasoDoMes(fid, mesKey, fechamentos, quitacoes);
         // Férias: mesma regra da HE do banco — derivada, nunca gravada. O adiantamento do 13º
         // soma na coluna "13º salário", não na de férias: são rubricas distintas no holerite,
         // e juntá-las faria o custo de férias parecer 50% maior do que é.
@@ -172,9 +185,10 @@ function folhaComHeBanco(dados, mesKey, fechamentos, extras, quitacoes, ctx) {
             : { total: 0, total13: 0 };
         // 13º: parcelas lançadas na aba própria. Coluna derivada, mesma regra das outras duas.
         const de = c.decimos ? decimoDoMes(fid, mesKey, c.decimos) : { total: 0, encargos: 0 };
-        if (!he.total && !fe.total && !fe.total13 && !de.total && !de.encargos) { out[fid] = linha; return; }
+        if (!he.total && !da.total && !fe.total && !fe.total13 && !de.total && !de.encargos) { out[fid] = linha; return; }
         const nova = { ...linha };
         if (he.total) nova[FOLHA_HE_BANCO] = he.total;
+        if (da.total) nova[FOLHA_DESC_ATRASO] = da.total;
         if (fe.total) nova[FOLHA_FERIAS_CALC] = fe.total;
         // O adiantamento de 13º pago junto das férias soma na MESMA coluna derivada das
         // parcelas — a coluna manual "13º salário" não existe mais, e o adiantamento não
@@ -375,7 +389,9 @@ async function relFolhaMensal() {
         [FOLHA_FERIAS_CALC, FOLHA_COL_LABEL[FOLHA_FERIAS_CALC]],
         [FOLHA_DECIMO_CALC, FOLHA_COL_LABEL[FOLHA_DECIMO_CALC]]);
     const iEnc = COLS_REL.findIndex(([k]) => k === 'encargos');
-    COLS_REL.splice(iEnc + 1, 0, [FOLHA_HE_BANCO, FOLHA_COL_LABEL[FOLHA_HE_BANCO]]);
+    COLS_REL.splice(iEnc + 1, 0,
+        [FOLHA_HE_BANCO, FOLHA_COL_LABEL[FOLHA_HE_BANCO]],
+        [FOLHA_DESC_ATRASO, FOLHA_COL_LABEL[FOLHA_DESC_ATRASO]]);
 
     cont.innerHTML = `
         <div class="flex-between" style="margin-bottom:16px">${nav}<div></div></div>

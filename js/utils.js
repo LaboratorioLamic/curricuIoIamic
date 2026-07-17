@@ -426,10 +426,14 @@ const setBhParams = p => {
 
 const BH_DESTINOS = ['Pago como hora extra', 'Compensado', 'Perdoado', 'Descontado'];
 
-// A quitação é um subconjunto do fechamento: só os destinos que movem dinheiro. "Compensado"
-// (horas viraram folga) e "Perdoado" (saldo negativo anistiado) resolvem o saldo em horas, e
-// quitar significa pagar — oferecê-los aqui seria registrar um pagamento que não existiu.
-const BH_DESTINOS_QUITACAO = ['Pago como hora extra', 'Descontado'];
+// Destinos elegíveis para QUITAÇÃO — sempre um subconjunto de BH_DESTINOS, escolhido pelo
+// SINAL do saldo do ciclo (formQuitacaoBh filtra por sign):
+//   saldo positivo (empresa deve horas)   → só "Pago como hora extra": é a única forma de
+//     pagamento na quitação; "Compensado" resolve em folga (não é um pagamento) e não faz
+//     sentido aqui.
+//   saldo negativo (funcionário deve horas) → "Descontado" (abate da folha do mês vigente,
+//     ver descAtrasoDoMes) ou "Perdoado" (zera o saldo negativo sem mexer na folha).
+const BH_DESTINOS_QUITACAO = ['Pago como hora extra', 'Descontado', 'Perdoado'];
 
 // Único destino que vira hora extra na folha. "Descontado" também move dinheiro, mas no
 // sentido oposto: é rubrica de desconto, e somá-lo como HE produziria hora extra negativa.
@@ -1279,6 +1283,19 @@ function adiantamentos13Ferias(fid, ano, ausencias, funcionarios, cargos, params
     return { itens, total: Number(itens.reduce((s, i) => s + i.valor, 0).toFixed(2)) };
 }
 
+// Ano do primeiro mês de folha PUBLICADO para o funcionário — a âncora real de quando a
+// empresa passou a gerir a remuneração dele por este sistema. Mesma lógica da âncora do banco
+// de horas (ancora = primeiro lançamento, nunca a admissão, ver cicloBhFunc em bancohoras.js):
+// uma empresa que adere ao sistema com um funcionário antigo (admitido anos atrás, mas com
+// folha só a partir de agora) não pode ver pendência de 13º dos anos que nunca geriu por
+// aqui — são números que ninguém consegue conferir nem pagar retroativamente, e o sistema
+// acabaria criando dívida que não existe (ou que já foi paga fora dele).
+function anoAncoraFolha(fid, folha) {
+    const meses = Object.keys(folha || {}).filter(mk => folha[mk]?.[fid]);
+    if (!meses.length) return null;
+    return Number(meses.sort()[0].slice(0, 4));
+}
+
 // ---- SITUAÇÃO DO 13º de um funcionário no ano ----
 //
 // Consolida numa estrutura só: direito (avos), o que já foi adiantado nas férias, quais
@@ -1289,6 +1306,12 @@ function situacao13Func(f, ano, ctx) {
     if (!f?.admissao) return null;
     if (f.admissao.slice(0, 4) > String(ano)) return null;          // admitido depois do ano
     if (f.demissao && f.demissao.slice(0, 4) < String(ano)) return null; // saiu antes do ano
+
+    // Ano anterior à âncora da folha: fora do que o sistema gerencia — não é pendência, é
+    // história que aconteceu antes da empresa aderir. `ctx.folha` é opcional (ver
+    // anoAncoraFolha): sem ele, nenhum corte é aplicado — mesmo comportamento de antes.
+    const ancoraFolha = anoAncoraFolha(f.id, c.folha);
+    if (ancoraFolha != null && Number(ano) < ancoraFolha) return null;
 
     const cargo = (c.cargos || []).find(x => x.id === f.cargoId);
     // Estagiário não tem 13º — não entra na fila (Lei 11.788).
@@ -1484,6 +1507,45 @@ function heBancoDoMes(fid, mesKey, fechamentos, extras, quitacoes) {
         }));
 
     return { total: Number(itens.reduce((s, i) => s + i.valor, 0).toFixed(2)), itens };
+}
+
+// ============ PONTE DESCONTO DE ATRASO → FOLHA ============
+//
+// Saldo NEGATIVO do banco de horas (o funcionário deve horas) quitado ou fechado com destino
+// "Descontado": o valor vira uma rubrica própria na folha — "Desc. Atraso" — sempre negativa,
+// nunca somada em "HE (banco)" (que é só o que é PAGO ao funcionário; misturar os dois faria
+// a folha "pagar" menos hora extra do que zero). Mesma arquitetura de heBancoDoMes: mês de
+// referência é a data do pagamento/fechamento, não os meses do ciclo quitado.
+function descAtrasoDoMes(fid, mesKey, fechamentos, quitacoes) {
+    const itens = [];
+
+    (quitacoes || [])
+        .filter(q => q.funcionarioId === fid
+            && destinoQuitacao(q) === 'Descontado'
+            && Number(q.minutos) < 0
+            && mesDe(q.data) === mesKey)
+        .forEach(q => itens.push({
+            tipo: 'quitacao', id: q.id, valor: Number(q.valor) || 0,
+            saldoMin: Number(q.minutos) || 0,
+            desc: `Desconto de atraso — ${(q.meses || []).length} ${(q.meses || []).length === 1 ? 'mês' : 'meses'} do banco (${(q.meses || []).map(mesLabel).join(', ')})`,
+            data: q.data
+        }));
+
+    (fechamentos || [])
+        .filter(x => x.funcionarioId === fid
+            && x.destino === 'Descontado'
+            && Number(x.saldoMin) < 0
+            && mesRefFechamento(x) === mesKey)
+        .forEach(x => itens.push({
+            tipo: 'fechamento', id: x.id, valor: Number(x.valor) || 0,
+            saldoMin: Number(x.saldoMin) || 0,
+            desc: `Desconto de atraso — fechamento do ciclo ${mesLabel(x.cicloInicio)} → ${mesLabel(x.cicloFim)}`,
+            data: x.data
+        }));
+
+    // Rubrica de desconto: o total entra NEGATIVO na folha (reduz o bruto), diferente de
+    // heBancoDoMes onde o total é positivo (soma).
+    return { total: -Number(itens.reduce((s, i) => s + i.valor, 0).toFixed(2)), itens };
 }
 
 // Motivos do Extra Banco. O adicional é editável no lançamento (o padrão sai daqui), porque

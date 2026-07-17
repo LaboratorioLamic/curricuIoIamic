@@ -170,7 +170,17 @@ registerPage({
 });
 
 function renderLancTab() {
-    document.getElementById('lancContent').innerHTML = '<div class="loading-center"><div class="spinner-dark"></div></div>';
+    const el = document.getElementById('lancContent');
+    // Formulários de férias (formAusencia/detalheAusencia) também abrem a partir da ficha do
+    // funcionário (aba Dados → Férias), fora da página de Lançamentos — lá #lancContent não
+    // existe no DOM. Sem esta guarda, salvar férias pela ficha lançava exceção em cima de um
+    // innerHTML de elemento nulo.
+    if (!el) {
+        const fdCont = document.getElementById('fdContent');
+        if (fdCont?.dataset.fdDadosSub === 'ferias' && fdDadosRefresh) fdDadosRefresh();
+        return;
+    }
+    el.innerHTML = '<div class="loading-center"><div class="spinner-dark"></div></div>';
     ({
         ferias: renderFerias,
         ausencias: renderAusencias,
@@ -184,7 +194,7 @@ function renderLancTab() {
         folhagrid: renderLancFolha
     })[lancTab]().catch(e => {
         console.error(e);
-        document.getElementById('lancContent').innerHTML = emptyState({ icon: 'alert', title: 'Erro ao carregar', text: e.message || '' });
+        el.innerHTML = emptyState({ icon: 'alert', title: 'Erro ao carregar', text: e.message || '' });
     });
 }
 
@@ -1551,14 +1561,17 @@ async function renderLancFolha() {
         [FOLHA_DECIMO_CALC, FOLHA_COL_LABEL[FOLHA_DECIMO_CALC]]);
     // A HE do banco é exibida junto das demais, mas nunca vira <input>: a coluna é derivada
     // dos fechamentos e do Extra Banco. Entra depois de "Encargos", onde ficava a hora extra
-    // manual que ela substituiu.
+    // manual que ela substituiu. Desc. Atraso é a mesma arquitetura, mas em rubrica negativa
+    // própria — entra logo ao lado.
     const iEnc = COLS_VIEW.findIndex(([k]) => k === 'encargos');
-    COLS_VIEW.splice(iEnc + 1, 0, [FOLHA_HE_BANCO, FOLHA_COL_LABEL[FOLHA_HE_BANCO]]);
+    COLS_VIEW.splice(iEnc + 1, 0,
+        [FOLHA_HE_BANCO, FOLHA_COL_LABEL[FOLHA_HE_BANCO]],
+        [FOLHA_DESC_ATRASO, FOLHA_COL_LABEL[FOLHA_DESC_ATRASO]]);
     // Hora extra manual: aposentada pelo banco de horas, mas meses antigos podem ter valor.
     // Só entra na grade quando existe — e como leitura, nunca como <input>: reabrir a edição
     // recriaria a duplicidade que a aposentadoria resolveu.
     const temHeLegado = folhaTemHeManual(dados);
-    if (temHeLegado) COLS_VIEW.splice(iEnc + 2, 0, [FOLHA_HE_MANUAL, FOLHA_COL_LABEL[FOLHA_HE_MANUAL]]);
+    if (temHeLegado) COLS_VIEW.splice(iEnc + 3, 0, [FOLHA_HE_MANUAL, FOLHA_COL_LABEL[FOLHA_HE_MANUAL]]);
     // Folha mensal soma FGTS + outros encargos numa coluna só (os dois parâmetros só se
     // separam no 13º, onde o FGTS precisa incidir mesmo na 1ª parcela — ver config.js).
     const encPct = (Number(folhaState.params.fgtsPct) || 0) + (Number(folhaState.params.encargosPct) || 0);
@@ -1596,7 +1609,8 @@ async function renderLancFolha() {
                                 [FOLHA_HE_BANCO]: 'Somado automaticamente dos fechamentos de ciclo pagos e dos lançamentos de Extra Banco deste mês. Não editável — clique no valor para ver a origem.',
                                 [FOLHA_HE_MANUAL]: 'Hora extra lançada à mão antes do banco de horas. Coluna aposentada: aparece só nos meses que já têm valor e não é mais editável.',
                                 [FOLHA_FERIAS_CALC]: 'Remuneração de férias (gozo + 1/3 + abono) somada automaticamente dos lançamentos deste mês, pelo início do período. Não editável — clique para ver o cálculo. Ajuste em Lançamentos → Férias.',
-                                [FOLHA_DECIMO_CALC]: '13º somado automaticamente das parcelas lançadas (1ª, 2ª, única, rescisão) e do adiantamento pago junto das férias. Não editável — clique para ver o cálculo. Ajuste em Lançamentos → 13º Salário.'
+                                [FOLHA_DECIMO_CALC]: '13º somado automaticamente das parcelas lançadas (1ª, 2ª, única, rescisão) e do adiantamento pago junto das férias. Não editável — clique para ver o cálculo. Ajuste em Lançamentos → 13º Salário.',
+                                [FOLHA_DESC_ATRASO]: 'Desconto de saldo negativo do banco de horas, somado automaticamente das quitações e fechamentos com destino "Descontado" pagos neste mês. Valor negativo. Não editável — clique para ver a origem.'
                             };
                             return `<th class="num col-${k}" data-col-h="${k}"${tips[k] ? ` title="${escapeHtml(tips[k])}"` : ''}>${l}</th>`;
                         }).join('')}
@@ -1625,6 +1639,10 @@ async function renderLancFolha() {
                                 : k === FOLHA_DECIMO_CALC
                                 ? `<td class="num col-${k}" data-col-c="${k}">${Number(linha[k])
                                     ? `<button class="folha-he-banco" data-decimo-calc="${id}" title="Ver a memória de cálculo">${fmtBRL(linha[k])}</button>`
+                                    : '<span class="muted">—</span>'}</td>`
+                                : k === FOLHA_DESC_ATRASO
+                                ? `<td class="num col-${k}" data-col-c="${k}">${Number(linha[k])
+                                    ? `<button class="folha-he-banco" data-desc-atraso="${id}" title="Ver a origem deste desconto" style="color:var(--danger)">${fmtBRL(linha[k])}</button>`
                                     : '<span class="muted">—</span>'}</td>`
                                 : k === 'beneficios' || k === FOLHA_DESC
                                 ? `<td class="num col-${k}" data-col-c="${k}">${podeEditar
@@ -1771,6 +1789,42 @@ async function renderLancFolha() {
                     <div class="he-origem-total">
                         <span>Total somado na folha</span>
                         <strong>${fmtBRL(de.total + (fe.total13 || 0))}</strong>
+                    </div>`,
+                footer: ''
+            });
+        };
+    });
+
+    // Origem do desconto de atraso: quitações/fechamentos de saldo negativo com destino
+    // "Descontado". Mesma lógica das anteriores — valor derivado, e quem o vê na folha
+    // precisa chegar até o registro do banco de horas que o gerou.
+    cont.querySelectorAll('[data-desc-atraso]').forEach(btn => {
+        btn.onclick = () => {
+            const fid = btn.dataset.descAtraso;
+            const f = folhaState.funcionarios.find(x => x.id === fid);
+            const da = descAtrasoDoMes(fid, key, folhaState.bhFechamentos, folhaState.bhQuitacoes);
+            openModal({
+                title: `Desconto de atraso — ${f?.nome || ''}`,
+                body: `
+                    <p class="muted" style="font-size:12px;margin-bottom:14px">
+                        Descontado automaticamente na folha de ${MESES_FULL[mes]}/${ano} — saldo negativo do banco
+                        de horas (atrasos não compensados) resolvido como "Descontado". Não é editável aqui: para
+                        alterar, ajuste a quitação ou o fechamento do ciclo em Lançamentos → Banco de horas.
+                    </p>
+                    <div class="he-origem-lista">
+                        ${da.itens.map(i => `
+                            <div class="he-origem-row">
+                                <span class="he-origem-ico ${i.tipo === 'fechamento' ? 'is-fech' : 'is-extra'}">${icon(i.tipo === 'fechamento' ? 'refresh' : 'clock')}</span>
+                                <div class="grow">
+                                    <strong>${escapeHtml(i.desc)}</strong>
+                                    <div class="muted">${fmtHHMM(i.saldoMin)} devidos — pago em ${fmtDate(i.data)}</div>
+                                </div>
+                                <strong class="num" style="color:var(--danger)">− ${fmtBRL(i.valor)}</strong>
+                            </div>`).join('')}
+                    </div>
+                    <div class="he-origem-total">
+                        <span>Total descontado na folha</span>
+                        <strong style="color:var(--danger)">${fmtBRL(da.total)}</strong>
                     </div>`,
                 footer: ''
             });
