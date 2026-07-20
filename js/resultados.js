@@ -826,6 +826,10 @@ function resFinanceiro(cont) {
 //
 // Filtro de status: popover multi-seleção, mesma mecânica da legenda do empilhado.
 const _bhStatusVis = { set: null };
+// Ranking por saldo: pagina de 10 em 10 — a lista cresce com o quadro de funcionários e um
+// gráfico de barras horizontais com dezenas de nomes vira ilegível (e o canvas cresceria sem fim).
+const BH_RANK_PAGE_SIZE = 10;
+const _bhRankPag = { page: 0 };
 const BH_STATUS_FILTRO = [
     { key: 'vencido', label: 'Ciclo vencido' },
     { key: 'critico', label: 'Fecha em breve' },
@@ -952,7 +956,8 @@ function resBancoHoras(cont) {
                 id: 'bh_rank', titulo: 'Ranking por saldo em aberto',
                 sub: 'Ciclos não liquidados — maior para o menor',
                 total: fmtHHMM(saldoAberto),
-                info: RES_EXPLICACOES['Ranking por saldo em aberto']
+                info: RES_EXPLICACOES['Ranking por saldo em aberto'],
+                rodape: chartPagerHtml('bhRankPager')
             })}
         </div>
 
@@ -1036,9 +1041,12 @@ function resBancoHoras(cont) {
     // "% do total" não significa nada numa soma que mistura sinais opostos. Barras divergem
     // de um zero central, com a cor dizendo a direção — igual ao resto da aba.
     const desenhaRank = () => {
-        const vis = visiveis()
+        const todos = visiveis()
             .filter(x => !x.sit.fechado && x.sit.acumuladoMin !== 0)
             .sort((a, b) => b.sit.acumuladoMin - a.sit.acumuladoMin);
+        const totalPaginas = Math.max(1, Math.ceil(todos.length / BH_RANK_PAGE_SIZE));
+        _bhRankPag.page = Math.min(_bhRankPag.page, totalPaginas - 1);
+        const vis = todos.slice(_bhRankPag.page * BH_RANK_PAGE_SIZE, (_bhRankPag.page + 1) * BH_RANK_PAGE_SIZE);
         chartDestroyOne('resultados', 'bh_rank');
         mkChart('resultados', 'bh_rank', {
             type: 'bar',
@@ -1071,6 +1079,7 @@ function resBancoHoras(cont) {
                 }
             }
         });
+        bindChartPager('bhRankPager', todos.length, _bhRankPag.page, BH_RANK_PAGE_SIZE, p => { _bhRankPag.page = p; desenhaRank(); });
     };
 
     // ---- Mapa de ciclos ----
@@ -1098,9 +1107,12 @@ function resBancoHoras(cont) {
                 <div class="bh-mapa-eixo">
                     ${Array.from({ length: totalMeses }, (_, i) => {
                         const mk = mesAdd(iniMin, i);
-                        // Só rotula jan e jul: 18 rótulos verticais viram ruído (o erro do print).
+                        // Janela curta (o normal aqui: ciclo de poucos meses por pessoa): rotula
+                        // todo mês, senão o mapa mostrava só janeiro/julho — às vezes nenhum dos
+                        // dois caía dentro do intervalo. Só em janelas longas (>14 meses) volta a
+                        // marcar de 6 em 6 (jan/jul), senão os rótulos verticais viram ruído.
                         const [, m] = mk.split('-');
-                        const marca = m === '01' || m === '07';
+                        const marca = totalMeses <= 14 || m === '01' || m === '07';
                         return `<div class="bh-eixo-cel${marca ? ' is-marca' : ''}">${marca ? mesLabel(mk) : ''}</div>`;
                     }).join('')}
                 </div>
@@ -1141,8 +1153,8 @@ function resBancoHoras(cont) {
     btnFiltro.onclick = () => openMultiPopover(btnFiltro, {
         items: BH_STATUS_FILTRO.map(s => ({ key: s.key, label: s.label, cor: BH_MAPA_COR[s.key] })),
         selected: _bhStatusVis.set,
-        onChange: () => { desenhaRank(); desenhaMapa(); },
-        onReset: () => { _bhStatusVis.set = new Set(BH_STATUS_FILTRO.map(s => s.key)); desenhaRank(); desenhaMapa(); }
+        onChange: () => { _bhRankPag.page = 0; desenhaRank(); desenhaMapa(); },
+        onReset: () => { _bhStatusVis.set = new Set(BH_STATUS_FILTRO.map(s => s.key)); _bhRankPag.page = 0; desenhaRank(); desenhaMapa(); }
     });
 }
 

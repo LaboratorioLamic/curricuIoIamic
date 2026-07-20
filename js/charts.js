@@ -162,7 +162,9 @@ document.addEventListener('click', e => {
 // Card de gráfico com total/média no cabeçalho. `stats` já vem formatado pelo chamador.
 // `acao` injeta HTML no canto do cabeçalho (ex.: o botão "Legenda" do empilhado).
 // `info` liga o botão "i": string ou {oQue, objetivo, leitura} — ver openChartInfo.
-function chartCard({ id, titulo, total, media, sub, acao, info }) {
+// `rodape` injeta HTML abaixo do gráfico (ex.: paginação de um ranking longo) — o dono do
+// card monta o próprio controle e liga os eventos depois de inserir o HTML no DOM.
+function chartCard({ id, titulo, total, media, sub, acao, info, rodape }) {
     if (info) _chartInfoReg[id] = { titulo, info };
     return `
         <div class="chart-card">
@@ -179,7 +181,33 @@ function chartCard({ id, titulo, total, media, sub, acao, info }) {
                 </div>` : ''}
             </div>
             <div class="chart-box"><canvas id="${id}"></canvas></div>
+            ${rodape || ''}
         </div>`;
+}
+
+// Paginação genérica de gráfico (ex.: ranking com dezenas de funcionários). `total`: nº de
+// itens; `page`: página atual (0-based); `size`: itens por página; `onChange(page)`: redesenha.
+function chartPagerHtml(id) {
+    return `<div class="chart-pager" id="${id}" hidden>
+        <button type="button" class="btn-icon btn-icon-sm" data-pg-prev title="Página anterior">${icon('chevronLeft')}</button>
+        <span class="chart-pager-txt" data-pg-txt></span>
+        <button type="button" class="btn-icon btn-icon-sm" data-pg-next title="Próxima página">${icon('chevronRight')}</button>
+    </div>`;
+}
+function bindChartPager(id, total, page, size, onChange) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const totalPaginas = Math.max(1, Math.ceil(total / size));
+    el.hidden = totalPaginas <= 1;
+    if (el.hidden) return;
+    const ini = total === 0 ? 0 : page * size + 1;
+    const fim = Math.min(total, (page + 1) * size);
+    el.querySelector('[data-pg-txt]').textContent = `${ini}–${fim} de ${total}`;
+    const bPrev = el.querySelector('[data-pg-prev]'), bNext = el.querySelector('[data-pg-next]');
+    bPrev.disabled = page <= 0;
+    bNext.disabled = page >= totalPaginas - 1;
+    bPrev.onclick = () => onChange(page - 1);
+    bNext.onclick = () => onChange(page + 1);
 }
 
 // Barras HORIZONTAIS ordenadas do maior para o menor, com quantidade e % no rótulo/tooltip.
