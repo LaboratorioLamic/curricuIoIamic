@@ -523,6 +523,7 @@ function formAso(a, sugerido, onDone) {
         footer: ''
     });
 
+    bindSelectFuncionario(m.body, 'fasFunc', a?.funcionarioId);
     const anexoCtl = initAnexoField(m.body.querySelector('#fasAnexo'), anexosDe(a));
     const tipoEl = m.body.querySelector('#fasTipo');
     const dataEl = m.body.querySelector('#fasData');

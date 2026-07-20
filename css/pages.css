@@ -557,6 +557,10 @@
 .chart-info-ico svg.icon { width: 18px; height: 18px; }
 .chart-info-sec strong { display: block; font-size: 12.5px; color: var(--text-2); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
 .chart-info-sec p { font-size: 14px; line-height: 1.55; color: var(--text); margin: 0; }
+.chart-info-sec .grow { min-width: 0; flex: 1; }
+/* Seção "Cálculo" (barra horizontal com os itens que somam o total) — sempre a última */
+.chart-info-calc-box { position: relative; width: 100%; margin-top: 8px; }
+.modal-chart-info .table-wrap { margin-top: 2px; }
 
 /* Linha da aba Geral clicável quando tem explicação (o "i" vira a linha inteira) */
 .ind-row-info { cursor: pointer; }
@@ -1852,3 +1856,51 @@
     background: var(--surface-3); color: var(--muted);
     font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
 }
+
+/* ---- Configurações → Backup ---- */
+.bkp-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 18px;
+}
+.bkp-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    transition: box-shadow .2s, transform .2s, border-color .2s;
+}
+.bkp-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+.bkp-card h3 { font-size: 16px; margin: 0; }
+.bkp-card p { font-size: 13.5px; line-height: 1.55; color: var(--text-2); margin: 0; flex: 1; }
+.bkp-card p code {
+    background: var(--surface-3); color: var(--text-2);
+    padding: 1px 5px; border-radius: 5px; font-size: 12px;
+}
+.bkp-card > .btn { margin-top: 4px; }
+.bkp-card-ico {
+    width: 44px; height: 44px; border-radius: 13px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--accent-soft); color: var(--accent);
+}
+.bkp-card-ico svg.icon { width: 22px; height: 22px; }
+.bkp-card-ico.bkp-ico-danger { background: var(--danger-soft); color: var(--danger); }
+.bkp-card-danger {
+    border-color: var(--danger-soft);
+    background: linear-gradient(180deg, var(--danger-soft) 0%, var(--surface) 90px);
+}
+
+/* Aviso dentro do modal de confirmação com senha (restaurar/apagar) */
+.bkp-warn {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: var(--danger-soft); border-radius: var(--radius);
+    padding: 14px 16px;
+}
+.bkp-warn svg.icon { width: 20px; height: 20px; color: var(--danger); flex-shrink: 0; margin-top: 1px; }
+.bkp-warn p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--text); }
+.bkp-warn strong { color: var(--danger); }

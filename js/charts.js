@@ -84,6 +84,9 @@ function dvOpts({ fmt = 'num', legenda = false, empilhado = false, onClick = nul
         maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
         onClick,
+        // Ponteiro de "clicável" só aparece sobre uma coluna de verdade — em cima do padding
+        // vazio do gráfico o cursor volta ao normal, senão o botão mentiria fora das barras.
+        onHover: onClick ? (evt, els) => { evt.native.target.style.cursor = els.length ? 'pointer' : 'default'; } : undefined,
         plugins: {
             legend: {
                 display: legenda, position: 'bottom',
@@ -133,9 +136,18 @@ const dvBarra = (label, vals, cor, extra = {}) => ({
 // Explica um gráfico num modal (não popover: o pedido foi por algo "bonito e atrativo",
 // que cabe descrição longa — um popover de 220px não cabe um parágrafo confortável).
 // `info`: string (vira "o que mostra") ou {oQue, objetivo, leitura}.
-function openChartInfo(titulo, info) {
+// `calculoItens`: [{label, valor}] opcional — os itens que, somados, formam o total do card.
+// Quando presente, vira a seção "Cálculo" por ÚLTIMO, como gráfico de barra horizontal (dado,
+// não texto: o pedido foi explicitamente por números, não por uma frase explicando a fórmula).
+// `calculoFmt`: formato dos valores (mesmo vocabulário de dvValorFmt: 'brl'|'pct'|'num'|'dec'|'hhmm').
+let _chartInfoCalcSeq = 0;
+function openChartInfo(titulo, info, calculoItens, calculoFmt = 'num') {
     const o = typeof info === 'string' ? { oQue: info } : (info || {});
-    openModal({
+    const itens = (calculoItens || []).slice().sort((a, b) => b.valor - a.valor);
+    const canvasId = itens.length ? `chartInfoCalc${++_chartInfoCalcSeq}` : null;
+    let calcChart = null;
+
+    const m = openModal({
         title: titulo,
         size: 'modal-sm modal-chart-info',
         body: `
@@ -143,6 +155,94 @@ function openChartInfo(titulo, info) {
                 ${o.oQue ? `<div class="chart-info-sec"><span class="chart-info-ico">${icon('info')}</span><div><strong>O que este gráfico mostra</strong><p>${o.oQue}</p></div></div>` : ''}
                 ${o.objetivo ? `<div class="chart-info-sec"><span class="chart-info-ico">${icon('launch')}</span><div><strong>Objetivo</strong><p>${o.objetivo}</p></div></div>` : ''}
                 ${o.leitura ? `<div class="chart-info-sec"><span class="chart-info-ico">${icon('chart')}</span><div><strong>Como ler</strong><p>${o.leitura}</p></div></div>` : ''}
+                ${canvasId ? `<div class="chart-info-sec">
+                    <span class="chart-info-ico">${icon('table')}</span>
+                    <div class="grow">
+                        <strong>Cálculo</strong>
+                        <div class="chart-info-calc-box" style="height:${Math.max(110, itens.length * 26 + 16)}px"><canvas id="${canvasId}"></canvas></div>
+                    </div>
+                </div>` : ''}
+            </div>`,
+        footer: '',
+        onClose: () => { if (calcChart) { try { calcChart.destroy(); } catch {} } }
+    });
+
+    if (canvasId) {
+        // Total dos itens = base para a % ao lado de cada barra — não o total do card (que
+        // pode incluir itens fora do "Cálculo", ex.: médias), e sim a soma do que está sendo
+        // desenhado aqui, para que as porcentagens fechem em 100%.
+        const totalItens = itens.reduce((s, it) => s + (it.valor || 0), 0);
+        // Rótulo "valor (pct%)" desenhado à direita de cada barra. Plugin inline (sem
+        // dependência externa) porque só usamos isso neste único gráfico.
+        const rotuloValorPct = {
+            id: 'rotuloValorPct',
+            afterDatasetsDraw(chart) {
+                const { ctx, scales: { x } } = chart;
+                const meta = chart.getDatasetMeta(0);
+                ctx.save();
+                ctx.font = '11px sans-serif';
+                ctx.fillStyle = DV.ink;
+                ctx.textBaseline = 'middle';
+                meta.data.forEach((bar, i) => {
+                    const valor = itens[i].valor;
+                    const pct = totalItens ? (valor / totalItens * 100) : 0;
+                    const texto = `${dvValorFmt(valor, calculoFmt)} (${pct.toFixed(1)}%)`;
+                    ctx.textAlign = bar.x > x.right - 60 ? 'right' : 'left';
+                    const posX = bar.x > x.right - 60 ? bar.x - 6 : bar.x + 6;
+                    ctx.fillStyle = bar.x > x.right - 60 ? '#fff' : DV.ink;
+                    ctx.fillText(texto, posX, bar.y);
+                });
+                ctx.restore();
+            }
+        };
+        calcChart = new Chart(document.getElementById(canvasId), {
+            type: 'bar',
+            data: {
+                labels: itens.map(it => it.label),
+                datasets: [{ data: itens.map(it => it.valor), backgroundColor: DV.s1 + 'cc', hoverBackgroundColor: DV.s1, borderRadius: 5, maxBarThickness: 20 }]
+            },
+            plugins: [rotuloValorPct],
+            options: {
+                indexAxis: 'y',
+                responsive: true, maintainAspectRatio: false,
+                layout: { padding: { right: 70 } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { padding: 10, backgroundColor: '#23233f', cornerRadius: 8, callbacks: { label: ctx => dvValorFmt(ctx.parsed.x, calculoFmt) } }
+                },
+                scales: {
+                    x: { beginAtZero: true, grid: { color: DV.grid }, border: { display: false }, ticks: { color: DV.ink, font: { size: 10 }, callback: dvTickFmt[calculoFmt] || dvTickFmt.num } },
+                    y: { grid: { display: false }, border: { display: false }, ticks: { color: DV.ink, font: { size: 11 } } }
+                }
+            }
+        });
+    }
+    return m;
+}
+
+// Modal de "origem dos dados": abre ao clicar numa coluna do gráfico, mostrando os itens
+// individuais que somados compõem aquele ponto (ex.: uma barra de "Encargos" em Junho abre
+// a lista de funcionários e o valor de encargos de cada um naquele mês). `itens` já vem
+// formatado pelo chamador (label + valorFmt); undefined/[] mostra o estado vazio.
+function abrirOrigemDados(titulo, subtitulo, itens, totalFmt) {
+    openModal({
+        title: `Origem dos dados`,
+        size: 'modal-sm modal-chart-info',
+        body: `
+            <div class="chart-info-body">
+                <div class="chart-info-sec">
+                    <span class="chart-info-ico">${icon('calendar')}</span>
+                    <div><strong>${escapeHtml(titulo)} — ${escapeHtml(subtitulo)}</strong>${totalFmt != null ? `<p>Total do ponto: <strong>${totalFmt}</strong></p>` : ''}</div>
+                </div>
+            </div>
+            <div class="table-wrap" style="margin-top:2px">
+                <div class="table-scroll" style="max-height:320px">
+                <table class="table">
+                    <thead><tr><th>Origem</th><th class="num">Valor</th></tr></thead>
+                    <tbody>${(itens && itens.length) ? itens.map(it => `<tr><td>${escapeHtml(it.label)}</td><td class="num">${it.valorFmt}</td></tr>`).join('')
+                        : `<tr><td colspan="2"><div class="table-empty">${icon('info')}<span>Sem lançamentos neste ponto.</span></div></td></tr>`}</tbody>
+                </table>
+                </div>
             </div>`,
         footer: ''
     });
@@ -156,16 +256,18 @@ document.addEventListener('click', e => {
     const btn = e.target.closest('.chart-info-btn');
     if (!btn) return;
     const entry = _chartInfoReg[btn.dataset.infoId];
-    if (entry) openChartInfo(entry.titulo, entry.info);
+    if (entry) openChartInfo(entry.titulo, entry.info, entry.calculoItens, entry.calculoFmt);
 });
 
 // Card de gráfico com total/média no cabeçalho. `stats` já vem formatado pelo chamador.
 // `acao` injeta HTML no canto do cabeçalho (ex.: o botão "Legenda" do empilhado).
 // `info` liga o botão "i": string ou {oQue, objetivo, leitura} — ver openChartInfo.
+// `calculoItens`/`calculoFmt`: itens (label+valor) que somam o total do card — vira o
+// gráfico de barra horizontal da seção "Cálculo" dentro do mesmo modal de info.
 // `rodape` injeta HTML abaixo do gráfico (ex.: paginação de um ranking longo) — o dono do
 // card monta o próprio controle e liga os eventos depois de inserir o HTML no DOM.
-function chartCard({ id, titulo, total, media, sub, acao, info, rodape }) {
-    if (info) _chartInfoReg[id] = { titulo, info };
+function chartCard({ id, titulo, total, media, sub, acao, info, calculoItens, calculoFmt, rodape }) {
+    if (info) _chartInfoReg[id] = { titulo, info, calculoItens, calculoFmt };
     return `
         <div class="chart-card">
             <div class="chart-card-head">

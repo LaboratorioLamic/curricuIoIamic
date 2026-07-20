@@ -309,17 +309,55 @@ function lancRowMenu(tr, items) {
 // Também usado por formulários abertos da ficha do funcionário (ex.: ASO na aba Documentos),
 // quando a página Lançamentos nunca renderizou e lancState está vazio — daí o fallback para
 // funcState, o mesmo que lancFuncNome faz.
-const selectFuncionario = (id, incluirId) => {
+//
+// Renderiza um botão "Funcionário" que abre popover buscável, no lugar do antigo <select>
+// simples — a lista de funcionários costuma passar de uma tela e rolar um <select> nativo é
+// pior do que digitar o nome. Guarda o valor num <input type="hidden"> com o MESMO id que o
+// <select> tinha, para que .value e .onchange dos formulários existentes continuem funcionando
+// sem precisar tocar em cada form: só quem monta o HTML chama bindSelectFuncionario() depois.
+const listaFuncSelecionavel = incluirId => {
     const fonte = lancState.funcionarios.length ? lancState.funcionarios : funcState.funcionarios;
     const lista = fonte.filter(f => !f.demissao).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
     if (incluirId && !lista.some(f => f.id === incluirId)) {
         const f = fonte.find(x => x.id === incluirId);
         if (f) lista.unshift(f);
     }
-    if (!lista.length) return null;
-    return `<select class="select" id="${id}">${lista.map(f =>
-        `<option value="${f.id}" ${incluirId === f.id ? 'selected' : ''}>${escapeHtml(f.nome)}</option>`).join('')}</select>`;
+    return lista;
 };
+
+const selectFuncionario = (id, incluirId) => {
+    const lista = listaFuncSelecionavel(incluirId);
+    if (!lista.length) return null;
+    const atual = lista.find(f => f.id === incluirId);
+    return `<div class="func-picker">
+        <input type="hidden" id="${id}" value="${incluirId || ''}">
+        <button type="button" class="input select-picker" data-fp-btn="${id}">
+            <span class="select-picker-lbl${atual ? '' : ' muted'}">${atual ? escapeHtml(atual.nome) : 'Selecionar funcionário...'}</span>
+            ${icon('chevronDown')}
+        </button>
+    </div>`;
+};
+
+// Liga o clique do botão ao popover de busca — precisa rodar depois que o HTML de
+// selectFuncionario() já está no DOM. `container`: escopo da busca (m.body do modal).
+function bindSelectFuncionario(container, id, incluirId) {
+    const btn = container.querySelector(`[data-fp-btn="${id}"]`);
+    const hidden = container.querySelector(`#${id}`);
+    if (!btn || !hidden) return;
+    const lista = listaFuncSelecionavel(incluirId);
+    btn.onclick = () => openFilterPopover(btn, {
+        options: lista.map(f => ({ value: f.id, label: f.nome })),
+        value: hidden.value,
+        searchable: true,
+        onPick: v => {
+            hidden.value = v;
+            const f = lista.find(x => x.id === v);
+            btn.querySelector('.select-picker-lbl').textContent = f ? f.nome : 'Selecionar funcionário...';
+            btn.querySelector('.select-picker-lbl').classList.toggle('muted', !f);
+            hidden.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    });
+}
 
 // ============ AUSÊNCIAS ============
 async function renderAusencias() {
@@ -540,6 +578,7 @@ function formAusencia(a, modoFerias, sugerido) {
         footer: ''
     });
 
+    bindSelectFuncionario(m.body, 'faFunc', a?.funcionarioId);
     const faAnexoCtl = initAnexoField(m.body.querySelector('#faAnexo'), anexosDe(a));
     const iniEl = m.body.querySelector('#faIni'), retEl = m.body.querySelector('#faRet'), diasEl = m.body.querySelector('#faDias');
     const calcDias = () => {
@@ -1346,6 +1385,7 @@ function formDemissao(d) {
         footer: ''
     });
 
+    if (!isEdit) bindSelectFuncionario(m.body, 'fdFunc');
     const fdAnexoCtl = initAnexoField(m.body.querySelector('#fdAnexo'), anexosDe(d));
 
     m.footer.innerHTML = `
@@ -1440,7 +1480,8 @@ async function renderTreinamentos() {
 
 function detalheTreinamento(t, onDelete, onClose) {
     const fin = can('ver_financeiro');
-    const parts = (t.participantes || []).map(id => lancFuncNome(id)).sort((a, b) => a.localeCompare(b));
+    const partsIds = (t.participantes || []).slice().sort((a, b) => (lancFuncNome(a) || '').localeCompare(lancFuncNome(b) || ''));
+    const parts = partsIds.map(id => lancFuncNome(id));
     const duracao = diasEntre(t.inicio, t.termino) + 1;
 
     // Faixa de indicadores no topo — carga, duração e nº de participantes de relance, antes
@@ -1482,11 +1523,51 @@ function detalheTreinamento(t, onDelete, onClose) {
     });
 
     const btnParts = d.body.querySelector('#dtVerParticipantes');
-    if (btnParts) btnParts.onclick = () => openFilterPopover(btnParts, {
-        options: parts.map((n, i) => ({ value: String(i), label: n })),
-        value: null,
-        searchable: parts.length > 6,
-        onPick: () => {}
+    if (btnParts) btnParts.onclick = () => abrirListaParticipantes(btnParts, partsIds);
+}
+
+// Popover "Ver participantes": cada linha é a mesma célula rica (foto + nome + cargo/idade/
+// contato) das tabelas de Lançamentos — clicar abre a ficha completa do funcionário, igual
+// ao nome nas tabelas. openFilterPopover não serve aqui porque só sabe renderizar uma linha
+// de texto por item; participantes precisa da célula completa.
+function abrirListaParticipantes(anchorEl, ids) {
+    closePopover();
+    const pop = document.createElement('div');
+    pop.className = 'popover pop-filter pop-participantes';
+    const showSearch = ids.length > 6;
+    pop.innerHTML = `
+        ${showSearch ? `<div class="pop-search">${icon('search')}<input class="input" placeholder="Buscar..." data-pop-q></div>` : ''}
+        <div class="pop-list" data-pop-list>${ids.map(id => `
+            <div class="pop-item pop-part" data-id="${id}" data-search="${escapeHtml((lancFuncNome(id) || '').toLowerCase())}">
+                ${lancFuncCellHtml(id)}
+            </div>`).join('')}</div>`;
+    document.body.appendChild(pop);
+    bindLancFuncCells(pop);
+
+    pop.querySelectorAll('.pop-part').forEach(el => el.onclick = () => { closePopover(); abrirFichaFuncionario(el.dataset.id); });
+    const q = pop.querySelector('[data-pop-q]');
+    if (q) {
+        q.addEventListener('input', () => {
+            const v = q.value.toLowerCase();
+            pop.querySelectorAll('.pop-part').forEach(it => it.style.display = it.dataset.search.includes(v) ? '' : 'none');
+        });
+        setTimeout(() => q.focus(), 30);
+    }
+
+    const r = anchorEl.getBoundingClientRect();
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    let x = r.left, y = r.bottom + 6;
+    if (x + pw > window.innerWidth - 8) x = r.right - pw;
+    if (y + ph > window.innerHeight - 8) y = r.top - ph - 6;
+    pop.style.left = `${Math.max(8, x)}px`;
+    pop.style.top = `${Math.max(8, y)}px`;
+    _popover = pop;
+    setTimeout(() => {
+        document.addEventListener('mousedown', function h(e) {
+            if (_popover && !_popover.contains(e.target) && e.target !== anchorEl && !anchorEl.contains(e.target)) {
+                closePopover(); document.removeEventListener('mousedown', h);
+            }
+        });
     });
 }
 
@@ -1528,10 +1609,16 @@ function formTreinamento(t) {
             <div class="field"><label>Anexo (material, lista de presença, certificado padrão)</label><div id="ftAnexo"></div></div>
             <div class="field">
                 <label>Participantes <span class="req">*</span> <span class="badge badge-accent" id="ftCount">0</span></label>
-                <div class="search-box" style="margin-bottom:8px">${icon('search')}<input class="input" id="ftBusca" placeholder="Filtrar funcionários..." style="width:100%"></div>
+                <div class="flex" style="gap:8px;margin-bottom:8px">
+                    <div class="search-box grow">${icon('search')}<input class="input" id="ftBusca" placeholder="Filtrar por nome..." style="width:100%"></div>
+                    <button type="button" class="btn btn-secondary btn-filter" id="ftCargoFiltro">${icon('briefcase')} Todos os cargos</button>
+                </div>
+                <label class="perm-check" style="margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:8px">
+                    <input type="checkbox" id="ftSelAll"> <strong>Selecionar todos os visíveis</strong>
+                </label>
                 <div class="part-list" id="ftLista">
                     ${lista.map(f => `
-                        <label class="perm-check" data-nome="${escapeHtml((f.nome || '').toLowerCase())}">
+                        <label class="perm-check" data-nome="${escapeHtml((f.nome || '').toLowerCase())}" data-cargo="${f.cargoId || ''}">
                             <input type="checkbox" data-fid="${f.id}" ${participantes.has(f.id) ? 'checked' : ''}>
                             ${escapeHtml(f.nome)}${f.demissao ? ' <span class="badge badge-danger" style="margin-left:4px">Desligado</span>' : ''}
                         </label>`).join('')}
@@ -1553,14 +1640,53 @@ function formTreinamento(t) {
     previewParc();
 
     const countEl = m.body.querySelector('#ftCount');
-    const atualizaCount = () => countEl.textContent = m.body.querySelectorAll('[data-fid]:checked').length;
+    const selAllEl = m.body.querySelector('#ftSelAll');
+    const atualizaCount = () => {
+        countEl.textContent = m.body.querySelectorAll('[data-fid]:checked').length;
+        // "Selecionar todos" reflete o estado dos VISÍVEIS: some marcado, todo desmarcado, e
+        // indeterminate quando é uma mistura — senão o checkbox mentiria sobre o que está selecionado.
+        const visiveis = [...m.body.querySelectorAll('#ftLista .perm-check')].filter(l => l.style.display !== 'none');
+        const marcados = visiveis.filter(l => l.querySelector('[data-fid]').checked);
+        selAllEl.checked = visiveis.length > 0 && marcados.length === visiveis.length;
+        selAllEl.indeterminate = marcados.length > 0 && marcados.length < visiveis.length;
+    };
     m.body.querySelectorAll('[data-fid]').forEach(c => c.onchange = atualizaCount);
     atualizaCount();
-    m.body.querySelector('#ftBusca').addEventListener('input', e => {
-        const q = e.target.value.toLowerCase();
-        m.body.querySelectorAll('#ftLista .perm-check').forEach(l =>
-            l.style.display = l.dataset.nome.includes(q) ? '' : 'none');
+
+    let ftFiltroCargo = '';
+    const aplicaFiltroParticipantes = () => {
+        const q = m.body.querySelector('#ftBusca').value.toLowerCase();
+        m.body.querySelectorAll('#ftLista .perm-check').forEach(l => {
+            const okNome = l.dataset.nome.includes(q);
+            const okCargo = !ftFiltroCargo || l.dataset.cargo === ftFiltroCargo;
+            l.style.display = okNome && okCargo ? '' : 'none';
+        });
+        atualizaCount();
+    };
+    m.body.querySelector('#ftBusca').addEventListener('input', aplicaFiltroParticipantes);
+
+    const cargoBtn = m.body.querySelector('#ftCargoFiltro');
+    cargoBtn.onclick = () => openFilterPopover(cargoBtn, {
+        allLabel: 'Todos os cargos',
+        options: lancState.cargos.map(c => ({ value: c.id, label: c.nome })),
+        value: ftFiltroCargo,
+        searchable: lancState.cargos.length > 6,
+        onPick: v => {
+            ftFiltroCargo = v;
+            const cargo = lancState.cargos.find(c => c.id === v);
+            cargoBtn.classList.toggle('active', !!v);
+            cargoBtn.innerHTML = `${icon('briefcase')} ${escapeHtml(cargo ? cargo.nome : 'Todos os cargos')}`;
+            aplicaFiltroParticipantes();
+        }
     });
+
+    selAllEl.onchange = () => {
+        m.body.querySelectorAll('#ftLista .perm-check').forEach(l => {
+            if (l.style.display === 'none') return;
+            l.querySelector('[data-fid]').checked = selAllEl.checked;
+        });
+        atualizaCount();
+    };
 
     m.footer.innerHTML = `
         <button class="btn btn-secondary" data-cancel>Cancelar</button>
@@ -2325,6 +2451,7 @@ function formPromocao(promocoes) {
         footer: ''
     });
 
+    bindSelectFuncionario(m.body, 'fpFunc');
     const funcSel = m.body.querySelector('#fpFunc');
     const cargoAntEl = m.body.querySelector('#fpCargoAnt');
     const salAntEl = m.body.querySelector('#fpSalAnt');
@@ -2504,6 +2631,7 @@ function formTransferencia() {
         footer: ''
     });
 
+    bindSelectFuncionario(m.body, 'ftrFunc');
     const anexoCtl = initAnexoField(m.body.querySelector('#ftrAnexo'), null);
     const funcSel = m.body.querySelector('#ftrFunc');
     const origemEl = m.body.querySelector('#ftrOrigem');

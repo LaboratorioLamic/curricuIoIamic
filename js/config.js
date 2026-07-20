@@ -8,7 +8,10 @@ const CFG_TABS = [
     { id: 'cargos', label: 'Cargos' },
     { id: 'unidades', label: 'Unidades' },
     { id: 'beneficios', label: 'Benefícios' },
-    { id: 'parametros', label: 'Parâmetros' }
+    { id: 'parametros', label: 'Parâmetros' },
+    // Sem gate extra aqui: a página Configurações inteira já é adminOnly (ver registerPage
+    // abaixo) — todo mundo que chega nesta aba já é administrador.
+    { id: 'backup', label: 'Backup' }
 ];
 let cfgTab = 'usuarios';
 
@@ -54,7 +57,8 @@ function renderCfgTab() {
         cargos: renderCfgCargos,
         unidades: renderCfgUnidades,
         beneficios: renderCfgBeneficios,
-        parametros: renderCfgParametros
+        parametros: renderCfgParametros,
+        backup: renderCfgBackup
     })[cfgTab]().catch(e => {
         console.error(e);
         document.getElementById('cfgContent').innerHTML =
@@ -1092,5 +1096,172 @@ async function renderCfgParametros() {
         // A aba do 13º precisa reler: os avos e os prazos mudaram.
         decimoState.carregado = false;
         toast('Parâmetros de 13º salvos.');
+    };
+}
+
+// ============ BACKUP ============
+// Exporta/restaura o banco inteiro (todos os PATHS) num único arquivo .json, e permite
+// zerar tudo. As duas ações que alteram dado (restaurar e apagar) passam por
+// confirmarComSenha() — mesma senha de login, não só um "tem certeza?" — porque são
+// irreversíveis e cobrem TODO o sistema, não um registro isolado.
+async function renderCfgBackup() {
+    const cont = document.getElementById('cfgContent');
+    cont.innerHTML = `
+        <div class="bkp-grid">
+            <div class="bkp-card">
+                <div class="bkp-card-ico bkp-ico-info">${icon('launch')}</div>
+                <h3>Baixar backup</h3>
+                <p>Exporta todos os dados do sistema — funcionários, folha, lançamentos, banco de horas e configurações — em um único arquivo <code>.json</code>.</p>
+                <button class="btn btn-secondary" id="bkpExportar">${icon('launch')} Baixar backup (.json)</button>
+            </div>
+            <div class="bkp-card">
+                <div class="bkp-card-ico bkp-ico-info">${icon('paperclip')}</div>
+                <h3>Restaurar backup</h3>
+                <p>Substitui os dados atuais pelo conteúdo de um arquivo <code>.json</code> exportado anteriormente por este sistema. Tudo que não estiver no arquivo é perdido.</p>
+                <input type="file" accept="application/json,.json" id="bkpArquivo" hidden>
+                <button class="btn btn-secondary" id="bkpImportarBtn">${icon('paperclip')} Selecionar arquivo .json</button>
+            </div>
+            <div class="bkp-card bkp-card-danger">
+                <div class="bkp-card-ico bkp-ico-danger">${icon('trash')}</div>
+                <h3>Apagar todos os dados</h3>
+                <p>Remove permanentemente todos os registros do banco de dados deste sistema — funcionários, folha, lançamentos, usuários e configurações. Não pode ser desfeito.</p>
+                <button class="btn btn-danger" id="bkpApagarBtn">${icon('trash')} Apagar todos os dados</button>
+            </div>
+        </div>`;
+
+    document.getElementById('bkpExportar').onclick = backupBaixar;
+    const inputFile = document.getElementById('bkpArquivo');
+    document.getElementById('bkpImportarBtn').onclick = () => inputFile.click();
+    inputFile.addEventListener('change', () => {
+        const file = inputFile.files[0];
+        inputFile.value = '';
+        if (file) backupRestaurarFluxo(file);
+    });
+    document.getElementById('bkpApagarBtn').onclick = backupApagarFluxo;
+}
+
+// Lê o valor bruto (não a versão em array de DB.getAll) de cada PATH — é o formato que
+// DB.set() espera de volta na restauração, sem reconstrução.
+async function backupColeta() {
+    const dados = {};
+    for (const path of Object.values(PATHS)) dados[path] = await DB.getObj(path);
+    return { app: 'curriculolamic', versao: 1, geradoEm: new Date().toISOString(), geradoPor: currentUser?.nome || null, dados };
+}
+
+async function backupBaixar() {
+    const btn = document.getElementById('bkpExportar');
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Gerando backup...';
+    try {
+        const dump = await backupColeta();
+        const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `backup-curriculolamic-${hoje()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        toast('Backup gerado.');
+    } catch (e) {
+        toast(e.message || 'Erro ao gerar backup.', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = original;
+    }
+}
+
+function backupRestaurarFluxo(file) {
+    confirmarComSenha({
+        titulo: 'Restaurar backup',
+        aviso: `Isso vai <strong>substituir todos os dados atuais</strong> pelo conteúdo de "${escapeHtml(file.name)}". Tudo que não estiver no arquivo será perdido, incluindo lançamentos feitos depois deste backup.`,
+        confirmText: 'Restaurar e substituir tudo',
+        onConfirm: async (m, btn) => {
+            btn.innerHTML = '<span class="spinner"></span> Restaurando...';
+            const texto = await file.text();
+            let parsed;
+            try { parsed = JSON.parse(texto); } catch { throw new Error('Arquivo inválido: não é um JSON válido.'); }
+            const dados = parsed && typeof parsed.dados === 'object' && parsed.dados ? parsed.dados : null;
+            if (!dados) throw new Error('Arquivo não reconhecido como backup deste sistema.');
+            for (const path of Object.values(PATHS)) await DB.set(path, dados[path] ?? null);
+            toast('Backup restaurado. Recarregando...');
+            m.close();
+            setTimeout(() => location.reload(), 900);
+        }
+    });
+}
+
+function backupApagarFluxo() {
+    confirmarComSenha({
+        titulo: 'Apagar todos os dados',
+        aviso: 'Isso vai <strong>apagar permanentemente</strong> todos os funcionários, a folha, lançamentos, usuários e configurações deste sistema. Não há como desfazer — considere baixar um backup antes de continuar.',
+        confirmText: 'Apagar tudo',
+        onConfirm: async (m, btn) => {
+            btn.innerHTML = '<span class="spinner"></span> Apagando...';
+            for (const path of Object.values(PATHS)) await DB.set(path, null);
+            toast('Todos os dados foram apagados.');
+            m.close();
+            setTimeout(() => location.reload(), 900);
+        }
+    });
+}
+
+// Modal de confirmação para ações destrutivas que afetam o banco inteiro — exige reentrar a
+// senha do usuário logado (não só clicar "confirmar"). `onConfirm(modal, botão)` roda só
+// depois da senha bater; erros lançados dentro dela viram toast e reabilitam o botão.
+function confirmarComSenha({ titulo, aviso, confirmText, onConfirm }) {
+    const m = openModal({
+        title: titulo,
+        size: 'modal-sm',
+        body: `
+            <div class="bkp-warn">
+                ${icon('alert')}
+                <p>${aviso}</p>
+            </div>
+            <div class="field" style="margin-top:16px">
+                <label>Confirme sua senha para continuar <span class="req">*</span></label>
+                <input class="input" id="bkpSenhaConf" type="password" autocomplete="current-password" placeholder="Sua senha atual">
+                <div class="field-error" id="bkpSenhaErro" style="display:none"></div>
+            </div>`,
+        footer: ''
+    });
+    m.footer.innerHTML = `
+        <button class="btn btn-secondary" data-cancel>Cancelar</button>
+        <button class="btn btn-danger" data-confirm>${escapeHtml(confirmText)}</button>`;
+    m.footer.querySelector('[data-cancel]').onclick = m.close;
+
+    const pwdEl = m.body.querySelector('#bkpSenhaConf');
+    const erroEl = m.body.querySelector('#bkpSenhaErro');
+    const btnConfirm = m.footer.querySelector('[data-confirm]');
+    const original = btnConfirm.innerHTML;
+    setTimeout(() => pwdEl.focus(), 30);
+    pwdEl.addEventListener('keydown', e => { if (e.key === 'Enter') btnConfirm.click(); });
+
+    btnConfirm.onclick = async () => {
+        const senha = pwdEl.value;
+        erroEl.style.display = 'none';
+        if (!senha) { erroEl.textContent = 'Digite sua senha.'; erroEl.style.display = 'block'; return; }
+
+        btnConfirm.disabled = true;
+        btnConfirm.innerHTML = '<span class="spinner"></span> Verificando...';
+        try {
+            const usuarios = await DB.getAll(PATHS.usuarios);
+            const user = usuarios.find(u => u.id === currentUser?.id);
+            const hash = await sha256(senha);
+            if (!user || user.senhaHash !== hash) {
+                erroEl.textContent = 'Senha incorreta.';
+                erroEl.style.display = 'block';
+                btnConfirm.disabled = false;
+                btnConfirm.innerHTML = original;
+                return;
+            }
+            await onConfirm(m, btnConfirm);
+        } catch (e) {
+            toast(e.message || 'Erro ao processar.', 'error');
+            btnConfirm.disabled = false;
+            btnConfirm.innerHTML = original;
+        }
     };
 }

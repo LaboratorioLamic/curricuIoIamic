@@ -12,7 +12,7 @@ const RES_TABS = [
 // view: 'grafico' | 'tabela'. Gráfico é o padrão — a leitura de tendência vem primeiro;
 // a tabela continua a um clique para quem precisa do número exato.
 // A aba Geral são indicadores de valor único (não têm série mensal): sempre tabela.
-const resState = { tab: 'geral', ano: new Date().getFullYear(), unidade: '', view: 'grafico', dados: null };
+const resState = { tab: 'geral', ano: new Date().getFullYear(), unidade: '', view: 'grafico', dados: null, anosOrd: [] };
 const RES_TEM_GRAFICO = t => t !== 'geral';
 
 registerPage({
@@ -44,6 +44,8 @@ registerPage({
         Object.keys(resState.dados.banco).forEach(k => anos.add(Number(k.slice(0, 4))));
         const anosOrd = [...anos].sort((a, b) => b - a);
         if (!anosOrd.includes(resState.ano)) resState.ano = anosOrd[0];
+        resState.anosOrd = anosOrd;
+        resState.unidades = unidades;
 
         el.innerHTML = `
             <div class="page-header">
@@ -56,11 +58,12 @@ registerPage({
                         <button data-view="grafico" title="Ver como gráfico">${icon('chart')}<span>Gráfico</span></button>
                         <button data-view="tabela" title="Ver como tabela">${icon('table')}<span>Tabela</span></button>
                     </div>
-                    <select class="select" id="resUnidade">
-                        <option value="">Todas as unidades</option>
-                        ${unidades.map(u => `<option value="${u.id}" ${resState.unidade === u.id ? 'selected' : ''}>${escapeHtml(u.nome)}</option>`).join('')}
-                    </select>
-                    <select class="select" id="resAno">${anosOrd.map(a => `<option ${a === resState.ano ? 'selected' : ''}>${a}</option>`).join('')}</select>
+                    <button type="button" class="btn btn-secondary btn-filter" id="resUnidadeBtn">${icon('filter')}<span id="resUnidadeLbl"></span></button>
+                    <div class="res-ano-nav">
+                        <button type="button" class="btn-icon btn-icon-sm" id="resAnoPrev" title="Ano anterior">${icon('chevronLeft')}</button>
+                        <span class="res-ano-lbl" id="resAnoLbl"></span>
+                        <button type="button" class="btn-icon btn-icon-sm" id="resAnoNext" title="Próximo ano">${icon('chevronRight')}</button>
+                    </div>
                 </div>
             </div>
             <div class="tabs" id="resTabs">
@@ -68,8 +71,39 @@ registerPage({
             </div>
             <div class="mt-16" id="resContent"></div>`;
 
-        el.querySelector('#resUnidade').onchange = e => { resState.unidade = e.target.value; renderResTab(); };
-        el.querySelector('#resAno').onchange = e => { resState.ano = Number(e.target.value); renderResTab(); };
+        const unidadeBtn = el.querySelector('#resUnidadeBtn');
+        const atualizaUnidadeLbl = () => {
+            const u = unidades.find(x => x.id === resState.unidade);
+            unidadeBtn.querySelector('#resUnidadeLbl').textContent = u ? u.nome : 'Todas as unidades';
+        };
+        atualizaUnidadeLbl();
+        unidadeBtn.onclick = () => openFilterPopover(unidadeBtn, {
+            options: unidades.map(u => ({ value: u.id, label: u.nome })),
+            value: resState.unidade,
+            allLabel: 'Todas as unidades',
+            onPick: v => { resState.unidade = v; atualizaUnidadeLbl(); renderResTab(); }
+        });
+
+        const anoLbl = el.querySelector('#resAnoLbl');
+        const anoPrev = el.querySelector('#resAnoPrev');
+        const anoNext = el.querySelector('#resAnoNext');
+        const atualizaAnoNav = () => {
+            const i = resState.anosOrd.indexOf(resState.ano);
+            anoLbl.textContent = resState.ano;
+            // anosOrd é decrescente: "anterior" (ano menor) é o próximo índice; "próximo" (ano maior) é o índice de trás.
+            anoPrev.disabled = i < 0 || i >= resState.anosOrd.length - 1;
+            anoNext.disabled = i <= 0;
+        };
+        atualizaAnoNav();
+        anoPrev.onclick = () => {
+            const i = resState.anosOrd.indexOf(resState.ano);
+            if (i < resState.anosOrd.length - 1) { resState.ano = resState.anosOrd[i + 1]; atualizaAnoNav(); renderResTab(); }
+        };
+        anoNext.onclick = () => {
+            const i = resState.anosOrd.indexOf(resState.ano);
+            if (i > 0) { resState.ano = resState.anosOrd[i - 1]; atualizaAnoNav(); renderResTab(); }
+        };
+
         el.querySelectorAll('#resTabs .tab').forEach(tab => {
             tab.onclick = () => {
                 resState.tab = tab.dataset.tab;
@@ -210,6 +244,14 @@ const RES_EXPLICACOES = {
     'Custo dos funcionários (empresa)': { oQue: 'Custo mensal da folha atribuído aos funcionários (salário, encargos e demais custos), excluindo benefícios.', objetivo: 'Isolar o custo de remuneração pura, sem o componente de benefícios, para análises de custo por cabeça.' },
     'Custo dos benefícios (empresa)': { oQue: 'Custo mensal dos benefícios pago pela empresa, já descontada a coparticipação dos funcionários.', objetivo: 'Medir o investimento líquido da empresa em benefícios, separado da remuneração.' },
     'Custo total com folha (empresa)': { oQue: 'Soma de tudo que a empresa paga pela folha no mês: remuneração, encargos e benefícios líquidos.', objetivo: 'É o número que efetivamente sai do caixa da empresa com pessoal em cada mês.' },
+    'Benefícios ÷ funcionários (%)': { oQue: 'Custo dos benefícios do mês dividido pelo custo dos funcionários (remuneração) do mesmo mês, em percentual.', objetivo: 'Mostrar o peso relativo dos benefícios frente à remuneração direta, mês a mês, sem depender do tamanho absoluto da folha.' },
+    'Custo médio dos funcionários por funcionário': { oQue: 'Custo dos funcionários do mês dividido pelo headcount médio do mês (média entre início e fim do mês).', objetivo: 'Estimar quanto custa, em média, manter uma pessoa na empresa naquele mês, sem o componente de benefícios.' },
+    'Custo médio dos benefícios por funcionário': { oQue: 'Custo dos benefícios do mês dividido pelo headcount médio do mês.', objetivo: 'Estimar quanto a empresa investe, em média, em benefícios por pessoa naquele mês.' },
+    'Descontos de benefícios (funcionário)': { oQue: 'Total que os funcionários pagaram no mês pela parte deles (coparticipação) nos benefícios, descontado em folha.', objetivo: 'Mostrar quanto do custo dos benefícios é, na prática, compartilhado com a equipe naquele mês.' },
+    'Custo com treinamentos (parcelas)': { oQue: 'Custo de treinamentos atribuído ao mês, considerando o regime de parcelamento de cada treinamento lançado.', objetivo: 'Ver a distribuição mensal do investimento em capacitação, já rateada pelas parcelas.' },
+    'Custo com promoções (Δ salários)': { oQue: 'Soma dos aumentos salariais (salário novo − salário antigo) das promoções ocorridas no mês.', objetivo: 'Dimensionar o impacto financeiro recorrente que as promoções do mês adicionam à folha.' },
+    'Encargos': { oQue: 'Soma dos encargos (INSS, FGTS e demais tributos sobre a folha, conforme cadastrado) lançados na folha do mês.', objetivo: 'Isolar o custo tributário da folha, separado da remuneração e dos benefícios.' },
+    'Outros custos': { oQue: 'Soma de custos lançados na folha do mês que não se enquadram em remuneração, encargos, benefícios ou hora extra.', objetivo: 'Capturar despesas de pessoal que não têm categoria própria, para que o custo total da folha feche corretamente.' },
     'Todos os benefícios': { oQue: 'O custo mensal de cada benefício ativo, empilhado por mês.', objetivo: 'Ver como o gasto com benefícios se distribui entre os diferentes tipos oferecidos, mês a mês.', leitura: 'Use "Legenda" para isolar um benefício específico e acompanhar sua evolução sozinho.' },
 
     // ---- Banco de horas ----
@@ -230,9 +272,27 @@ const RES_EXPLICACOES = {
 // Em vez de duplicar isso em outra estrutura para os gráficos, os renderizadores abaixo
 // consomem as MESMAS linhas — número mostrado é sempre o número calculado.
 
+// Soma, por label, os itens que origemFn(li, m) devolve em cada um dos 12 meses — vira o
+// "Cálculo" do card (barra horizontal): os itens DE VERDADE (funcionários, treinamentos,
+// benefícios...) que somados chegam no total do ano, não os 12 meses do próprio gráfico.
+function origemAnual(li, origemFn) {
+    if (!origemFn) return null;
+    const acc = {};
+    for (let m = 0; m < 12; m++) {
+        const itens = origemFn(li, m);
+        if (!itens) return null;
+        itens.forEach(it => { acc[it.label] = (acc[it.label] || 0) + it.valor; });
+    }
+    return Object.entries(acc).map(([label, valor]) => ({ label, valor })).filter(it => it.valor);
+}
+
 // HTML de um grupo de cards (um por linha). `cols` fixa quantos por linha (padrão: auto-fill).
+// `origemFn(li, mesIndex)`: mesma função passada a pintarPorLinha() para o clique na coluna —
+// reaproveitada aqui, agregada nos 12 meses, para popular o "Cálculo" do botão "i". Sem ela
+// (ou quando devolve null), o card não tem um "de onde veio" real e a seção fica de fora —
+// nunca se inventa uma barra por mês só para preencher o espaço.
 // Desenhar fica para pintarPorLinha().
-function htmlPorLinha(prefixo, titulo, linhas, cols = 0) {
+function htmlPorLinha(prefixo, titulo, linhas, cols = 0, origemFn) {
     const cards = linhas.map((li, i) => {
         const media = li.vals.reduce((a, b) => a + b, 0) / 12;
         const total = li.total === 'none' ? null
@@ -244,7 +304,9 @@ function htmlPorLinha(prefixo, titulo, linhas, cols = 0) {
             titulo: escapeHtml(li.label),
             total: total == null ? null : dvValorFmt(li.totalValor ?? total, fmtT),
             media: `média ${dvValorFmt(media, li.fmt === 'num' ? 'dec' : li.fmt)}${li.total === 'none' ? '' : '/mês'}`,
-            info: RES_EXPLICACOES[li.label]
+            info: RES_EXPLICACOES[li.label],
+            calculoItens: origemAnual(li, origemFn),
+            calculoFmt: li.fmt
         });
     }).join('');
 
@@ -253,13 +315,29 @@ function htmlPorLinha(prefixo, titulo, linhas, cols = 0) {
 }
 
 // Desenha os gráficos de um grupo montado por htmlPorLinha() (canvas já no DOM).
-function pintarPorLinha(prefixo, linhas) {
+// `origemFn(li, mesIndex)`, se passada, habilita o clique na coluna: retorna os itens
+// individuais (funcionários, treinamentos, promoções...) que somados compõem aquele mês.
+// Sem origemFn (ou quando ela devolve null p/ aquela linha), a coluna não reage ao clique —
+// nem todo indicador tem um "de onde veio" além do próprio número (ex.: uma razão/percentual).
+function pintarPorLinha(prefixo, linhas, origemFn) {
     linhas.forEach((li, i) => {
         const media = li.vals.reduce((a, b) => a + b, 0) / 12;
         mkChart('resultados', `${prefixo}_${i}`, {
             type: 'bar',
             data: { labels: MESES, datasets: [dvBarra(li.label, li.vals, dvCor(i)), dvLinhaMedia(media)] },
-            options: dvOpts({ fmt: li.fmt })
+            options: dvOpts({
+                fmt: li.fmt,
+                onClick: origemFn ? (evt, els) => {
+                    const el = els.find(e => e.datasetIndex === 0) || els[0];
+                    if (!el) return;
+                    const m = el.index;
+                    const itens = origemFn(li, m);
+                    if (!itens) return;
+                    abrirOrigemDados(li.label, MESES[m],
+                        itens.map(it => ({ label: it.label, valorFmt: dvValorFmt(it.valor, li.fmt === 'num' ? 'dec' : li.fmt) })),
+                        dvValorFmt(li.vals[m], li.fmt));
+                } : undefined
+            })
         });
     });
 }
@@ -279,13 +357,17 @@ function htmlEmpilhado(id, titulo, linhas, fmt = 'num') {
 
 function cardEmpilhado(id, titulo, linhas, fmt, chaveInfo) {
     const totalGeral = linhas.reduce((s, li) => s + li.vals.reduce((a, b) => a + b, 0), 0);
+    // Cálculo do empilhado: cada série (motivo, benefício, tipo...) somada no ano — os
+    // mesmos itens que compõem as cores da barra, só que agregados em 12 meses.
+    const calculoItens = linhas.map(li => ({ label: li.label, valor: li.vals.reduce((a, b) => a + b, 0) }));
     return chartCard({
         id, titulo,
         sub: 'Empilhado por mês — clique em “Legenda” para filtrar séries',
         acao: `<button class="chart-legenda-btn" data-emp="${id}">${icon('filter')}<span>Legenda</span></button>`,
         total: dvValorFmt(totalGeral, fmt),
         media: `média ${dvValorFmt(totalGeral / 12, fmt === 'num' ? 'dec' : fmt)}/mês`,
-        info: RES_EXPLICACOES[chaveInfo || titulo]
+        info: RES_EXPLICACOES[chaveInfo || titulo],
+        calculoItens, calculoFmt: fmt
     });
 }
 
@@ -295,9 +377,10 @@ function cardEmpilhado(id, titulo, linhas, fmt, chaveInfo) {
 // título do empilhado varia em runtime (ex.: "(dias)" ↔ "(ocorrências)").
 function htmlEmpilhadoComRanking(idEmp, idRank, tituloEmp, tituloRank, linhas, fmt = 'num', chaveInfoEmp) {
     const totalGeral = linhas.reduce((s, li) => s + li.vals.reduce((a, b) => a + b, 0), 0);
+    const calculoItens = linhas.map(li => ({ label: li.label, valor: li.vals.reduce((a, b) => a + b, 0) }));
     return `<div class="chart-duo">
         ${cardEmpilhado(idEmp, tituloEmp, linhas, fmt, chaveInfoEmp)}
-        ${chartCard({ id: idRank, titulo: tituloRank, sub: 'No ano — maior para o menor', total: dvValorFmt(totalGeral, fmt), info: RES_EXPLICACOES[tituloRank] })}
+        ${chartCard({ id: idRank, titulo: tituloRank, sub: 'No ano — maior para o menor', total: dvValorFmt(totalGeral, fmt), info: RES_EXPLICACOES[tituloRank], calculoItens, calculoFmt: fmt })}
     </div>`;
 }
 
@@ -326,6 +409,20 @@ function pintarEmpilhado(id, linhas, fmt = 'num', rankId = null) {
                     // Some com o que não tem valor no mês: uma legenda inteira de zeros polui.
                     filter: item => item.parsed.y > 0,
                     callbacks: { footer: items => `Total do mês: ${dvValorFmt(somaMes[items[0].dataIndex], fmt)}` }
+                },
+                // Empilhado: a "origem" de uma coluna é genérica e sempre disponível — é a
+                // própria composição por série (cada cor do empilhado já é um item somado).
+                // Não depende de metadado extra por gráfico, ao contrário de pintarPorLinha().
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    const m = els[0].index;
+                    const itens = vis
+                        .map(({ li }) => ({ label: li.label, valor: li.vals[m] }))
+                        .filter(it => it.valor)
+                        .sort((a, b) => b.valor - a.valor);
+                    abrirOrigemDados('Composição do mês', MESES[m],
+                        itens.map(it => ({ label: it.label, valorFmt: dvValorFmt(it.valor, fmt) })),
+                        dvValorFmt(somaMes[m], fmt));
                 }
             })
         });
@@ -761,7 +858,6 @@ function resFinanceiro(cont) {
         { label: 'Benefícios ÷ funcionários (%)', fmt: 'pct', vals: meses.map(m => m.funcionariosCusto ? m.beneficiosLiq / m.funcionariosCusto * 100 : 0), total: 'none' },
         { label: 'Custo médio dos funcionários por funcionário', fmt: 'brl', vals: meses.map(m => m.hMedio ? m.funcionariosCusto / m.hMedio : 0), total: 'none' },
         { label: 'Custo médio dos benefícios por funcionário', fmt: 'brl', vals: meses.map(m => m.hMedio ? m.beneficiosLiq / m.hMedio : 0), total: 'none' },
-        { label: 'Remuneração bruta (folha)', fmt: 'brl', vals: meses.map(m => m.folhaBruto) },
         { label: 'Descontos de benefícios (funcionário)', fmt: 'brl', vals: meses.map(m => m.descontos) },
         { label: 'Custo com treinamentos (parcelas)', fmt: 'brl', vals: meses.map(m => m.treinos) },
         { label: 'Custo com promoções (Δ salários)', fmt: 'brl', vals: meses.map(m => m.promoCusto) },
@@ -801,19 +897,116 @@ function resFinanceiro(cont) {
     // card individual seriam o mesmo gráfico repetido.
     const empilharBenef = linhasBenef.length > 1;
 
+    // Linhas por funcionário da folha do mês `m` (já com HE do banco embutida) — mesma base
+    // usada por resBase() para somar os totais, só que aqui mantemos o id de cada linha para
+    // poder fragmentar a soma de volta em "quem contribuiu com quanto". Definidas ANTES do
+    // HTML porque tanto o "Cálculo" do botão "i" (agregado no ano) quanto o clique na coluna
+    // (um mês) usam a mesma função — ver origemAnual() em htmlPorLinha().
+    const finLinhasDoMes = m => {
+        const mk = mesKey(ano, m);
+        const folhaMes = folhaComHeBanco(dados.folha[mk] || {}, mk, dados.bhFechamentos, dados.extras, dados.bhQuitacoes, feriasCtx(dados));
+        return Object.entries(folhaMes).filter(([id]) => ids.has(id));
+    };
+    // Nome do funcionário a partir do dataset já carregado por ESTA página (resState.dados).
+    // Nada de lancFuncNome() aqui: ela cai para lancState/funcState, que só existem depois de
+    // visitar Lançamentos/Funcionários na sessão — abrindo Resultados direto, ambos vêm vazios
+    // e todo mundo virava "(removido)", colapsando o Cálculo numa única barra.
+    const finNomeFunc = id => dados.funcionarios.find(f => f.id === id)?.nome || '(removido)';
+    // Fragmenta um valor por funcionário, ordenado do maior para o menor — omite quem não
+    // contribuiu (zero) para não poluir a janela de origem com uma lista cheia de "R$ 0,00".
+    const finOrigemPorFuncionario = campo => (li, m) =>
+        finLinhasDoMes(m)
+            .map(([id, l]) => ({ label: finNomeFunc(id), valor: campo(l) }))
+            .filter(x => x.valor)
+            .sort((a, b) => b.valor - a.valor);
+
+    // Todas as rubricas que compõem o bruto da folha (FOLHA_COLS + derivadas), na mesma
+    // ordem/nome usados na grade de Lançamentos — ver brutoLinha em folha.js. "Benefícios"
+    // fica de fora aqui porque quem pede esse detalhamento quer o bruto por rubrica; o líquido
+    // de benefícios (após coparticipação) é a própria linha "Custo dos benefícios (empresa)".
+    const FIN_RUBRICAS_BRUTO = [
+        ...FOLHA_COLS.filter(([k]) => k !== 'beneficios'),
+        [FOLHA_HE_BANCO, FOLHA_COL_LABEL[FOLHA_HE_BANCO]],
+        [FOLHA_HE_MANUAL, FOLHA_COL_LABEL[FOLHA_HE_MANUAL]],
+        [FOLHA_FERIAS_CALC, FOLHA_COL_LABEL[FOLHA_FERIAS_CALC]],
+        [FOLHA_DECIMO_CALC, FOLHA_COL_LABEL[FOLHA_DECIMO_CALC]],
+        [FOLHA_DESC_ATRASO, FOLHA_COL_LABEL[FOLHA_DESC_ATRASO]]
+    ];
+    // Fragmenta um valor por TIPO de custo (rubrica da folha), somando todas as linhas de
+    // funcionário do mês para cada rubrica — em vez de "quem", mostra "em quê" o total se
+    // decompõe, que é o que o card explica no cálculo.
+    const finOrigemPorTipo = rubricas => (li, m) => {
+        const linhas = finLinhasDoMes(m).map(([, l]) => l);
+        return rubricas
+            .map(([k, label]) => ({ label, valor: linhas.reduce((s, l) => s + (Number(l?.[k]) || 0), 0) }))
+            .filter(x => x.valor)
+            .sort((a, b) => b.valor - a.valor);
+    };
+    // Igual a finOrigemPorTipo, mas a rubrica "Benefícios" entra já LÍQUIDA da coparticipação
+    // (mesmo teto de descontoEfetivoLinha: benefício 100 com coparticipação 90 aparece como
+    // 10), em vez de uma linha de desconto separada — é assim que o valor entra em totalLinha,
+    // e a barra "Benefícios" deve mostrar o que sobra, não o bruto do benefício.
+    const finOrigemPorTipoBeneficioLiquido = rubricas => (li, m) => {
+        const linhas = finLinhasDoMes(m).map(([, l]) => l);
+        return rubricas
+            .map(([k, label]) => ({
+                label,
+                valor: k === 'beneficios'
+                    ? linhas.reduce((s, l) => s + beneficioLinha(l), 0)
+                    : linhas.reduce((s, l) => s + (Number(l?.[k]) || 0), 0)
+            }))
+            .filter(x => x.valor)
+            .sort((a, b) => b.valor - a.valor);
+    };
+
+    // Custos/mês (label -> como fragmentar). Razões e médias (Benefícios ÷ funcionários,
+    // Custo médio...) ficam de fora: dividir não é somar, não há "itens" para listar.
+    const finOrigem = {
+        'Custo dos funcionários (empresa)': finOrigemPorTipo(FIN_RUBRICAS_BRUTO),
+        'Custo dos benefícios (empresa)': finOrigemPorFuncionario(beneficioLinha),
+        'Custo total com folha (empresa)': finOrigemPorTipoBeneficioLiquido([...FIN_RUBRICAS_BRUTO, ['beneficios', FOLHA_COL_LABEL.beneficios]]),
+        'Descontos de benefícios (funcionário)': finOrigemPorFuncionario(descontoLinha),
+        'Encargos': finOrigemPorFuncionario(l => Number(l?.encargos) || 0),
+        'Outros custos': finOrigemPorFuncionario(l => Number(l?.outros) || 0),
+        'Custo com treinamentos (parcelas)': (li, m) => dados.treinamentos
+            .map(t => ({ label: t.nome || '(sem nome)', valor: custoTreinoNoMes(t, ano, m) }))
+            .filter(x => x.valor)
+            .sort((a, b) => b.valor - a.valor),
+        'Custo com promoções (Δ salários)': (li, m) => dados.promocoes
+            .filter(p => ids.has(p.funcionarioId) && (p.data || '').startsWith(mesKey(ano, m)))
+            .map(p => ({ label: finNomeFunc(p.funcionarioId), valor: Math.max(0, (Number(p.salarioNovo) || 0) - (Number(p.salarioAntigo) || 0)) }))
+            .filter(x => x.valor)
+            .sort((a, b) => b.valor - a.valor)
+    };
+    const finOrigemDispatch = (li, m) => finOrigem[li.label] ? finOrigem[li.label](li, m) : null;
+
+    // Detalhamento por benefício: fragmenta por funcionário aderido (titular + dependentes).
+    const finOrigemBenef = (li, m) => {
+        const b = dados.beneficios.find(x => (x.nome || '') === li.label);
+        if (!b) return [];
+        const folhaMes = dados.folha[mesKey(ano, m)] || {};
+        return Object.keys(folhaMes).filter(fid => ids.has(fid)).flatMap(fid => {
+            const f = dados.funcionarios.find(x => x.id === fid);
+            return (f?.beneficios || []).filter(fb => fb.beneficioId === b.id).map(fb => ({
+                label: f.nome + (fb.dependentes?.length ? ` (+${fb.dependentes.length} dep.)` : ''),
+                valor: (Number(b.custoTitular) || 0) + (fb.dependentes || []).length * (Number(b.custoDependente) || 0)
+            }));
+        }).filter(x => x.valor).sort((a, b) => b.valor - a.valor);
+    };
+
     cont.innerHTML =
-        htmlPorLinha('fin', tCusto, linhas, 4)
+        htmlPorLinha('fin', tCusto, linhas, 4, finOrigemDispatch)
         + (linhasBenef.length
             ? `<div class="res-grupo-tit">${tBenef}</div>`
               + (empilharBenef ? htmlEmpilhadoComRanking('fin_benef_all', 'fin_benef_rank', 'Todos os benefícios', 'Ranking por benefício', linhasBenef, 'brl') : '')
-              + htmlPorLinha('fin_benef', '', linhasBenef, 4)
+              + htmlPorLinha('fin_benef', '', linhasBenef, 4, finOrigemBenef)
               + notaBenef
             : '');
 
-    pintarPorLinha('fin', linhas);
+    pintarPorLinha('fin', linhas, finOrigemDispatch);
     if (linhasBenef.length) {
         if (empilharBenef) pintarEmpilhadoComRanking('fin_benef_all', 'fin_benef_rank', linhasBenef, 'brl');
-        pintarPorLinha('fin_benef', linhasBenef);
+        pintarPorLinha('fin_benef', linhasBenef, finOrigemBenef);
     }
 }
 

@@ -98,6 +98,14 @@
 .input[readonly] { background: var(--surface-2); cursor: default; color: var(--text-2); }
 .select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238a90a3' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; cursor: pointer; }
 
+/* Botão "Funcionário" (popover buscável) que substitui o <select> simples — ver
+   selectFuncionario()/bindSelectFuncionario() em lancamentos.js */
+.func-picker { width: 100%; }
+.select-picker { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; text-align: left; }
+.select-picker svg.icon { flex-shrink: 0; color: var(--muted); }
+.select-picker-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-picker-lbl.muted { color: #b0b4c6; }
+
 .field .field-hint { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
 .field.invalid .input, .field.invalid .select { border-color: var(--danger); }
 .field .field-error { font-size: 11.5px; color: var(--danger); margin-top: 4px; display: none; }
@@ -521,6 +529,13 @@ table.table td.num, table.table th.num { text-align: right; font-variant-numeric
 .pop-filter .pop-item.selected { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
 .pop-filter .pop-item svg.icon { color: var(--accent); }
 
+/* Popover "Ver participantes" — cada linha é a célula rica (foto + nome + cargo/idade/
+   contato), não texto simples; precisa de mais largura que o pop-filter padrão. */
+.popover.pop-participantes { min-width: 300px; max-width: 360px; }
+.pop-participantes .pop-item.pop-part { display: block; padding: 6px 8px; }
+.pop-participantes .pop-item.pop-part:hover { background: var(--accent-soft); }
+.pop-participantes .lanc-func-cell { pointer-events: none; }
+
 /* ---- Toast ---- */
 .toast-container {
     position: fixed;
@@ -648,6 +663,12 @@ table.table td.num, table.table th.num { text-align: right; font-variant-numeric
 
 /* Botão-filtro (Ausências) */
 .btn-filter.active { background: var(--accent-soft); border-color: var(--accent-soft-2); color: var(--accent-strong); }
+
+/* Navegador de ano (Resultados) — setas em vez de <select> */
+.res-ano-nav { display: flex; align-items: center; gap: 2px; border: 1px solid var(--border); border-radius: 8px; padding: 0 4px; height: 36px; background: var(--surface); }
+.res-ano-nav .btn-icon-sm { margin-left: 0; }
+.res-ano-nav .btn-icon-sm:disabled { opacity: .35; cursor: default; }
+.res-ano-lbl { min-width: 44px; text-align: center; font-weight: 600; font-size: 14px; }
 
 /* Célula de encargos: auto-preenchida + flash ao recalcular */
 .folha-cell.cell-auto { background: var(--surface-2); }
