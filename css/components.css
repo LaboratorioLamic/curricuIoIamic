@@ -227,9 +227,35 @@
     font-weight: 700;
     font-size: 13px;
     flex-shrink: 0;
+    overflow: hidden;
 }
+.avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.avatar.xs { width: 20px; height: 20px; font-size: 8.5px; }
 .avatar.lg { width: 52px; height: 52px; font-size: 18px; }
 .avatar.xl { width: 60px; height: 60px; font-size: 21px; border-radius: 16px; }
+.avatar.foto-media { width: 128px; height: 128px; font-size: 34px; border-radius: 20px; }
+.avatar.is-clicavel { cursor: pointer; }
+
+/* Foto ampliada: fundo escuro cobrindo a tela; a imagem em si é posicionada via left/top
+   inline (JS), ancorada no mesmo canto da foto pequena que foi clicada — fica por cima dela. */
+.foto-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: rgba(23, 23, 50, .55);
+    backdrop-filter: blur(2px);
+    cursor: zoom-out;
+    animation: fadeIn .15s ease;
+}
+.foto-lightbox img {
+    position: fixed;
+    width: 256px;
+    height: 256px;
+    object-fit: cover;
+    border-radius: 20px;
+    box-shadow: var(--shadow-lg);
+    animation: popIn .2s ease;
+}
 
 /* ---- Badges ---- */
 .badge {
@@ -290,6 +316,37 @@ table.table tbody tr { transition: background .12s; }
 table.table tbody tr:hover { background: var(--surface-2); }
 table.table tbody tr:last-child td { border-bottom: none; }
 table.table td.num, table.table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Célula "Funcionário" enriquecida (Lançamentos): foto + nome + cargo/idade/contato.
+   Só exibição — a ficha completa abre a partir da janela de detalhe do lançamento. */
+.lanc-func-cell { display: flex; align-items: center; gap: 10px; }
+.lanc-func-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.lanc-func-nome { font-weight: 650; color: var(--text); }
+.lanc-func-meta {
+    font-size: 11.5px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px;
+}
+
+/* Cabeçalho da janela de detalhe de lançamento (Faltas/licenças, Demissões, Promoções,
+   Transferências): foto + nome clicáveis abrem a ficha completa do funcionário. */
+.dh-func-card { display: flex; align-items: center; gap: 14px; cursor: pointer; padding: 2px; margin: -2px -2px 0; border-radius: var(--radius); transition: background .12s; }
+.modal-header .dh-func-card { flex: 1; min-width: 0; margin: -6px 0; padding: 6px; }
+.dh-func-card:hover { background: var(--surface-2); }
+.dh-func-card:hover .avatar { box-shadow: 0 0 0 2px var(--accent-soft-2); }
+.dh-func-card:hover .dh-nome { color: var(--accent-strong); text-decoration: underline; }
+.dh-func-card .avatar { transition: box-shadow .12s; }
+.dh-eyebrow { font-size: 11.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 2px; }
+.dh-nome { margin: 0; }
+.dh-meta { font-size: 13px; color: var(--text-2); margin-top: 3px; }
+
+/* Faixa de indicadores no topo da janela de detalhe (ex.: Treinamento) */
+.dt-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
+.dt-stat {
+    background: var(--surface-2); border-radius: var(--radius);
+    padding: 12px 14px; display: flex; flex-direction: column; gap: 3px;
+}
+.dt-stat-n { font-size: 19px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.dt-stat-lbl { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
 
 /* Estado vazio dentro de tabela */
 .table-empty {

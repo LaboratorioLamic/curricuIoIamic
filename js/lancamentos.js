@@ -131,6 +131,71 @@ function folhaBindFiltros(idUni, idCargo, rerender) {
 const lancFuncNome = id =>
     (lancState.funcionarios.find(f => f.id === id) || funcState.funcionarios.find(f => f.id === id))?.nome || '(removido)';
 const lancAtivos = () => lancState.funcionarios.filter(f => !f.demissao).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+const lancFuncObj = id => lancState.funcionarios.find(f => f.id === id) || funcState.funcionarios.find(f => f.id === id);
+const lancCargoObj = f => lancState.cargos.find(c => c.id === f?.cargoId) || funcState.cargos.find(c => c.id === f?.cargoId);
+
+// Célula "Funcionário" enriquecida (foto + nome + cargo/idade/contato) usada nas tabelas de
+// Lançamentos. Nome e foto são clicáveis e abrem a ficha completa — mesma janela usada em
+// Funcionários — sem duplicar aqui o que já é mostrado lá.
+function lancFuncCellHtml(id) {
+    const f = lancFuncObj(id);
+    if (!f) return `<div class="lanc-func-cell"><div class="avatar">?</div><div class="lanc-func-info"><span class="lanc-func-nome">(removido)</span></div></div>`;
+    const cargo = lancCargoObj(f);
+    const idadeF = idade(f.nascimento);
+    const meta = [cargo?.nome || 'Sem cargo', idadeF != null ? `${idadeF} anos` : null, f.telefone || null]
+        .filter(Boolean).join(' · ');
+    return `
+        <div class="lanc-func-cell">
+            ${avatarHtml(f)}
+            <div class="lanc-func-info">
+                <span class="lanc-func-nome">${escapeHtml(f.nome)}</span>
+                ${meta ? `<span class="lanc-func-meta">${escapeHtml(meta)}</span>` : ''}
+            </div>
+        </div>`;
+}
+
+// Cabeçalho "foto + nome + cargo/idade/contato" das janelas de detalhe (modal ou drawer).
+// Nome e foto clicáveis abrem a ficha completa — quem liga o clique é quem monta a janela
+// (o card em si não sabe se está num modal ou num drawer único).
+function dhFuncCardHtml(f, { eyebrow } = {}) {
+    const cargo = lancCargoObj(f);
+    const idadeF = idade(f.nascimento);
+    const meta = [cargo?.nome || 'Sem cargo', idadeF != null ? `${idadeF} anos` : null, f.telefone || null].filter(Boolean);
+    return `
+        <div class="dh-func-card" title="Abrir ficha de ${escapeHtml(f.nome)}">
+            ${avatarHtml(f, 'lg')}
+            <div class="grow">
+                ${eyebrow ? `<div class="dh-eyebrow">${eyebrow}</div>` : ''}
+                <h3 class="dh-nome">${escapeHtml(f.nome)}</h3>
+                ${meta.length ? `<div class="dh-meta">${meta.map(escapeHtml).join(' · ')}</div>` : ''}
+            </div>
+        </div>`;
+}
+
+// Garante que funcState (usado pela ficha) esteja carregado mesmo quando o usuário nunca
+// visitou a página Funcionários nesta sessão — mesma lógica de fallback de lancFuncNome,
+// mas completa (benefícios/treinamentos/ausências/parâmetros) porque a ficha tem abas que
+// dependem desses dados.
+async function abrirFichaFuncionario(id) {
+    if (!funcState.funcionarios.length) {
+        const [funcionarios, cargos, unidades, beneficios, treinamentos, ausencias, params] = await Promise.all([
+            DB.getAll(PATHS.funcionarios), DB.getAll(PATHS.cargos), DB.getAll(PATHS.unidades),
+            DB.getAll(PATHS.beneficios), DB.getAll(PATHS.treinamentos), DB.getAll(PATHS.ausencias),
+            DB.getObj(PATHS.parametros)
+        ]);
+        Object.assign(funcState, { funcionarios, cargos, unidades, beneficios, treinamentos, ausencias, params: params || {} });
+    }
+    const f = funcState.funcionarios.find(x => x.id === id) || lancFuncObj(id);
+    if (!f) return toast('Funcionário não encontrado (pode ter sido removido).', 'info');
+    drawerFuncionario(f);
+}
+
+// Carrega as fotos das células "Funcionário" nas linhas da tabela (só exibição — a ficha
+// completa abre a partir da janela de detalhe do lançamento, não daqui).
+function bindLancFuncCells(container) {
+    if (!container) return;
+    bindAvatarFotos(container);
+}
 
 registerPage({
     id: 'lancamentos',
@@ -273,7 +338,7 @@ async function renderAusencias() {
         thead: '<th>Funcionário</th><th>Tipo</th><th>Início</th><th>Retorno</th><th class="num">Dias ausentes</th><th>Observação</th><th>Anexo</th><th style="width:48px"></th>',
         rowsHtml: ausencias.map(a => `
             <tr data-id="${a.id}" data-tipo="${escapeHtml(a.tipo || '')}" data-search="${escapeHtml((lancFuncNome(a.funcionarioId) + ' ' + (a.tipo || '')).toLowerCase())}">
-                <td><strong>${escapeHtml(lancFuncNome(a.funcionarioId))}</strong></td>
+                <td>${lancFuncCellHtml(a.funcionarioId)}</td>
                 <td><span class="badge ${badgeTipo(a.tipo)}">${escapeHtml(a.tipo || '—')}</span></td>
                 <td>${fmtDate(a.inicio)}</td>
                 <td>${fmtDate(a.retorno)}</td>
@@ -284,6 +349,7 @@ async function renderAusencias() {
             </tr>`).join(''),
         onNew: () => formAusencia(null)
     });
+    bindLancFuncCells(document.getElementById('lancTbody'));
     bindAnexoChips(document.getElementById('lancTbody'), el => anexosDe(ausencias.find(x => x.id === el.closest('tr').dataset.id)));
 
     // Filtro por tipo (popover)
@@ -338,7 +404,7 @@ function lancRowClick(tr, onOpen) {
 // header: {titulo, sub, badge}; linhas: [[label, valueHtml], ...]; anexo; onEdit/onDelete opcionais
 // onClose: usado quando o detalhe foi aberto de dentro de outro drawer (ex.: ficha do
 // funcionário) — o drawer é único, então ao fechar precisamos devolver o contexto anterior.
-function abrirDetalheLanc({ titulo, sub, badgeHtml, linhas, anexo, onEdit, onDelete, onClose }) {
+function abrirDetalheLanc({ titulo, sub, badgeHtml, heroHtml, linhas, anexo, funcionarioId, onEdit, onDelete, onClose }) {
     const podeEditar = can('editar_lancamentos');
     const anexos = Array.isArray(anexo) ? anexo : (anexo ? [anexo] : []);
     const rows = linhas.filter(Boolean).map(([l, v]) => `
@@ -346,16 +412,27 @@ function abrirDetalheLanc({ titulo, sub, badgeHtml, linhas, anexo, onEdit, onDel
             <div class="detail-label">${l}</div>
             <div class="detail-value">${v ?? '—'}</div>
         </div>`).join('');
-    let voltar = onClose; // suprimido quando o fechamento leva a outra tela (editar/excluir)
+
+    // Cabeçalho rico (foto + cargo/idade/contato) quando o lançamento pertence a um único
+    // funcionário — foto e nome abrem a ficha completa. Cai no cabeçalho simples (ex.: um
+    // treinamento com vários participantes) quando não há funcionarioId.
+    const f = funcionarioId ? lancFuncObj(funcionarioId) : null;
+
+    let voltar = onClose; // suprimido quando o fechamento leva a outra tela (editar/excluir/ficha)
     const d = openDrawer({
         onClose: () => voltar && voltar(),
-        headerHtml: `
+        headerHtml: f ? `
+            <div class="detail-head">
+                ${dhFuncCardHtml(f, { eyebrow: sub })}
+                ${badgeHtml ? `<div class="mt-8">${badgeHtml}</div>` : ''}
+            </div>` : `
             <div class="detail-head">
                 <h3>${escapeHtml(titulo)}</h3>
                 ${sub ? `<div class="detail-sub">${sub}</div>` : ''}
                 ${badgeHtml ? `<div class="mt-8">${badgeHtml}</div>` : ''}
             </div>`,
         body: `
+            ${heroHtml || ''}
             <div class="detail-list">${rows}</div>
             ${anexos.length ? `<div class="detail-section"><div class="detail-label" style="margin-bottom:8px">Anexo${anexos.length > 1 ? 's' : ''}</div><div class="anexo-galeria" id="detAnexo"></div></div>` : ''}
             ${(onEdit || onDelete) && podeEditar ? `
@@ -364,6 +441,11 @@ function abrirDetalheLanc({ titulo, sub, badgeHtml, linhas, anexo, onEdit, onDel
                 ${onDelete ? `<button class="btn btn-danger" data-del>${icon('trash')} Excluir</button>` : ''}
             </div>` : ''}`
     });
+    if (f) {
+        bindAvatarFotos(d.el);
+        const card = d.el.querySelector('.dh-func-card');
+        if (card) card.onclick = () => { voltar = null; d.close(); abrirFichaFuncionario(f.id); };
+    }
     if (anexos.length) {
         const box = d.body.querySelector('#detAnexo');
         box.innerHTML = anexos.map((a, i) => `
@@ -393,6 +475,7 @@ function detalheAusencia(a, onDelete, onClose) {
     const ferias = a.tipo === TIPO_FERIAS;
     abrirDetalheLanc({
         titulo: lancFuncNome(a.funcionarioId),
+        funcionarioId: a.funcionarioId,
         sub: ferias ? 'Férias' : 'Faltas e licenças',
         badgeHtml: `<span class="badge ${badgeTipoAus(a.tipo)}">${escapeHtml(a.tipo || '—')}</span>`
             + (emCurso && ferias ? ' ' + seloFeriasHtml(a) : ''),
@@ -761,7 +844,8 @@ function feriasProgramacao(ferias) {
                         return `
                         <tr data-id="${f.id}" class="row-clickable" data-search="${escapeHtml((f.nome + ' ' + (unidadeNomeDe(f.unidadeId))).toLowerCase())}">
                             <td>
-                                <div class="flex" style="gap:8px">
+                                <div class="flex" style="gap:8px;align-items:center">
+                                    ${avatarHtml(f)}
                                     <span class="prog-dot ${s.dot}"></span>
                                     <strong>${escapeHtml(f.nome)}</strong>
                                     ${fer ? `<span class="badge badge-ferias" title="Volta ${fmtDate(fer.retorno)}">${icon('sun')} de férias</span>` : ''}
@@ -800,6 +884,7 @@ function feriasProgramacao(ferias) {
             `<tr><td colspan="10"><div class="table-empty">${icon('sun')}<span>Nenhum funcionário ativo com admissão registrada.</span></div></td></tr>`;
     }
     document.getElementById('lancSearch').addEventListener('input', () => lancAplicaFiltros());
+    bindAvatarFotos(box);
     feriasBindFiltros('progUni', 'progCargo', () => feriasProgramacao(ferias));
 
     box.querySelectorAll('#lancTbody tr[data-id]').forEach(tr => {
@@ -842,7 +927,7 @@ function detalheFeriasFunc(f, ausencias, sit, plano) {
     };
 
     const m = openModal({
-        title: f.nome,
+        titleHtml: dhFuncCardHtml(f),
         size: 'md',
         body: `
             <div class="dc-tabs" role="tablist">
@@ -939,6 +1024,10 @@ function detalheFeriasFunc(f, ausencias, sit, plano) {
             ${podeEditar && !fer ? `<button class="btn btn-primary" data-lancar>${icon('plus')} Lançar férias</button>` : ''}`
     });
 
+    bindAvatarFotos(m.el);
+    const funcCard = m.el.querySelector('.dh-func-card');
+    if (funcCard) funcCard.onclick = () => { m.close(); abrirFichaFuncionario(f.id); };
+
     m.footer.querySelector('[data-cancel]').onclick = m.close;
     const bl = m.footer.querySelector('[data-lancar]');
     if (bl) bl.onclick = () => {
@@ -996,7 +1085,7 @@ function feriasTabela(ferias) {
                         const s = situacaoFerias(a);
                         return `
                         <tr data-id="${a.id}" data-search="${escapeHtml((lancFuncNome(a.funcionarioId) + ' ' + feriasUnidadeNome(a.funcionarioId)).toLowerCase())}">
-                            <td><strong>${escapeHtml(lancFuncNome(a.funcionarioId))}</strong></td>
+                            <td>${lancFuncCellHtml(a.funcionarioId)}</td>
                             <td class="text-2">${escapeHtml(feriasUnidadeNome(a.funcionarioId))}</td>
                             <td>${fmtDate(a.inicio)}</td>
                             <td>${fmtDate(a.retorno)}</td>
@@ -1017,6 +1106,7 @@ function feriasTabela(ferias) {
     const btnNew = document.getElementById('lancNew');
     if (btnNew) btnNew.onclick = () => formAusencia(null, true);
     document.getElementById('lancSearch').addEventListener('input', () => lancAplicaFiltros());
+    bindLancFuncCells(document.getElementById('lancTbody'));
     bindAnexoChips(document.getElementById('lancTbody'), el => anexosDe(ferias.find(x => x.id === el.closest('tr').dataset.id)));
 
     document.querySelectorAll('#lancTbody tr[data-id]').forEach(tr => {
@@ -1118,6 +1208,7 @@ function feriasAgenda(ferias) {
                         <div class="gt-row" data-fid="${f.id}">
                             <div class="gt-lbl" ${sit ? `title="${escapeHtml(sit.desc)}"` : ''}>
                                 <div class="gt-nome">
+                                    ${avatarHtml(f, 'xs')}
                                     <span class="gt-nome-txt">${escapeHtml(f.nome)}</span>
                                     ${sit && sit.status !== 'aquisitivo' && !fer
                                         ? `<span class="gt-sit gt-sit-${sit.status}" title="${escapeHtml(sit.label)}">${sit.status === 'vencida' ? '● vencida' : `● ${sit.dias}d`}</span>` : ''}
@@ -1163,6 +1254,7 @@ function feriasAgenda(ferias) {
     document.getElementById('agNext').onclick = () => navAno(1);
 
     feriasBindFiltros('agUni', 'agCargo', () => feriasAgenda(ferias));
+    bindAvatarFotos(box);
 
     box.querySelectorAll('.gt-bar[data-id]').forEach(b => {
         b.onclick = () => detalheAusencia(ferias.find(x => x.id === b.dataset.id), excluirFerias);
@@ -1180,7 +1272,7 @@ async function renderDemissoes() {
         thead: '<th>Funcionário</th><th>Data</th><th>Motivo</th><th>Observações</th><th>Anexo</th><th style="width:48px"></th>',
         rowsHtml: demissoes.map(d => `
             <tr data-id="${d.id}" data-search="${escapeHtml((lancFuncNome(d.funcionarioId) + ' ' + (d.motivo || '')).toLowerCase())}">
-                <td><strong>${escapeHtml(lancFuncNome(d.funcionarioId))}</strong></td>
+                <td>${lancFuncCellHtml(d.funcionarioId)}</td>
                 <td>${fmtDate(d.data)}</td>
                 <td><span class="badge badge-danger">${escapeHtml(d.motivo || '—')}</span></td>
                 <td class="text-2">${escapeHtml(d.obs || '—')}</td>
@@ -1189,6 +1281,7 @@ async function renderDemissoes() {
             </tr>`).join(''),
         onNew: () => formDemissao(null)
     });
+    bindLancFuncCells(document.getElementById('lancTbody'));
     bindAnexoChips(document.getElementById('lancTbody'), el => anexosDe(demissoes.find(x => x.id === el.closest('tr').dataset.id)));
 
     const excluirDem = async d => {
@@ -1219,6 +1312,7 @@ async function renderDemissoes() {
 function detalheDemissao(d, onDelete) {
     abrirDetalheLanc({
         titulo: lancFuncNome(d.funcionarioId),
+        funcionarioId: d.funcionarioId,
         sub: 'Desligamento',
         badgeHtml: `<span class="badge badge-danger">${escapeHtml(d.motivo || '—')}</span>`,
         linhas: [
@@ -1347,25 +1441,52 @@ async function renderTreinamentos() {
 function detalheTreinamento(t, onDelete, onClose) {
     const fin = can('ver_financeiro');
     const parts = (t.participantes || []).map(id => lancFuncNome(id)).sort((a, b) => a.localeCompare(b));
-    const partHtml = parts.length
-        ? `<div class="chip-wrap">${parts.map(n => `<span class="chip">${escapeHtml(n)}</span>`).join('')}</div>`
-        : '—';
-    abrirDetalheLanc({
+    const duracao = diasEntre(t.inicio, t.termino) + 1;
+
+    // Faixa de indicadores no topo — carga, duração e nº de participantes de relance, antes
+    // de qualquer detalhe. O nome e o tipo já estão no cabeçalho do drawer, então não se repetem aqui.
+    const heroHtml = `
+        <div class="dt-stats">
+            <div class="dt-stat">
+                <span class="dt-stat-n">${fmtNum(t.cargaHoraria)}h</span>
+                <span class="dt-stat-lbl">Carga horária</span>
+            </div>
+            <div class="dt-stat">
+                <span class="dt-stat-n">${duracao > 0 ? duracao : '—'}${duracao > 0 ? 'd' : ''}</span>
+                <span class="dt-stat-lbl">Duração</span>
+            </div>
+            <div class="dt-stat">
+                <span class="dt-stat-n">${parts.length}</span>
+                <span class="dt-stat-lbl">Participante${parts.length !== 1 ? 's' : ''}</span>
+            </div>
+        </div>`;
+
+    const d = abrirDetalheLanc({
         titulo: t.nome,
         sub: 'Treinamento',
-        badgeHtml: `<span class="badge badge-info">${escapeHtml(t.tipo || '—')}</span> <span class="badge badge-accent">${parts.length} participante(s)</span>`,
+        badgeHtml: `<span class="badge badge-info">${icon('book')} ${escapeHtml(t.tipo || '—')}</span>`,
+        heroHtml,
         linhas: [
             ['Responsável', escapeHtml(t.responsavel || '—')],
-            ['Carga horária', `${fmtNum(t.cargaHoraria)}h`],
             ['Período', `${fmtDate(t.inicio)} → ${fmtDate(t.termino)}`],
             fin ? ['Custo', t.custo ? fmtBRL(t.custo) : '—'] : null,
             fin ? ['Pagamento', t.dataPagamento ? `${fmtDate(t.dataPagamento)}${(t.parcelas || 1) > 1 ? ` · ${t.parcelas}×` : ''}` : '—'] : null,
-            ['Participantes', partHtml]
+            ['Participantes', parts.length
+                ? `<button type="button" class="btn btn-secondary btn-sm" id="dtVerParticipantes">${icon('users')} Ver participantes</button>`
+                : '<span class="muted">Nenhum</span>']
         ],
         anexo: anexosDe(t),
         onEdit: () => formTreinamento(t),
         onDelete: onDelete ? () => onDelete(t) : null,
         onClose
+    });
+
+    const btnParts = d.body.querySelector('#dtVerParticipantes');
+    if (btnParts) btnParts.onclick = () => openFilterPopover(btnParts, {
+        options: parts.map((n, i) => ({ value: String(i), label: n })),
+        value: null,
+        searchable: parts.length > 6,
+        onPick: () => {}
     });
 }
 
@@ -1620,9 +1741,12 @@ async function renderLancFolha() {
                         ${linhas.length ? linhas.map(({ f, id, linha }) => `
                         <tr data-fid="${id}">
                             <td style="white-space:nowrap">
-                                <strong>${escapeHtml(f?.nome || '(removido)')}</strong>
-                                ${f?.demissao && f.demissao >= key + '-01' && f.demissao <= key + '-31' ? `<span class="badge badge-danger" style="margin-left:6px">Desligado ${fmtDate(f.demissao)}</span>` : ''}
-                                ${podeEditar ? `<button class="btn-icon btn-icon-sm lf-row-menu" title="Ações da linha">${icon('dots')}</button>` : ''}
+                                <div class="flex" style="gap:8px;align-items:center">
+                                    ${f ? avatarHtml(f) : `<div class="avatar">?</div>`}
+                                    <strong>${escapeHtml(f?.nome || '(removido)')}</strong>
+                                    ${f?.demissao && f.demissao >= key + '-01' && f.demissao <= key + '-31' ? `<span class="badge badge-danger" style="margin-left:2px">Desligado ${fmtDate(f.demissao)}</span>` : ''}
+                                    ${podeEditar ? `<button class="btn-icon btn-icon-sm lf-row-menu" title="Ações da linha">${icon('dots')}</button>` : ''}
+                                </div>
                             </td>
                             ${COLS_VIEW.map(([k]) => k === FOLHA_HE_BANCO
                                 ? `<td class="num col-${k}" data-col-c="${k}">${Number(linha[k])
@@ -1672,6 +1796,7 @@ async function renderLancFolha() {
         </div>
         <p class="muted" style="margin-top:10px;font-size:12px">Pré-preenchido pelos cadastros; edite as células liberadas — salvamento automático. Insalubridade e Encargos (${encPct}%) são só calculados — não editáveis — e recalculam sozinhos ao alterar o salário; clique no ícone ${icon('info')} para ver a memória de cálculo. "Benefícios" e "Desconto benef." (coparticipação, abate do custo da empresa) vêm do cadastro de benefícios da folha; clique no cadeado ${icon('lock')} para editar manualmente uma célula, ou use "Resetar linha" para recalcular pelo cadastro atual.</p>`;
     bindNav();
+    bindAvatarFotos(cont);
     folhaBindFiltros('lfFiltroUni', 'lfFiltroCargo', renderLancTab);
 
     // Aplica visibilidade dos grupos de coluna
@@ -2104,7 +2229,7 @@ async function renderPromocoes() {
             const ajuste = p.cargoAnteriorId === p.cargoNovoId;
             return `
             <tr data-id="${p.id}" data-search="${escapeHtml((lancFuncNome(p.funcionarioId)).toLowerCase())}">
-                <td><strong>${escapeHtml(lancFuncNome(p.funcionarioId))}</strong></td>
+                <td>${lancFuncCellHtml(p.funcionarioId)}</td>
                 <td>${fmtDate(p.data)}</td>
                 <td>${ajuste ? `<span class="badge badge-info">Ajuste salarial</span> <span class="text-2">${escapeHtml(p.cargoNovoNome || '')}</span>`
                     : `<span class="text-2">${escapeHtml(p.cargoAnteriorNome || '—')}</span> → <strong>${escapeHtml(p.cargoNovoNome || '—')}</strong>`}</td>
@@ -2117,6 +2242,7 @@ async function renderPromocoes() {
         }).join(''),
         onNew: () => formPromocao(promocoes)
     });
+    bindLancFuncCells(document.getElementById('lancTbody'));
 
     const excluirPromo = async (p, maisRecente) => {
         const msg = maisRecente
@@ -2152,6 +2278,7 @@ function detalhePromocao(p, maisRecente, onDelete) {
     const pctBadge = `<span class="badge ${p.pctAumento >= 0 ? 'badge-success' : 'badge-danger'}">${p.pctAumento >= 0 ? '+' : ''}${Number(p.pctAumento || 0).toFixed(1)}%</span>`;
     abrirDetalheLanc({
         titulo: lancFuncNome(p.funcionarioId),
+        funcionarioId: p.funcionarioId,
         sub: ajuste ? 'Ajuste salarial' : 'Promoção',
         badgeHtml: fin ? pctBadge : `<span class="badge badge-info">${ajuste ? 'Ajuste salarial' : 'Promoção'}</span>`,
         linhas: [
@@ -2284,7 +2411,7 @@ async function renderTransferencias() {
         thead: '<th>Funcionário</th><th>Data</th><th>Origem → Destino</th><th>Motivo</th><th>Observações</th><th style="width:48px"></th>',
         rowsHtml: transferencias.map(t => `
             <tr data-id="${t.id}" data-search="${escapeHtml((lancFuncNome(t.funcionarioId) + ' ' + (t.unidadeOrigemNome || '') + ' ' + (t.unidadeDestinoNome || '')).toLowerCase())}">
-                <td><strong>${escapeHtml(lancFuncNome(t.funcionarioId))}</strong></td>
+                <td>${lancFuncCellHtml(t.funcionarioId)}</td>
                 <td>${fmtDate(t.data)}</td>
                 <td>
                     <span class="text-2">${escapeHtml(t.unidadeOrigemNome || '—')}</span>
@@ -2297,6 +2424,7 @@ async function renderTransferencias() {
             </tr>`).join(''),
         onNew: () => formTransferencia()
     });
+    bindLancFuncCells(document.getElementById('lancTbody'));
 
     // Só a transferência MAIS RECENTE do funcionário reflete a ficha — excluir uma antiga não
     // pode reverter a unidade atual (mesma regra de Promoção).
@@ -2331,6 +2459,7 @@ async function renderTransferencias() {
 function detalheTransferencia(t, maisRecente, onDelete) {
     abrirDetalheLanc({
         titulo: lancFuncNome(t.funcionarioId),
+        funcionarioId: t.funcionarioId,
         sub: 'Transferência de unidade',
         badgeHtml: `<span class="badge badge-accent">${escapeHtml(t.motivo || '—')}</span>`,
         linhas: [

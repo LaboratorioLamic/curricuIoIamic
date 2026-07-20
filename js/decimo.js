@@ -337,6 +337,7 @@ function renderDecimoProgramacao() {
     if (lote) lote.onclick = () => formDecimoLote(sits);
 
     bindDecimoRows(pane);
+    bindAvatarFotos(pane);
 }
 
 function decimoRowsHtml(sits) {
@@ -346,9 +347,12 @@ function decimoRowsHtml(sits) {
         const f = s.funcionario;
         return `<tr data-fid="${f.id}" data-nome="${escapeHtml(f.nome.toLowerCase())}" class="is-click">
             <td>
-                <div class="dc-func">
-                    <strong>${escapeHtml(f.nome)}</strong>
-                    <div class="muted">${escapeHtml(s.cargo?.nome || '—')}${f.demissao ? ` · desligado em ${fmtDate(f.demissao)}` : ''}</div>
+                <div class="dc-func" style="display:flex;gap:8px;align-items:center">
+                    ${avatarHtml(f)}
+                    <div>
+                        <strong>${escapeHtml(f.nome)}</strong>
+                        <div class="muted">${escapeHtml(s.cargo?.nome || '—')}${f.demissao ? ` · desligado em ${fmtDate(f.demissao)}` : ''}</div>
+                    </div>
                 </div>
             </td>
             <td class="num"><span class="dc-avos" title="${s.avos === 12 ? 'Ano completo' : s.estado === 'rescisao' ? 'Proporcional até o desligamento' : 'Proporcional desde a admissão'}">${s.avos}<em>/12</em></span></td>
@@ -393,7 +397,7 @@ function janelaDecimo(fid) {
     }).join('');
 
     const m = openModal({
-        title: `13º Salário ${decimoState.ano} — ${f.nome}`,
+        titleHtml: dhFuncCardHtml(f, { eyebrow: `13º Salário ${decimoState.ano}` }),
         size: 'modal-lg',
         body: `
             <div class="dc-jan-head">
@@ -479,6 +483,10 @@ function janelaDecimo(fid) {
             <button class="btn btn-secondary" data-cancel>Fechar</button>
             ${podeEditar && !s.semDireito && s.saldo > 0.01 ? `<button class="btn btn-primary" data-lancar>${icon('plus')} Lançar parcela</button>` : ''}`
     });
+
+    bindAvatarFotos(m.el);
+    const funcCard = m.el.querySelector('.dh-func-card');
+    if (funcCard) funcCard.onclick = () => { m.close(); abrirFichaFuncionario(f.id); };
 
     m.footer.querySelector('[data-cancel]').onclick = m.close;
     const bl = m.footer.querySelector('[data-lancar]');
@@ -1119,7 +1127,8 @@ function renderDecimoParcelas() {
         .filter(d => Number(d.ano) === Number(decimoState.ano))
         .sort((a, b) => (b.data || '').localeCompare(a.data || ''));
 
-    const nome = fid => decimoState.funcionarios.find(f => f.id === fid)?.nome || '—';
+    const func = fid => decimoState.funcionarios.find(f => f.id === fid);
+    const nome = fid => func(fid)?.nome || '—';
     const totalBruto = doAno.reduce((s, d) => s + (Number(d.bruto) || 0), 0);
     const totalEnc = doAno.reduce((s, d) => s + (Number(d.encargos) || 0), 0);
 
@@ -1139,7 +1148,12 @@ function renderDecimoParcelas() {
                     <tbody id="dpRows">
                         ${doAno.length ? doAno.map(d => `
                             <tr data-id="${d.id}" data-nome="${escapeHtml(nome(d.funcionarioId).toLowerCase())}" class="is-click">
-                                <td><strong>${escapeHtml(nome(d.funcionarioId))}</strong></td>
+                                <td>
+                                    <div class="flex" style="gap:8px;align-items:center">
+                                        ${func(d.funcionarioId) ? avatarHtml(func(d.funcionarioId)) : `<div class="avatar">?</div>`}
+                                        <strong>${escapeHtml(nome(d.funcionarioId))}</strong>
+                                    </div>
+                                </td>
                                 <td><span class="badge ${d.tipo === 'rescisao' ? 'badge-warning' : 'badge-info'}">${decimoTipo(d.tipo).label}</span></td>
                                 <td>${fmtDate(d.data)}</td>
                                 <td class="num">${d.avosParcela != null && d.avosParcela !== d.avos
@@ -1169,6 +1183,7 @@ function renderDecimoParcelas() {
     };
     const novo = pane.querySelector('#dpNovo');
     if (novo) novo.onclick = () => formDecimo({});
+    bindAvatarFotos(pane);
     pane.querySelectorAll('#dpRows tr[data-id]').forEach(tr => {
         tr.onclick = () => {
             const d = doAno.find(x => x.id === tr.dataset.id);

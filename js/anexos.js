@@ -115,6 +115,115 @@ async function obterImagem(imgKey) {
     return obj.data;
 }
 
+// ---- Foto de funcionário: mesmo nó rh_imagens, mas com cache PERSISTENTE (localStorage) ----
+// Anexo comum só cacheia em memória (IMG_CACHE) porque é aberto sob demanda, uma vez. A foto
+// aparece toda vez que o card/ficha é desenhado — sem cache em disco, ela seria rebaixada do
+// banco a cada carregamento da página de Funcionários, o que é exatamente o custo que se quer evitar.
+const FOTO_CACHE_PREFIX = 'rh_foto_';
+const fotoCacheGet = k => { try { return localStorage.getItem(FOTO_CACHE_PREFIX + k); } catch { return null; } };
+// Quota do localStorage é pequena (~5-10MB) — se estourar, a foto some do cache de disco mas
+// continua funcionando via IMG_CACHE (memória) pelo resto da sessão. Falha silenciosa por design.
+const fotoCacheSet = (k, data) => { try { localStorage.setItem(FOTO_CACHE_PREFIX + k, data); } catch {} };
+const fotoCacheRemove = k => { try { localStorage.removeItem(FOTO_CACHE_PREFIX + k); } catch {} };
+
+async function obterFoto(fotoKey) {
+    if (!fotoKey) return null;
+    if (IMG_CACHE[fotoKey]) return IMG_CACHE[fotoKey];
+    const local = fotoCacheGet(fotoKey);
+    if (local) { IMG_CACHE[fotoKey] = local; return local; }
+    const obj = await DB.getObj(`${PATHS.imagens}/${fotoKey}`);
+    if (!obj?.data) return null;
+    IMG_CACHE[fotoKey] = obj.data;
+    fotoCacheSet(fotoKey, obj.data);
+    return obj.data;
+}
+
+// Recorta ao quadrado central (cover) e reduz a no máximo 256x256 — tamanho fixo pequeno o
+// bastante para não pesar no banco, já que cada funcionário carrega a própria foto sempre
+// que o card dele aparece na grade.
+async function comprimirFoto(file) {
+    const dataURL = await lerComoDataURL(file);
+    const img = await new Promise((res, rej) => {
+        const i = new Image();
+        i.onload = () => res(i);
+        i.onerror = rej;
+        i.src = dataURL;
+    });
+    const SIZE = 256;
+    const lado = Math.min(img.width, img.height);
+    const sx = (img.width - lado) / 2, sy = (img.height - lado) / 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = SIZE; canvas.height = SIZE;
+    canvas.getContext('2d').drawImage(img, sx, sy, lado, lado, 0, 0, SIZE, SIZE);
+    let q = 0.85, out = canvas.toDataURL('image/jpeg', q);
+    while (out.length > 100 * 1024 && q > 0.3) { q -= 0.1; out = canvas.toDataURL('image/jpeg', q); }
+    return out;
+}
+
+// Grava a foto (já comprimida) em rh_imagens e popula os dois caches na hora — evita um
+// round-trip ao banco só para reexibir a foto que acabou de ser enviada. Se havia uma foto
+// anterior, remove-a (senão o registro antigo fica orfão em rh_imagens para sempre).
+async function salvarFotoDB(dataURL, fotoKeyAntiga) {
+    const key = await salvarImagemDB(dataURL);
+    IMG_CACHE[key] = dataURL;
+    fotoCacheSet(key, dataURL);
+    if (fotoKeyAntiga) await excluirFotoRemota(fotoKeyAntiga);
+    return key;
+}
+
+async function excluirFotoRemota(fotoKey) {
+    if (!fotoKey) return;
+    await db.ref(`${PATHS.imagens}/${fotoKey}`).remove();
+    delete IMG_CACHE[fotoKey];
+    fotoCacheRemove(fotoKey);
+}
+
+// ---- Avatar com foto: iniciais na hora (síncrono), trocado pela foto quando ela chega ----
+// (do cache de disco, quase instantâneo, ou do banco, no primeiro carregamento de sempre)
+// `clicavel`: abre a foto ampliada (256px) num modal — usado na janela de detalhe, não nos
+// cards da grade nem na prévia do formulário, onde o clique já tem outro efeito.
+function avatarHtml(f, cls = '', clicavel = false) {
+    const abre = clicavel && f.fotoKey;
+    return `<div class="avatar ${cls}${abre ? ' is-clicavel' : ''}"${f.fotoKey ? ` data-foto-key="${f.fotoKey}"` : ''}${abre ? ` data-foto-open data-foto-nome="${escapeHtml(f.nome || '')}"` : ''}>${iniciais(f.nome)}</div>`;
+}
+function bindAvatarFotos(container) {
+    container.querySelectorAll('[data-foto-key]').forEach(el => {
+        obterFoto(el.dataset.fotoKey)
+            .then(data => { if (data) el.innerHTML = `<img src="${data}" alt="">`; })
+            .catch(() => {});
+    });
+    container.querySelectorAll('[data-foto-open]').forEach(el => {
+        el.onclick = () => abrirFotoAmpliada(el, el.dataset.fotoKey, el.dataset.fotoNome);
+    });
+}
+
+// ---- Foto ampliada: cresce a partir do mesmo canto da foto pequena, ficando por cima dela
+// — fundo escurecido por trás. Fecha ao clicar em qualquer lugar ou Esc.
+function abrirFotoAmpliada(anchorEl, fotoKey, nome) {
+    document.querySelectorAll('.foto-lightbox').forEach(x => x.remove());
+    const SIZE = 256, MARGEM = 16;
+    const rect = anchorEl.getBoundingClientRect();
+    // Ancora no canto superior-esquerdo da foto pequena; encolhe de volta pra dentro da tela
+    // se ela estiver perto da borda, pra não vazar pra fora do viewport.
+    const left = Math.min(rect.left, window.innerWidth - SIZE - MARGEM);
+    const top = Math.min(rect.top, window.innerHeight - SIZE - MARGEM);
+
+    const box = document.createElement('div');
+    box.className = 'foto-lightbox';
+    box.innerHTML = `<img alt="${escapeHtml(nome || '')}" hidden style="left:${left}px;top:${top}px">`;
+    const fechar = () => { box.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = e => { if (e.key === 'Escape') fechar(); };
+    box.onclick = fechar;
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(box);
+    obterFoto(fotoKey).then(data => {
+        if (!data) return fechar();
+        const img = box.querySelector('img');
+        img.src = data;
+        img.hidden = false;
+    }).catch(fechar);
+}
+
 // ---- Abrir anexo (imagem: viewer com lazy load; demais: nova aba) ----
 async function abrirAnexo(anexo) {
     if (!anexo) return;

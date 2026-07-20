@@ -205,7 +205,8 @@ function bhProgramacao() {
                         return `
                         <tr data-id="${f.id}" data-search="${escapeHtml((f.nome + ' ' + unidadeNomeDe(f.unidadeId)).toLowerCase())}">
                             <td>
-                                <div class="flex" style="gap:8px">
+                                <div class="flex" style="gap:8px;align-items:center">
+                                    ${avatarHtml(f)}
                                     <span class="prog-dot ${s.dot}"></span>
                                     <strong>${escapeHtml(f.nome)}</strong>
                                     ${f.demissao ? `<span class="badge badge-danger" title="Desligado em ${fmtDate(f.demissao)} — a rescisão exige a liquidação do saldo (art. 59, §3º)">Desligado</span>` : ''}
@@ -242,6 +243,7 @@ function bhProgramacao() {
             `<tr><td colspan="10"><div class="table-empty">${icon('check')}<span>Nenhum funcionário com banco de horas. O ciclo nasce no primeiro saldo publicado na Grade mensal.</span></div></td></tr>`;
     }
     document.getElementById('lancSearch').addEventListener('input', () => lancAplicaFiltros());
+    bindAvatarFotos(box);
     bhBindFiltros('bhProgUni', 'bhProgCargo', bhProgramacao);
 
     box.querySelectorAll('#lancTbody tr[data-id]').forEach(tr => {
@@ -336,9 +338,14 @@ async function bhGrade() {
                         return `
                         <tr data-fid="${f.id}"${quit ? ' class="bh-row-quitada"' : ''}>
                             <td style="white-space:nowrap">
-                                <strong>${escapeHtml(f.nome)}</strong>
-                                ${f.demissao ? `<span class="badge badge-danger" style="margin-left:6px" title="Desligado em ${fmtDate(f.demissao)}">Desligado</span>` : ''}
-                                <div class="prog-aq">${escapeHtml(unidadeNomeDe(f.unidadeId))}</div>
+                                <div class="flex" style="gap:8px;align-items:center">
+                                    ${avatarHtml(f)}
+                                    <div>
+                                        <strong>${escapeHtml(f.nome)}</strong>
+                                        ${f.demissao ? `<span class="badge badge-danger" style="margin-left:6px" title="Desligado em ${fmtDate(f.demissao)}">Desligado</span>` : ''}
+                                        <div class="prog-aq">${escapeHtml(unidadeNomeDe(f.unidadeId))}</div>
+                                    </div>
+                                </div>
                             </td>
                             <td class="num">${editavel
                                 ? `<input class="input bh-cell" data-col="extraMin" placeholder="–" value="${l ? fmtHHMM(l.extraMin) : ''}">`
@@ -388,6 +395,7 @@ async function bhGrade() {
         bhGrade();
     };
     bhBindFiltros('bhGradeUni', 'bhGradeCargo', bhGrade);
+    bindAvatarFotos(box);
     if (podeEditar) bhBindCelulas(key);
 
     box.querySelectorAll('[data-quit]').forEach(btn => {
@@ -565,12 +573,15 @@ function bhCiclos() {
                 return `
                 <div class="bh-ciclo-card row-clickable" data-card="${f.id}" data-search="${escapeHtml(f.nome.toLowerCase())}">
                     <div class="bh-ciclo-head">
-                        <div>
-                            <div class="flex" style="gap:8px">
-                                <span class="prog-dot ${s.dot}"></span>
-                                <strong>${escapeHtml(f.nome)}</strong>
+                        <div class="flex" style="gap:8px;align-items:center">
+                            ${avatarHtml(f)}
+                            <div>
+                                <div class="flex" style="gap:8px">
+                                    <span class="prog-dot ${s.dot}"></span>
+                                    <strong>${escapeHtml(f.nome)}</strong>
+                                </div>
+                                <div class="prog-aq">${escapeHtml(unidadeNomeDe(f.unidadeId))} · ${escapeHtml(bhCargoDoFunc(f)?.nome || 'Sem cargo')}</div>
                             </div>
-                            <div class="prog-aq">${escapeHtml(unidadeNomeDe(f.unidadeId))} · ${escapeHtml(bhCargoDoFunc(f)?.nome || 'Sem cargo')}</div>
                         </div>
                         <span class="badge ${s.cls}" title="${escapeHtml(sit.desc)}">${escapeHtml(sit.label)}</span>
                     </div>
@@ -650,6 +661,7 @@ function bhCiclos() {
         });
     });
     bhBindFiltros('bhCicloUni', 'bhCicloCargo', bhCiclos);
+    bindAvatarFotos(box);
 
     box.querySelectorAll('[data-card]').forEach(card => {
         card.onclick = () => {
@@ -691,7 +703,7 @@ function detalheCicloBh(f, sit) {
         .slice().reverse();                      // mais recente primeiro: é o que se procura
 
     const m = openModal({
-        title: f.nome,
+        titleHtml: dhFuncCardHtml(f),
         size: 'md',
         body: `
             <div class="dc-tabs" role="tablist">
@@ -826,6 +838,10 @@ function detalheCicloBh(f, sit) {
                 ? `<button class="btn btn-primary" data-acao-fechar>${icon('check')} Fechar ciclo</button>`
                 : `<button class="btn btn-primary" data-acao-quitar>${icon('money')} Quitar horas</button>`) : ''}`
     });
+
+    bindAvatarFotos(m.el);
+    const funcCard = m.el.querySelector('.dh-func-card');
+    if (funcCard) funcCard.onclick = () => { m.close(); abrirFichaFuncionario(f.id); };
 
     m.footer.querySelector('[data-cancel]').onclick = m.close;
     const bf = m.footer.querySelector('[data-acao-fechar]');
@@ -1153,9 +1169,12 @@ function detalheQuitacao(q) {
         size: 'md',
         body: `
             <div class="dq-head">
-                <div>
-                    <strong>${escapeHtml(f?.nome || '(removido)')}</strong>
-                    <div class="muted">${escapeHtml(unidadeNomeDe(f?.unidadeId))} · pago em ${fmtDate(q.data)}</div>
+                <div class="dh-func-card" ${f ? `title="Abrir ficha de ${escapeHtml(f.nome)}"` : ''}>
+                    ${f ? avatarHtml(f) : `<div class="avatar">?</div>`}
+                    <div class="grow">
+                        <strong class="dh-nome">${escapeHtml(f?.nome || '(removido)')}</strong>
+                        <div class="muted">${escapeHtml(unidadeNomeDe(f?.unidadeId))} · pago em ${fmtDate(q.data)}</div>
+                    </div>
                 </div>
                 <div class="dq-valor">
                     <span>${fmtHHMM(q.minutos)}</span>
@@ -1218,6 +1237,11 @@ function detalheQuitacao(q) {
     });
 
     bindAnexoChips(m.body, () => q.anexos || []);
+    bindAvatarFotos(m.body);
+    if (f) {
+        const funcCard = m.body.querySelector('.dh-func-card');
+        if (funcCard) funcCard.onclick = () => { m.close(); abrirFichaFuncionario(f.id); };
+    }
     m.footer.querySelector('[data-cancel]').onclick = m.close;
 
     const btnDel = m.footer.querySelector('[data-excluir]');
@@ -1297,8 +1321,15 @@ function bhQuitacoes() {
                         const dif = sug != null && Math.abs(Number(q.valor) - sug) >= 0.01;
                         return `
                         <tr data-id="${q.id}" data-search="${escapeHtml((f.nome + ' ' + unidadeNomeDe(f.unidadeId)).toLowerCase())}" class="row-clickable">
-                            <td><strong>${escapeHtml(f.nome)}</strong>
-                                <div class="prog-aq" style="padding-left:0">${escapeHtml(unidadeNomeDe(f.unidadeId))}</div></td>
+                            <td>
+                                <div class="flex" style="gap:8px;align-items:center">
+                                    ${avatarHtml(f)}
+                                    <div>
+                                        <strong>${escapeHtml(f.nome)}</strong>
+                                        <div class="prog-aq" style="padding-left:0">${escapeHtml(unidadeNomeDe(f.unidadeId))}</div>
+                                    </div>
+                                </div>
+                            </td>
                             <td>${(q.meses || []).map(mk => `<span class="dq-mes dq-mes-sm">${mesLabel(mk)}</span>`).join('')}</td>
                             <td class="text-2">${mesLabel(q.cicloInicio)} → ${mesLabel(mesAdd(q.cicloInicio, bhParams.cicloMeses - 1))}</td>
                             <td><span class="badge ${dest === BH_DESTINO_PAGO ? 'badge-success' : 'badge-warning'}">${escapeHtml(dest)}</span></td>
@@ -1336,6 +1367,7 @@ function bhQuitacoes() {
             `<tr><td colspan="10"><div class="table-empty">${icon('money')}<span>Nenhuma quitação publicada. Quite horas pela Programação ou pelo card do ciclo.</span></div></td></tr>`;
     }
     document.getElementById('lancSearch').addEventListener('input', () => lancAplicaFiltros());
+    bindAvatarFotos(box);
     bhBindFiltros('bqUni', 'bqCargo', bhQuitacoes);
 
     box.querySelectorAll('#lancTbody tr[data-id]').forEach(tr => {
@@ -1426,8 +1458,15 @@ function bhExtra() {
                     </tr></thead>
                     <tbody id="bxTbody">${doMes.map(({ x, f }) => `
                         <tr data-id="${x.id}">
-                            <td><strong>${escapeHtml(f.nome)}</strong>
-                                <div class="prog-aq" style="padding-left:0">${escapeHtml(unidadeNomeDe(f.unidadeId))}</div></td>
+                            <td>
+                                <div class="flex" style="gap:8px;align-items:center">
+                                    ${avatarHtml(f)}
+                                    <div>
+                                        <strong>${escapeHtml(f.nome)}</strong>
+                                        <div class="prog-aq" style="padding-left:0">${escapeHtml(unidadeNomeDe(f.unidadeId))}</div>
+                                    </div>
+                                </div>
+                            </td>
                             <td><span class="badge ${x.adicionalPct >= 100 ? 'badge-warning' : 'badge-neutral'}">${escapeHtml(x.motivo || '—')}</span></td>
                             <td class="text-2">${fmtDate(x.data)}</td>
                             <td class="num"><strong>${fmtHHMM(x.minutos)}</strong></td>
@@ -1462,6 +1501,7 @@ function bhExtra() {
         bhExtra();
     };
     bhBindFiltros('bxUni', 'bxCargo', bhExtra);
+    bindAvatarFotos(box);
 
     const btnNovo = box.querySelector('#bxNovo');
     if (btnNovo) btnNovo.onclick = () => formExtraBanco(null);

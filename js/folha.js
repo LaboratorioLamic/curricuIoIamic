@@ -257,14 +257,12 @@ function prefillLinha(f) {
         const base = (params.insalubridadeBase || 'salario') === 'minimo'
             ? (Number(params.salarioMinimo) || 0) : salBase;
         linha.insalubridade = Number(((Number(cargo?.insalubridade) || 0) / 100 * base).toFixed(2));
-        // Encargos sobre a remuneração (salário + insalubridade). Pró-labore fica fora: é
-        // remuneração de sócio, com regime de contribuição próprio — somá-lo aqui inflaria
-        // o encargo com uma base que não é dele.
+        // Encargos sobre a remuneração (salário + insalubridade + pró-labore).
         // FGTS + outros encargos (INSS etc.) são parâmetros separados (ver config: 13º usa o
         // mesmo split para poder recolher FGTS mesmo na 1ª parcela, que não tem os demais
         // encargos). Aqui na folha mensal os dois continuam somados numa coluna só.
         const pctEncTotal = (Number(params.fgtsPct) || 0) + (Number(params.encargosPct) || 0);
-        linha.encargos = Number(((salBase + linha.insalubridade) * pctEncTotal / 100).toFixed(2));
+        linha.encargos = Number(((salBase + linha.insalubridade + linha.prolabore) * pctEncTotal / 100).toFixed(2));
     }
     const ben = beneficiosDoFunc(f);
     linha.beneficios = ben.total;

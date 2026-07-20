@@ -17,13 +17,13 @@ function toast(msg, type = 'success', ms = 3200) {
 // ---- Modal ----
 let _modalStack = [];
 
-function openModal({ title, body, footer, size = '', onClose } = {}) {
+function openModal({ title, titleHtml, body, footer, size = '', onClose } = {}) {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `
         <div class="modal ${size}">
             <div class="modal-header">
-                <h3>${escapeHtml(title || '')}</h3>
+                ${titleHtml || `<h3>${escapeHtml(title || '')}</h3>`}
                 <button class="modal-close" data-close>${icon('x')}</button>
             </div>
             <div class="modal-body"></div>

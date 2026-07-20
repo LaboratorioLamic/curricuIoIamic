@@ -222,7 +222,7 @@ function renderFuncGrid() {
         <div class="func-card${fer ? ' em-ferias' : ''}" data-id="${f.id}">
             <span class="func-status ${dot.cls}" title="${escapeHtml(dot.txt)}"></span>
             <div class="func-top">
-                <div class="avatar lg">${iniciais(f.nome)}</div>
+                ${avatarHtml(f, 'lg')}
                 <div class="grow">
                     <div class="func-nome">${escapeHtml(f.nome)}</div>
                     <div class="func-cargo">${escapeHtml(cargo?.nome || 'Sem cargo')}</div>
@@ -246,6 +246,7 @@ function renderFuncGrid() {
     grid.querySelectorAll('.func-card').forEach(card => {
         card.onclick = () => drawerFuncionario(funcState.funcionarios.find(f => f.id === card.dataset.id));
     });
+    bindAvatarFotos(grid);
 }
 
 // ---- Drawer de detalhe ----
@@ -257,7 +258,7 @@ function drawerFuncionario(f, abaInicial = 'dados') {
     const d = openDrawer({
         headerHtml: `
             <div class="drawer-title-row">
-                <div class="avatar xl">${iniciais(f.nome)}</div>
+                ${avatarHtml(f, 'foto-media', true)}
                 <div class="grow">
                     <h3>${escapeHtml(f.nome)}</h3>
                     <div class="drawer-sub">${escapeHtml(cargo?.nome || 'Sem cargo')}</div>
@@ -274,6 +275,7 @@ function drawerFuncionario(f, abaInicial = 'dados') {
         // fechou chamariam setTab num #fdContent que não existe mais no DOM.
         onClose: () => { fdHorasRefresh = null; fdDadosRefresh = null; chartDestroy('fdHoras'); chartDestroy('fdDados'); }
     });
+    bindAvatarFotos(d.el);
 
     d.body.innerHTML = `
         <div class="tabs tabs-full" id="fdTabs">
@@ -1594,6 +1596,15 @@ function formFuncionario(f) {
         body: `
             <div class="form-section">
                 <div class="form-section-title">Dados pessoais</div>
+                <div class="field" style="display:flex;align-items:center;gap:14px">
+                    <div class="avatar xl" id="ffFotoPreview" style="cursor:pointer">${f?.fotoKey ? '' : iniciais(f?.nome || '')}</div>
+                    <div>
+                        <input type="file" id="ffFotoInput" accept="image/*" hidden>
+                        <button type="button" class="btn btn-secondary btn-sm" id="ffFotoBtn">${icon('camera')} Alterar foto</button>
+                        <button type="button" class="btn btn-ghost btn-sm" id="ffFotoRemove" style="color:var(--danger);${f?.fotoKey ? '' : 'display:none'}">Remover</button>
+                        <div class="field-hint">Recortada e reduzida para 256x256 automaticamente.</div>
+                    </div>
+                </div>
                 <div class="field"><label>Nome completo <span class="req">*</span></label><input class="input" id="ffNome" placeholder="Nome e sobrenome" value="${escapeHtml(f?.nome || '')}"></div>
                 <div class="form-row">
                     <div class="field"><label>Sexo <span class="req">*</span></label>
@@ -1660,6 +1671,38 @@ function formFuncionario(f) {
     const foneInput = m.body.querySelector('#ffFone');
     foneInput.addEventListener('input', () => foneInput.value = maskFone(foneInput.value));
 
+    // ---- Foto: comprime (256x256) e só sobe ao banco no salvar — evita gravar upload de
+    // quem desistiu do formulário. `preview` guarda o dataURL já comprimido; `removida` marca
+    // remoção explícita de uma foto existente.
+    const fotoState = { preview: null, removida: false, fotoKeyAtual: f?.fotoKey || null };
+    const fotoPreviewEl = m.body.querySelector('#ffFotoPreview');
+    const fotoBtnRemove = m.body.querySelector('#ffFotoRemove');
+    if (fotoState.fotoKeyAtual) {
+        obterFoto(fotoState.fotoKeyAtual).then(data => {
+            if (data && !fotoState.removida) fotoPreviewEl.innerHTML = `<img src="${data}" alt="">`;
+        }).catch(() => {});
+    }
+    m.body.querySelector('#ffFotoBtn').onclick = () => m.body.querySelector('#ffFotoInput').click();
+    fotoPreviewEl.onclick = () => m.body.querySelector('#ffFotoInput').click();
+    m.body.querySelector('#ffFotoInput').onchange = async e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            fotoState.preview = await comprimirFoto(file);
+            fotoState.removida = false;
+            fotoPreviewEl.innerHTML = `<img src="${fotoState.preview}" alt="">`;
+            fotoBtnRemove.style.display = '';
+        } catch {
+            toast('Erro ao processar a imagem.', 'error');
+        }
+    };
+    fotoBtnRemove.onclick = () => {
+        fotoState.preview = null;
+        fotoState.removida = true;
+        fotoPreviewEl.innerHTML = iniciais(m.body.querySelector('#ffNome').value || '');
+        fotoBtnRemove.style.display = 'none';
+    };
+
     m.footer.innerHTML = `
         ${isEdit && can('editar_funcionarios') ? `<button class="btn btn-ghost" data-delete style="margin-right:auto;color:var(--danger)">${icon('trash')} Excluir</button>` : ''}
         <button class="btn btn-secondary" data-cancel>Cancelar</button>
@@ -1678,6 +1721,7 @@ function formFuncionario(f) {
         if (temLanc) return toast('Funcionário possui lançamentos e não pode ser excluído. Use o desligamento.', 'error');
         if (await confirmDialog({ title: 'Excluir funcionário', message: `Excluir <strong>${escapeHtml(f.nome)}</strong> permanentemente? Documentos e anexos também serão excluídos. Prefira registrar demissão para manter o histórico.`, confirmText: 'Excluir', danger: true })) {
             for (const doc of (f.documentos || [])) await excluirAnexoRemoto(doc.anexo);
+            await excluirFotoRemota(f.fotoKey);
             await DB.remove(PATHS.funcionarios, f.id);
             funcState.funcionarios = funcState.funcionarios.filter(x => x.id !== f.id);
             toast('Funcionário excluído.');
@@ -1720,6 +1764,14 @@ function formFuncionario(f) {
         if (demInput) data.demissao = demInput.value || null;
         const salInput = m.body.querySelector('#ffSalario');
         if (salInput) data.salario = salInput.value === '' ? null : Number(salInput.value);
+
+        // Só mexe no fotoKey se algo mudou: nova foto (sobe e substitui a antiga) ou remoção
+        // explícita. Sem alteração, o campo fica de fora — DB.save() faz update parcial.
+        if (fotoState.preview) data.fotoKey = await salvarFotoDB(fotoState.preview, fotoState.fotoKeyAtual);
+        else if (fotoState.removida && fotoState.fotoKeyAtual) {
+            await excluirFotoRemota(fotoState.fotoKeyAtual);
+            data.fotoKey = null;
+        }
 
         const id = await DB.save(PATHS.funcionarios, f?.id || null, data);
         if (isEdit) Object.assign(funcState.funcionarios.find(x => x.id === f.id), data);

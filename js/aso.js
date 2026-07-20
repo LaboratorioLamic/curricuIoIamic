@@ -163,7 +163,8 @@ function asoProgramacao() {
                         return `
                         <tr data-id="${f.id}" data-search="${escapeHtml((f.nome + ' ' + unidadeNomeDe(f.unidadeId)).toLowerCase())}">
                             <td>
-                                <div class="flex" style="gap:8px">
+                                <div class="flex" style="gap:8px;align-items:center">
+                                    ${avatarHtml(f)}
                                     <span class="prog-dot ${s.dot}"></span>
                                     <strong>${escapeHtml(f.nome)}</strong>
                                 </div>
@@ -193,6 +194,7 @@ function asoProgramacao() {
             `<tr><td colspan="10"><div class="table-empty">${icon('check')}<span>Nenhum funcionário ativo com admissão registrada.</span></div></td></tr>`;
     }
     document.getElementById('lancSearch').addEventListener('input', () => lancAplicaFiltros());
+    bindAvatarFotos(box);
     asoBindFiltros('asoProgUni', 'asoProgCargo', asoProgramacao);
 
     box.querySelectorAll('#lancTbody tr[data-id]').forEach(tr => {
@@ -240,7 +242,7 @@ function asoTabela() {
                     </tr></thead>
                     <tbody id="lancTbody">${lista.map(a => `
                         <tr data-id="${a.id}" data-tipo="${escapeHtml(a.tipo || '')}" data-search="${escapeHtml((lancFuncNome(a.funcionarioId) + ' ' + (a.tipo || '')).toLowerCase())}">
-                            <td><strong>${escapeHtml(lancFuncNome(a.funcionarioId))}</strong></td>
+                            <td>${lancFuncCellHtml(a.funcionarioId)}</td>
                             <td><span class="badge badge-accent">${escapeHtml(a.tipo || '—')}</span></td>
                             <td>${fmtDate(a.data)}</td>
                             <td>${medico ? badgeResultado(a.resultado) : restritoHtml()}</td>
@@ -268,6 +270,7 @@ function asoTabela() {
         b.onclick = () => { asoFiltroTipo = b.dataset.tipo; asoTabela(); };
     });
     asoBindFiltros('asoTabUni', 'asoTabCargo', asoTabela);
+    bindLancFuncCells(document.getElementById('lancTbody'));
     if (medico) bindAnexoChips(document.getElementById('lancTbody'), el => anexosDe(asoState.asos.find(x => x.id === el.closest('tr').dataset.id)));
     aplicar();
 
@@ -371,6 +374,7 @@ function asoAgenda() {
                         <div class="gt-row" data-fid="${f.id}">
                             <div class="gt-lbl" ${sit ? `title="${escapeHtml(sit.desc)}"` : ''}>
                                 <div class="gt-nome">
+                                    ${avatarHtml(f, 'xs')}
                                     <span class="gt-nome-txt">${escapeHtml(f.nome)}</span>
                                     ${seloSitAgenda(sit)}
                                 </div>
@@ -403,6 +407,7 @@ function asoAgenda() {
     document.getElementById('asoAgPrev').onclick = () => navAno(-1);
     document.getElementById('asoAgNext').onclick = () => navAno(1);
     asoBindFiltros('asoAgUni', 'asoAgCargo', asoAgenda);
+    bindAvatarFotos(box);
 
     // Marco lançado → detalhe. Marco projetado → form pré-preenchido (não existe registro).
     box.querySelectorAll('.gt-mark[data-id]').forEach(el => {
@@ -431,6 +436,7 @@ function detalheAso(a, onClose) {
 
     abrirDetalheLanc({
         titulo: lancFuncNome(a.funcionarioId),
+        funcionarioId: a.funcionarioId,
         sub: 'ASO — Atestado de Saúde Ocupacional',
         badgeHtml: `<span class="badge badge-accent">${escapeHtml(a.tipo || '—')}</span>`
             + (medico && a.resultado ? ' ' + badgeResultado(a.resultado) : ''),
