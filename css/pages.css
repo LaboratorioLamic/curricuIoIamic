@@ -725,10 +725,12 @@
 
 /* Popover simples do sino — uma linha por notificação, clique abre o detalhe completo */
 .pop-notif { width: 320px; max-width: calc(100vw - 16px); padding: 6px; }
+.pop-notif [data-pop-list] { max-height: 360px; overflow-y: auto; }
 .pop-notif-row {
     display: flex; align-items: center; gap: 10px;
     padding: 9px 8px; border-radius: 9px; cursor: pointer;
 }
+.pop-notif-tipo { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
 .pop-notif-row .grow strong { display: block; font-size: 13px; }
 .pop-notif-row .grow .muted { font-size: 11.5px; margin-top: 1px; }
 .pop-notif-row svg.icon:last-child { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; }

@@ -5,7 +5,16 @@
 // alerta. Agora vivem no sino do topbar: contagem no badge, detalhe completo no clique.
 // O cálculo (diagnosticoUnidade/diagnosticoCobertura) não mudou, só o container visual.
 
-const notifState = { alertas: [], coberturas: [], asos: [], bancos: [], decimos: [], cargos: [] };
+const notifState = { alertas: [], coberturas: [], asos: [], bancos: [], decimos: [], ferias: [], cargos: [] };
+
+// Os atalhos do sino (transferir, lançar ASO, quitar 13º) abrem formulários que vivem na
+// aba Lançamentos e leem de lancState. Fora dessa aba lancState pode estar vazio — carrega
+// aqui, reaproveitando o que o sino já buscou quando possível.
+async function ensureLancFuncBase() {
+    if (!lancState.unidades.length) lancState.unidades = await DB.getAll(PATHS.unidades);
+    if (!lancState.cargos.length) lancState.cargos = notifState.cargos.length ? notifState.cargos : await DB.getAll(PATHS.cargos);
+    if (!lancState.funcionarios.length) lancState.funcionarios = await DB.getAll(PATHS.funcionarios);
+}
 
 // Chamado pelo Dashboard (reaproveita o payload já buscado) ou, na ausência de um,
 // busca o mínimo necessário sozinho — assim o sino funciona mesmo antes de entrar no Dashboard.
@@ -28,6 +37,7 @@ async function refreshNotificacoes(dadosOpt) {
     notifState.coberturas = dados.unidades.map(u => diagnosticoCobertura(u, dados.funcionarios, dados.ausencias)).filter(Boolean);
     notifState.asos = dados.unidades.map(u => diagnosticoAso(u, dados.funcionarios, asos, dados.cargos)).filter(Boolean);
     notifState.bancos = dados.unidades.map(u => diagnosticoBh(u, dados.funcionarios, banco || {}, bhFechs, null, bhQuits)).filter(Boolean);
+    notifState.ferias = dados.unidades.map(u => diagnosticoFerias(u, dados.funcionarios, dados.ausencias)).filter(Boolean);
 
     // 13º: prazo legal com multa administrativa (Lei 4.749 art. 2º). O contexto lê as mesmas
     // fontes da aba — inclusive o adiantamento pago nas férias, senão quem já adiantou seria
@@ -59,7 +69,7 @@ function renderBellIcon() {
     const box = document.getElementById('topbarActions');
     if (!box) return;
     const total = notifState.alertas.length + notifState.coberturas.length + notifState.asos.length
-        + notifState.bancos.length + notifState.decimos.length;
+        + notifState.bancos.length + notifState.decimos.length + notifState.ferias.length;
 
     let btn = box.querySelector('#btnSino');
     if (!btn) {
@@ -78,7 +88,7 @@ function renderBellIcon() {
 // só aparece no clique — a lista em si precisa ser lida de relance, não estudada.
 function abrirNotificacoes() {
     closePopover();
-    const { alertas, coberturas, asos, bancos, decimos } = notifState;
+    const { alertas, coberturas, asos, bancos, decimos, ferias } = notifState;
     const btn = document.getElementById('btnSino');
     if (!btn) return;
 
@@ -92,6 +102,11 @@ function abrirNotificacoes() {
                 a.vencidos ? `${a.vencidos} vencido(s)` : '',
                 a.semHistorico ? `${a.semHistorico} sem ASO` : '',
                 a.criticos ? `${a.criticos} vencendo` : ''
+            ].filter(Boolean).join(' · ') })),
+        ...ferias.map(f => ({ tipo: 'ferias', item: f,
+            resumo: [
+                f.vencidas ? `${f.vencidas} vencida(s)` : '',
+                f.criticas ? `${f.criticas} a vencer` : ''
             ].filter(Boolean).join(' · ') })),
         ...decimos.map(d => ({ tipo: 'decimo', item: d,
             resumo: [
@@ -111,14 +126,23 @@ function abrirNotificacoes() {
             resumo: `${c.retornos.length} em férias · ${c.cargos.reduce((s, x) => s + x.gap, 0)} vaga(s) descoberta(s)` }))
     ];
 
+    // Rótulo da categoria: o nome da unidade se repete entre linhas (ASO, férias, 13º da
+    // mesma unidade viram cards separados), então sem isto a lista fica ambígua — "Matriz —
+    // Centro" sozinho não diz do que se trata.
+    const NOTIF_TIPO_LABEL = {
+        aso: 'ASO', ferias: 'Férias', decimo: '13º salário', banco: 'Banco de horas',
+        alerta: 'Quadro', cobertura: 'Cobertura'
+    };
+
     const pop = document.createElement('div');
     pop.className = 'popover pop-notif';
     pop.innerHTML = !linhas.length
         ? `<div class="pop-notif-empty">${icon('check')}<span>Tudo em dia</span></div>`
         : `<div class="pop-list" data-pop-list>${linhas.map((l, i) => `
             <div class="pop-item pop-notif-row" data-i="${i}">
-                <span class="alert-ico-sm${l.tipo === 'cobertura' ? ' alert-ico-sm-ferias' : ''}${l.tipo === 'aso' ? ' alert-ico-sm-aso' : ''}${l.tipo === 'banco' ? ' alert-ico-sm-bh' : ''}${l.tipo === 'decimo' ? ' alert-ico-sm-decimo' : ''}">${icon(l.tipo === 'cobertura' ? 'sun' : l.tipo === 'aso' ? 'medical' : l.tipo === 'banco' ? 'clock' : l.tipo === 'decimo' ? 'gift' : 'alert')}</span>
+                <span class="alert-ico-sm${l.tipo === 'cobertura' ? ' alert-ico-sm-ferias' : ''}${l.tipo === 'ferias' ? ' alert-ico-sm-ferias' : ''}${l.tipo === 'aso' ? ' alert-ico-sm-aso' : ''}${l.tipo === 'banco' ? ' alert-ico-sm-bh' : ''}${l.tipo === 'decimo' ? ' alert-ico-sm-decimo' : ''}">${icon(l.tipo === 'cobertura' || l.tipo === 'ferias' ? 'sun' : l.tipo === 'aso' ? 'medical' : l.tipo === 'banco' ? 'clock' : l.tipo === 'decimo' ? 'gift' : 'alert')}</span>
                 <div class="grow">
+                    <div class="pop-notif-tipo">${escapeHtml(NOTIF_TIPO_LABEL[l.tipo] || '')}</div>
                     <strong>${escapeHtml(l.item.nome)}</strong>
                     <div class="muted">${escapeHtml(l.resumo)}</div>
                 </div>
@@ -160,8 +184,9 @@ function abrirDetalheNotificacao({ tipo, item }) {
                 <span class="prog-dot ${ASO_STATUS[p.status].dot}"></span>
                 <span class="grow">${escapeHtml(p.nome)}</span>
                 <span class="badge ${ASO_STATUS[p.status].cls}">${escapeHtml(p.label)}</span>
+                ${can('editar_lancamentos') ? `<button class="btn btn-secondary btn-sm" data-lancar-aso="${p.funcionarioId}">${icon('plus')} Lançar ASO</button>` : ''}
             </div>`;
-        return openModal({
+        const m = openModal({
             title: 'ASO — exames pendentes',
             size: '',
             body: `
@@ -180,6 +205,53 @@ function abrirDetalheNotificacao({ tipo, item }) {
                 </div>`,
             footer: ''
         });
+        m.body.querySelectorAll('[data-lancar-aso]').forEach(btn => btn.onclick = async () => {
+            const funcionarioId = btn.dataset.lancarAso;
+            m.close();
+            await ensureLancFuncBase();
+            formAso({ funcionarioId }, null, () => refreshNotificacoes());
+        });
+        return m;
+    }
+
+    // Férias: individual e sobre o prazo LEGAL do concessivo (art. 137) — a mesma régua da
+    // aba Férias, não a data prevista/planejada. Vencida = já virou dobra.
+    if (tipo === 'ferias') {
+        const linhaPessoa = p => `
+            <div class="aso-notif-row">
+                <span class="prog-dot ${FERIAS_STATUS[p.status].dot}"></span>
+                <span class="grow">${escapeHtml(p.nome)}</span>
+                <span class="badge ${FERIAS_STATUS[p.status].cls}">${escapeHtml(p.label)}</span>
+                ${can('editar_lancamentos') && p.sugestao ? `<button class="btn btn-secondary btn-sm" data-lancar-ferias="${p.funcionarioId}">${icon('plus')} Programar férias</button>` : ''}
+            </div>`;
+        const m = openModal({
+            title: 'Férias — vencidas ou a vencer',
+            size: '',
+            body: `
+                <div class="alert-card alert-cobertura">
+                    <span class="alert-ico">${icon('sun')}</span>
+                    <div class="grow">
+                        <strong>Prazo legal do concessivo vencido ou próximo do vencimento</strong>
+                        <div class="alert-sub">Passado o concessivo sem conceder as férias, o pagamento vira em dobro (art. 137 CLT).</div>
+                        <div class="alert-list">
+                            <div class="alert-row">
+                                <span class="alert-uni">${icon('building')} ${escapeHtml(item.nome)}</span>
+                            </div>
+                            <div class="aso-notif-lista">${item.pessoas.map(linhaPessoa).join('')}</div>
+                        </div>
+                    </div>
+                </div>`,
+            footer: ''
+        });
+        m.body.querySelectorAll('[data-lancar-ferias]').forEach(btn => btn.onclick = async () => {
+            const funcionarioId = btn.dataset.lancarFerias;
+            const p = item.pessoas.find(x => x.funcionarioId === funcionarioId);
+            m.close();
+            await ensureLancFuncBase();
+            formAusencia({ funcionarioId, inicio: p.sugestao.inicio, retorno: p.sugestao.retorno, dias: p.sugestao.dias }, true,
+                { status: p.status, desc: p.desc });
+        });
+        return m;
     }
 
     // 13º: individual e sobre prazo, como ASO e banco. Mostra o valor porque é ele que
@@ -191,8 +263,9 @@ function abrirDetalheNotificacao({ tipo, item }) {
                 <span class="grow">${escapeHtml(p.nome)}</span>
                 <span class="num" style="font-variant-numeric:tabular-nums;margin-right:8px">${fmtBRL(p.valor)}</span>
                 <span class="badge ${DECIMO_STATUS[p.status].cls}">${escapeHtml(p.label)}</span>
+                ${can('editar_lancamentos') ? `<button class="btn btn-secondary btn-sm" data-quitar-decimo="${p.funcionarioId}">${icon('gift')} Quitar 13º</button>` : ''}
             </div>`;
-        return openModal({
+        const m = openModal({
             title: '13º salário — parcelas a pagar',
             size: '',
             body: `
@@ -212,6 +285,13 @@ function abrirDetalheNotificacao({ tipo, item }) {
                 </div>`,
             footer: ''
         });
+        m.body.querySelectorAll('[data-quitar-decimo]').forEach(btn => btn.onclick = async () => {
+            const funcionarioId = btn.dataset.quitarDecimo;
+            m.close();
+            await loadDecimoBase();
+            janelaDecimo(funcionarioId);
+        });
+        return m;
     }
 
     // Banco de horas: também individual, e também sobre prazo — mas aqui o prazo tem preço.
@@ -276,5 +356,18 @@ function abrirDetalheNotificacao({ tipo, item }) {
             </div>
         </div>`;
 
-    openModal({ title: tipo === 'alerta' ? 'Equipe incompleta' : 'Cobertura reduzida', size: '', body: corpo, footer: '' });
+    const podeTransferir = can('editar_lancamentos') && (tipo === 'alerta' || tipo === 'cobertura');
+    const m = openModal({
+        title: tipo === 'alerta' ? 'Equipe incompleta' : 'Cobertura reduzida',
+        size: '',
+        body: corpo,
+        footer: podeTransferir ? `<button class="btn btn-primary" data-realizar-transf>${icon('refresh')} Realizar transferência</button>` : ''
+    });
+    const btnTransf = m.footer?.querySelector('[data-realizar-transf]');
+    if (btnTransf) btnTransf.onclick = async () => {
+        m.close();
+        await ensureLancFuncBase();
+        formTransferencia(item.unidadeId);
+    };
+    return m;
 }

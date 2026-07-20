@@ -15,6 +15,10 @@ const dashState = { tab: 'geral', ano: new Date().getFullYear(), unidade: '', da
 const dashFuncState = { funcionario: '', cargo: '', unidade: '' };
 // '' = dados gerais (todo o histórico); ano específico filtra ausências/treinos daquele ano
 let dashFuncAno = '';
+// Empilhamento do card de faltas/licenças em "Dados gerais": por padrão agrega por mês
+// (Jan–Dez, somando todos os anos); o botão alterna para por ano. Com um ano selecionado o
+// card já é mensal por natureza, então o botão nem aparece.
+const _dfAusModo = { modo: 'mes' };
 
 registerPage({
     id: 'dashboard',
@@ -605,27 +609,42 @@ function renderDashFuncionarios(cont, dados) {
     // Própria implementação (não as helpers de resultados.js): aquelas têm o toggle de
     // legenda hardcoded no dono 'resultados' — usá-las aqui registraria os canvases sob o
     // dono errado, e chartDestroy('dash') nunca os destruiria ao trocar de filtro/aba.
-    const valorAus = tipo => eixo.labels.map((_, i) => ausAno.filter(a => a.tipo === tipo && eixo.bucket(a.inicio) === i)
+    //
+    // Com um ano selecionado o eixo já é mensal (periodoEixo acima). Em "dados gerais" o
+    // padrão de periodoEixo é por ano — mas aqui o padrão do CARD é por mês (Jan–Dez,
+    // somando todos os anos), com o botão _dfAusModo alternando para por ano.
+    const eixoAus = ano ? eixo
+        : _dfAusModo.modo === 'ano' ? eixo
+        : { labels: MESES, bucket: iso => (iso || '').length >= 7 ? Number(iso.slice(5, 7)) - 1 : -1 };
+    const porAno = !ano && _dfAusModo.modo === 'ano';
+
+    const valorAus = tipo => eixoAus.labels.map((_, i) => ausAno.filter(a => a.tipo === tipo && eixoAus.bucket(a.inicio) === i)
         .reduce((s, a) => s + (Number(a.dias) || diasEntre(a.inicio, a.retorno)), 0));
     const linhasAus = TIPOS_AUSENCIA.filter(t => t !== 'Férias').map(tipo => ({ label: tipo, vals: valorAus(tipo) }));
     const linhasAusComDado = linhasAus.filter(li => li.vals.some(v => v));
 
+    const btnModoAus = !ano ? `<button class="chart-legenda-btn" id="dfAusModoBtn">${icon('filter')}<span>Empilhar por: ${porAno ? 'ano' : 'mês'}</span></button>` : '';
     const gridAus = document.getElementById('dfAusenciasGrid');
     if (linhasAusComDado.length) {
         const totalGeral = linhasAusComDado.reduce((s, li) => s + li.vals.reduce((a, b) => a + b, 0), 0);
         gridAus.outerHTML = `<div id="dfAusenciasGrid" class="chart-duo">
             ${chartCard({
                 id: 'dfAus', titulo: `Faltas e licenças (dias) — ${ano || 'dados gerais'}`,
-                sub: `Empilhado por ${ano ? 'mês' : 'ano'} — clique em “Legenda” para filtrar tipos`,
-                acao: `<button class="chart-legenda-btn" data-emp="dfAus">${icon('filter')}<span>Legenda</span></button>`,
-                total: fmtNum(totalGeral), media: `média ${(totalGeral / eixo.labels.length).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}/${ano ? 'mês' : 'ano'}`
+                sub: `Empilhado por ${porAno ? 'ano' : 'mês'} — clique em “Legenda” para filtrar tipos`,
+                acao: `<button class="chart-legenda-btn" data-emp="dfAus">${icon('filter')}<span>Legenda</span></button>${btnModoAus}`,
+                total: fmtNum(totalGeral), media: `média ${(totalGeral / eixoAus.labels.length).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}/${porAno ? 'ano' : 'mês'}`
             })}
             ${chartCard({ id: 'dfAusRank', titulo: 'Ranking por tipo', sub: `${ano ? 'No ano' : 'No período'} — maior para o menor`, total: fmtNum(totalGeral) })}
         </div>`;
-        pintarEmpilhadoDash('dfAus', 'dfAusRank', linhasAus, eixo.labels);
+        pintarEmpilhadoDash('dfAus', 'dfAusRank', linhasAus, eixoAus.labels);
     } else {
         gridAus.outerHTML = `<div id="dfAusenciasGrid" class="grid-2">${emptyState({ icon: 'calendar', title: 'Sem faltas ou licenças', text: `Nenhum registro no recorte atual para ${ano || 'o período'}.` })}</div>`;
     }
+    if (btnModoAus) document.getElementById('dfAusModoBtn').onclick = e => openFilterPopover(e.currentTarget, {
+        options: [{ value: 'mes', label: 'Mês (Jan–Dez, todos os anos)' }, { value: 'ano', label: 'Ano' }],
+        value: _dfAusModo.modo, searchable: false,
+        onPick: v => { _dfAusModo.modo = v; renderDashTab(); }
+    });
 
     // ---- Ranking por funcionário: Faltas (empilhado por justificada/injustificada) e
     // Licenças (empilhado por tipo) — lado a lado, barras horizontais com qtd e % ----

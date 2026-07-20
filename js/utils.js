@@ -363,7 +363,32 @@ function diagnosticoAso(un, funcionarios, asos, cargos, ref) {
         // Ordena por urgência para a janela de detalhe mostrar o pior primeiro
         pessoas: itens
             .sort((a, b) => (ASO_ORDEM[a.sit.status] - ASO_ORDEM[b.sit.status]) || (a.sit.dias - b.sit.dias))
-            .map(x => ({ nome: x.f.nome, status: x.sit.status, label: x.sit.label, vencimento: x.sit.vencimento }))
+            .map(x => ({ funcionarioId: x.f.id, nome: x.f.nome, status: x.sit.status, label: x.sit.label, vencimento: x.sit.vencimento }))
+    };
+}
+
+// Diagnóstico de FÉRIAS por UNIDADE, para o sino de notificações.
+// Mesmo contrato de diagnosticoAso: agrega por unidade, retorna null quando não há nada a
+// cobrar. Só vencida/crítica entram — aquisitivo em formação e "atenção" não são urgência.
+function diagnosticoFerias(un, funcionarios, ausencias, ref) {
+    const ativos = funcionarios.filter(f => f.unidadeId === un.id && !f.demissao);
+    const itens = ativos
+        .map(f => ({ f, sit: situacaoFeriasFunc(f, ausencias, ref) }))
+        .filter(x => x.sit && (x.sit.status === 'vencida' || x.sit.status === 'critica'));
+    if (!itens.length) return null;
+
+    const conta = st => itens.filter(x => x.sit.status === st).length;
+    return {
+        nome: un.nome,
+        vencidas: conta('vencida'),
+        criticas: conta('critica'),
+        pessoas: itens
+            .sort((a, b) => (FERIAS_ORDEM[a.sit.status] - FERIAS_ORDEM[b.sit.status]) || (a.sit.dias - b.sit.dias))
+            .map(x => ({
+                funcionarioId: x.f.id, nome: x.f.nome, status: x.sit.status, label: x.sit.label,
+                desc: x.sit.desc, concessivoFim: x.sit.concessivoFim,
+                sugestao: sugestaoFerias(x.sit)
+            }))
     };
 }
 

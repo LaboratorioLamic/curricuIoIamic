@@ -1073,7 +1073,7 @@ function diagnosticoDecimo(u, funcionarios, ctx) {
 
         // Rescisão pendente: o proporcional vence com o acerto, não em dezembro.
         if (s.estado === 'rescisao') {
-            pessoas.push({ nome: f.nome, status: 'rescisao', label: 'rescisão a pagar', valor: s.saldo });
+            pessoas.push({ funcionarioId: f.id, nome: f.nome, status: 'rescisao', label: 'rescisão a pagar', valor: s.saldo });
             return;
         }
         // 1ª parcela: cobra só quem não tem nada — nem parcela, nem adiantamento nas férias.
@@ -1081,6 +1081,7 @@ function diagnosticoDecimo(u, funcionarios, ctx) {
         const d1 = diasEntre(h, pz.primeira);
         if (!jaTem1 && d1 <= decimoParams.alertaDias) {
             pessoas.push({
+                funcionarioId: f.id,
                 nome: f.nome,
                 status: d1 < 0 ? 'vencido' : 'critico',
                 label: d1 < 0 ? `1ª venceu há ${prazoTexto(d1)}` : `1ª em ${prazoTexto(d1)}`,
@@ -1092,6 +1093,7 @@ function diagnosticoDecimo(u, funcionarios, ctx) {
         const d2 = diasEntre(h, pz.segunda);
         if (d2 <= decimoParams.alertaDias) {
             pessoas.push({
+                funcionarioId: f.id,
                 nome: f.nome,
                 status: d2 < 0 ? 'vencido' : 'critico',
                 label: d2 < 0 ? `2ª venceu há ${prazoTexto(d2)}` : `2ª em ${prazoTexto(d2)}`,

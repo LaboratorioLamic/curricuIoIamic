@@ -470,11 +470,11 @@ function diagnosticoUnidade(un, funcionarios) {
         const faltamTotal = faltasPorCargo.reduce((s, c) => s + c.faltam, 0);
         const metaTotal = recs.reduce((s, r) => s + (Number(r.qtd) || 0), 0);
         if (faltamTotal === 0) return null;
-        return { nome: un.nome, modo: 'cargo', faltam: faltamTotal, meta: metaTotal, ativos: ativos.length, cargos: faltasPorCargo.filter(c => c.faltam > 0) };
+        return { unidadeId: un.id, nome: un.nome, modo: 'cargo', faltam: faltamTotal, meta: metaTotal, ativos: ativos.length, cargos: faltasPorCargo.filter(c => c.faltam > 0) };
     }
     // Fallback legado (headcount único por unidade)
     if (un.headcount && ativos.length < un.headcount) {
-        return { nome: un.nome, modo: 'total', faltam: un.headcount - ativos.length, meta: un.headcount, ativos: ativos.length, cargos: [] };
+        return { unidadeId: un.id, nome: un.nome, modo: 'total', faltam: un.headcount - ativos.length, meta: un.headcount, ativos: ativos.length, cargos: [] };
     }
     return null;
 }
@@ -505,7 +505,7 @@ function diagnosticoCobertura(un, funcionarios, ausencias, ref) {
         .map(f => ({ nome: f.nome, a: feriasVigente(f.id, ausencias, ref) }))
         .filter(x => x.a)
         .sort((x, y) => x.a.retorno.localeCompare(y.a.retorno));
-    return { nome: un.nome, cargos, foraTotal: deFerias.length, retornos };
+    return { unidadeId: un.id, nome: un.nome, cargos, foraTotal: deFerias.length, retornos };
 }
 
 async function renderCfgUnidades() {

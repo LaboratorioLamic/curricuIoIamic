@@ -2602,7 +2602,7 @@ function detalheTransferencia(t, maisRecente, onDelete) {
     });
 }
 
-function formTransferencia() {
+function formTransferencia(destinoUnidadeId) {
     const selFunc = selectFuncionario('ftrFunc');
     if (!selFunc) return toast('Nenhum funcionário ativo cadastrado.', 'info');
     if (lancState.unidades.length < 2)
@@ -2648,6 +2648,9 @@ function formTransferencia() {
             .filter(u => u.id !== unidadeOrigem?.id)
             .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
             .map(u => `<option value="${u.id}">${escapeHtml(u.nome)}</option>`).join('');
+        // Veio de um atalho de "equipe incompleta"/"cobertura reduzida": a unidade com o
+        // buraco já é o destino óbvio — poupa o clique, mas o RH ainda pode trocar.
+        if (destinoUnidadeId && destinoSel.querySelector(`option[value="${destinoUnidadeId}"]`)) destinoSel.value = destinoUnidadeId;
         atualizaAviso();
     };
 

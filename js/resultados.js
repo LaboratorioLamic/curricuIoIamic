@@ -230,6 +230,7 @@ const RES_EXPLICACOES = {
     'Variação do número de funcionários': { oQue: 'Admissões menos desligamentos em cada mês — o saldo líquido de pessoas.', objetivo: 'Ver rapidamente se o time está crescendo, estável ou encolhendo mês a mês, sem precisar comparar duas séries separadas.' },
     'Nº de funcionários no início do mês': { oQue: 'Headcount (quantidade de ativos) no primeiro dia de cada mês.', objetivo: 'Servir de base para o cálculo de turnover e para dimensionar a folha do mês.' },
     'Nº de funcionários no final do mês': { oQue: 'Headcount no último dia de cada mês, já refletindo admissões e desligamentos do período.', objetivo: 'Mostrar a evolução real do tamanho do time mês a mês.' },
+    'Nº de funcionários no início e no final do mês': { oQue: 'Headcount no primeiro e no último dia de cada mês, lado a lado.', objetivo: 'Comparar as duas leituras num único gráfico: a diferença entre as barras do mesmo mês é o saldo líquido de admissões e desligamentos.' },
     'Taxa de Turnover %': { oQue: 'Rotatividade do mês: (admissões + desligamentos) ÷ 2, dividido pelo headcount médio do período.', objetivo: 'É o indicador padrão de RH para medir a estabilidade da equipe — valores altos e sustentados custam caro em treinamento e produtividade perdida.', leitura: 'Compare com a linha de média tracejada: picos muito acima dela merecem investigação do motivo.' },
     'Desligamentos por motivo': { oQue: 'Todos os desligamentos do ano, empilhados por mês e coloridos por motivo (pedido de demissão, justa causa, fim de experiência etc.).', objetivo: 'Distinguir desligamentos que a empresa decidiu dos que o funcionário decidiu — a ação corretiva é diferente em cada caso.', leitura: 'A altura da barra empilhada é o total de saídas do mês; cada cor é um motivo. Use o botão "Legenda" para isolar motivos específicos.' },
     'Ranking por motivo': { oQue: 'Os mesmos desligamentos do gráfico ao lado, agora somados no ano inteiro e ordenados do motivo mais frequente para o menos frequente.', objetivo: 'Responder rapidamente "qual é o principal motivo de saída este ano?", sem precisar somar barras mentalmente.' },
@@ -292,7 +293,10 @@ function origemAnual(li, origemFn) {
 // (ou quando devolve null), o card não tem um "de onde veio" real e a seção fica de fora —
 // nunca se inventa uma barra por mês só para preencher o espaço.
 // Desenhar fica para pintarPorLinha().
-function htmlPorLinha(prefixo, titulo, linhas, cols = 0, origemFn) {
+// `extraCardsHtml`: cards adicionais (já prontos, ex.: htmlCardDuasSeries) para entrar no
+// MESMO grid — um grid CSS por card faria o card extra ficar sozinho na própria linha, com
+// as colunas vazias sobrando ao lado, em vez de completar a fileira dos demais.
+function htmlPorLinha(prefixo, titulo, linhas, cols = 0, origemFn, extraCardsHtml = '') {
     const cards = linhas.map((li, i) => {
         const media = li.vals.reduce((a, b) => a + b, 0) / 12;
         const total = li.total === 'none' ? null
@@ -308,7 +312,7 @@ function htmlPorLinha(prefixo, titulo, linhas, cols = 0, origemFn) {
             calculoItens: origemAnual(li, origemFn),
             calculoFmt: li.fmt
         });
-    }).join('');
+    }).join('') + extraCardsHtml;
 
     const clsCols = cols ? ` chart-grid-${cols}` : '';
     return `${titulo ? `<div class="res-grupo-tit">${titulo}</div>` : ''}<div class="chart-grid${clsCols}">${cards}</div>`;
@@ -339,6 +343,39 @@ function pintarPorLinha(prefixo, linhas, origemFn) {
                 } : undefined
             })
         });
+    });
+}
+
+// Um único card com DUAS séries lado a lado por mês (barras agrupadas, não empilhadas) —
+// para comparar duas leituras do mesmo mês (ex.: headcount no início vs. no final), que
+// faziam mais sentido num gráfico só do que em dois cards separados e desalinhados.
+// Sem wrapper de grid: entra como card extra dentro do grid de quem chamar (ver htmlPorLinha).
+function cardDuasSeries(id, titulo, liA, liB) {
+    const mediaA = liA.vals.reduce((a, b) => a + b, 0) / 12;
+    const mediaB = liB.vals.reduce((a, b) => a + b, 0) / 12;
+    return chartCard({
+        id, titulo: escapeHtml(titulo),
+        media: `média ${dvValorFmt(mediaA, 'dec')} → ${dvValorFmt(mediaB, 'dec')}/mês`,
+        info: RES_EXPLICACOES[titulo]
+    });
+}
+
+function pintarDuasSeries(id, liA, liB) {
+    mkChart('resultados', id, {
+        type: 'bar',
+        data: { labels: MESES, datasets: [dvBarra(liA.label, liA.vals, dvCor(0)), dvBarra(liB.label, liB.vals, dvCor(1))] },
+        options: dvOpts({
+            fmt: liA.fmt, legenda: true,
+            tooltipExtra: {
+                callbacks: {
+                    footer: items => {
+                        const m = items[0].dataIndex;
+                        const saldo = liB.vals[m] - liA.vals[m];
+                        return `Saldo do mês: ${saldo > 0 ? '+' : ''}${dvValorFmt(saldo, liA.fmt)}`;
+                    }
+                }
+            }
+        })
     });
 }
 
@@ -638,12 +675,13 @@ function resRotatividade(cont) {
         vals: MESES.map((_, m) => demissoesAno.filter(d => (d.data || '').startsWith(mesKey(ano, m)) && d.motivo === motivo).length)
     }));
 
+    const liHIni = { label: 'Nº de funcionários no início do mês', fmt: 'num', vals: meses.map(m => m.hIni), total: 'none' };
+    const liHFim = { label: 'Nº de funcionários no final do mês', fmt: 'num', vals: meses.map(m => m.hFim), total: 'none' };
     const resumo = [
         { label: 'Número de novas contratações', fmt: 'num', vals: meses.map(m => m.adm) },
         { label: 'Total de desligamentos', fmt: 'num', vals: meses.map(m => m.dem) },
         { label: 'Variação do número de funcionários', fmt: 'num', vals: meses.map(m => m.adm - m.dem) },
-        { label: 'Nº de funcionários no início do mês', fmt: 'num', vals: meses.map(m => m.hIni), total: 'none' },
-        { label: 'Nº de funcionários no final do mês', fmt: 'num', vals: meses.map(m => m.hFim), total: 'none' },
+        liHIni, liHFim,
         { label: 'Taxa de Turnover %', fmt: 'pct', vals: meses.map(m => m.turnover), totalValor: turnoverAno }
     ];
     const tituloResumo = `Resumo de indicadores de rotatividade (mensal) para ${ano}`;
@@ -654,12 +692,16 @@ function resRotatividade(cont) {
         return;
     }
 
-    // Resumo em 3 por linha; detalhamento = empilhado mensal + ranking por motivo ao lado.
+    // Resumo em 3 por linha; início e final do mês viram um único card com as duas séries
+    // lado a lado (mesma comparação, um gráfico só). Detalhamento = empilhado + ranking.
+    const resumoGrafico = resumo.filter(li => li !== liHIni && li !== liHFim);
+    const cardHeadcount = cardDuasSeries('rot_headcount', 'Nº de funcionários no início e no final do mês', liHIni, liHFim);
     cont.innerHTML =
-        htmlPorLinha('rot', tituloResumo, resumo, 3) +
+        htmlPorLinha('rot', tituloResumo, resumoGrafico, 3, null, cardHeadcount) +
         `<div class="res-grupo-tit">${tituloDet}</div>` +
         htmlEmpilhadoComRanking('rot_motivos', 'rot_motivos_rank', 'Desligamentos por motivo', 'Ranking por motivo', porMotivo);
-    pintarPorLinha('rot', resumo);
+    pintarPorLinha('rot', resumoGrafico);
+    pintarDuasSeries('rot_headcount', liHIni, liHFim);
     pintarEmpilhadoComRanking('rot_motivos', 'rot_motivos_rank', porMotivo);
 }
 
