@@ -605,25 +605,7 @@ table.table td.num, table.table th.num { text-align: right; font-variant-numeric
     animation: spin .7s linear infinite;
 }
 
-/* ---- Permissões (form de usuário) ---- */
-.perm-groups {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 14px;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px 16px;
-    transition: opacity .2s;
-}
-.perm-group-title {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .05em;
-    color: var(--muted);
-    margin-bottom: 8px;
-}
+/* ---- Lista de checkboxes simples (ex.: participantes de treinamento) ---- */
 .perm-check {
     display: flex;
     align-items: center;
@@ -635,6 +617,193 @@ table.table td.num, table.table th.num { text-align: right; font-variant-numeric
     user-select: none;
 }
 .perm-check input { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+
+/* ===== Grupos e permissões ===== */
+
+.cfg-tab-intro { font-size: 13px; color: var(--muted); max-width: 620px; line-height: 1.45; }
+.cfg-tab-intro strong { color: var(--text-2); font-weight: 650; }
+
+/* ---- Lista de grupos (cards) ---- */
+.grupos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+}
+.grupo-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 18px;
+    box-shadow: var(--shadow-sm);
+    transition: border-color .18s, box-shadow .18s, transform .18s;
+}
+.grupo-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.grupo-card-head { display: flex; align-items: center; gap: 12px; }
+.grupo-card-ico {
+    width: 40px; height: 40px; flex: none;
+    display: grid; place-items: center;
+    border-radius: 11px;
+    background: var(--accent-soft); color: var(--accent);
+}
+.grupo-card-ico .icon { width: 20px; height: 20px; }
+.grupo-card-nome { font-size: 15.5px; font-weight: 700; color: var(--text); }
+.grupo-card-membros { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.grupo-card-membros .icon { width: 13px; height: 13px; }
+.grupo-card-desc { font-size: 12.5px; color: var(--text-2); line-height: 1.45; }
+.grupo-card-perms { display: flex; flex-wrap: wrap; gap: 6px; }
+.perm-tag {
+    font-size: 11px; font-weight: 600;
+    padding: 3px 9px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent-strong);
+    border: 1px solid var(--accent-soft-2);
+}
+.perm-tag-none { background: var(--surface-3); color: var(--muted); border-color: var(--border); }
+.grupo-card-foot { margin-top: auto; padding-top: 4px; }
+.grupo-card-foot .btn { width: 100%; justify-content: center; }
+
+/* ---- Estado vazio ---- */
+.grupos-empty {
+    max-width: 520px; margin: 8px auto; text-align: center;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 40px 32px; box-shadow: var(--shadow-sm);
+}
+.grupos-empty-ico {
+    width: 60px; height: 60px; margin: 0 auto 18px;
+    display: grid; place-items: center; border-radius: 16px;
+    background: var(--accent-soft); color: var(--accent);
+}
+.grupos-empty-ico .icon { width: 28px; height: 28px; }
+.grupos-empty h3 { font-size: 18px; margin-bottom: 8px; }
+.grupos-empty p { font-size: 13px; color: var(--text-2); line-height: 1.5; margin-bottom: 20px; }
+
+/* ---- Matriz de permissões (form de grupo) ---- */
+.perm-matrix { display: flex; flex-direction: column; gap: 10px; }
+.perm-matrix-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.perm-matrix-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--muted);
+}
+.perm-mod {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    transition: border-color .18s, background .18s;
+}
+.perm-mod:has(input:checked) { border-color: var(--accent-soft-2); background: var(--accent-soft); }
+.perm-mod-info { display: flex; align-items: center; gap: 12px; min-width: 200px; flex: 1 1 220px; }
+.perm-mod-ico {
+    width: 38px; height: 38px; flex: none;
+    display: grid; place-items: center; border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--border); color: var(--accent);
+}
+.perm-mod-ico .icon { width: 19px; height: 19px; }
+.perm-mod-txt strong { display: block; font-size: 13.5px; font-weight: 650; color: var(--text); }
+.perm-mod-txt small { display: block; font-size: 11.5px; color: var(--muted); line-height: 1.35; margin-top: 1px; }
+.perm-mod-acts { display: flex; gap: 10px; flex-wrap: wrap; }
+.perm-act {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 8px 12px;
+    cursor: pointer; user-select: none; min-width: 160px;
+    transition: border-color .18s;
+}
+.perm-act:hover { border-color: var(--border-strong); }
+.perm-act:has(input:checked) { border-color: var(--accent); }
+.perm-act-txt { display: flex; flex-direction: column; line-height: 1.2; }
+.perm-act-txt strong { font-size: 12.5px; font-weight: 650; color: var(--text); }
+.perm-act-txt small { font-size: 10.5px; color: var(--muted); }
+.perm-act .switch { margin-left: auto; }
+
+/* ---- Módulo em árvore (Lançamentos → abas) ---- */
+.perm-mod-tree { flex-direction: column; align-items: stretch; gap: 0; padding: 0; overflow: hidden; }
+.perm-mod-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.perm-expand {
+    width: 26px; height: 26px; flex: none; display: grid; place-items: center;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+    color: var(--text-2); cursor: pointer; transition: transform .18s, background .18s;
+}
+.perm-expand:hover { background: var(--surface-3); }
+.perm-expand .icon { width: 15px; height: 15px; }
+.perm-mod-tree.collapsed .perm-expand { transform: rotate(-90deg); }
+.perm-subs {
+    display: flex; flex-direction: column;
+    border-top: 1px dashed var(--border);
+    padding: 8px 16px 12px 22px;
+    background: color-mix(in srgb, var(--surface) 60%, transparent);
+}
+.perm-mod-tree.collapsed .perm-subs { display: none; }
+.perm-sub-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--muted); padding: 6px 4px 8px;
+}
+.perm-sub-head span { display: inline-flex; align-items: center; gap: 6px; }
+.perm-sub-head .icon { width: 13px; height: 13px; }
+.perm-subs-all {
+    border: none; background: none; cursor: pointer; padding: 2px 4px;
+    font-size: 11px; font-weight: 700; letter-spacing: .02em; text-transform: none;
+    color: var(--accent);
+}
+.perm-subs-all:hover { text-decoration: underline; }
+.perm-sub {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 8px 8px 4px; position: relative;
+    font-size: 13px; color: var(--text-2); cursor: pointer; user-select: none;
+    border-bottom: 1px solid var(--border);
+}
+.perm-sub:last-child { border-bottom: none; }
+.perm-sub:hover { color: var(--text); }
+.perm-sub-line { width: 14px; height: 14px; flex: none; border-left: 1.5px solid var(--border-strong); border-bottom: 1.5px solid var(--border-strong); border-bottom-left-radius: 5px; margin-left: 2px; }
+.perm-sub-fin { font-size: 10.5px; font-weight: 600; color: var(--warning); background: var(--warning-soft); padding: 1px 7px; border-radius: 999px; margin-left: 6px; }
+/* Árvore não pinta o corpo inteiro (só sinaliza no cabeçalho quando "Gerenciar" está on) */
+.perm-mod-tree:has(input:checked) { background: var(--surface-2); }
+.perm-mod-tree:has(.perm-mod-row [data-perm]:checked) { border-color: var(--accent-soft-2); }
+.perm-mod-tree:has(.perm-mod-row [data-perm]:checked) .perm-mod-row { background: var(--accent-soft); }
+
+.perm-sens { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 560px) { .perm-sens { grid-template-columns: 1fr; } .perm-mod-acts { width: 100%; } .perm-act { flex: 1 1 auto; } }
+.perm-sens-card {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 14px; cursor: pointer; user-select: none;
+    transition: border-color .18s, background .18s;
+}
+.perm-sens-card:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+
+/* ---- Seletor de grupo (form de usuário) ---- */
+.grupo-picker { display: flex; flex-direction: column; gap: 10px; transition: opacity .2s; }
+.grupo-opt { cursor: pointer; }
+.grupo-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.grupo-opt-body {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface-2); border: 1.5px solid var(--border);
+    border-radius: var(--radius); padding: 12px 14px;
+    transition: border-color .18s, background .18s;
+}
+.grupo-opt:hover .grupo-opt-body { border-color: var(--border-strong); }
+.grupo-opt input:checked + .grupo-opt-body { border-color: var(--accent); background: var(--accent-soft); }
+.grupo-opt-ico {
+    width: 34px; height: 34px; flex: none;
+    display: grid; place-items: center; border-radius: 9px;
+    background: var(--surface); border: 1px solid var(--border); color: var(--accent);
+}
+.grupo-opt-ico .icon { width: 17px; height: 17px; }
+.grupo-opt-txt { display: flex; flex-direction: column; flex: 1; line-height: 1.3; }
+.grupo-opt-txt strong { font-size: 13.5px; font-weight: 650; color: var(--text); }
+.grupo-opt-txt small { font-size: 11.5px; color: var(--muted); }
+.grupo-opt-check {
+    width: 22px; height: 22px; flex: none; display: grid; place-items: center;
+    border-radius: 50%; border: 1.5px solid var(--border-strong); color: #fff;
+    transition: background .18s, border-color .18s;
+}
+.grupo-opt-check .icon { width: 14px; height: 14px; opacity: 0; transition: opacity .18s; }
+.grupo-opt input:checked + .grupo-opt-body .grupo-opt-check { background: var(--accent); border-color: var(--accent); }
+.grupo-opt input:checked + .grupo-opt-body .grupo-opt-check .icon { opacity: 1; }
 
 /* ---- Page header ---- */
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }

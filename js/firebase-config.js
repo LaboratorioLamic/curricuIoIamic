@@ -18,6 +18,10 @@ const DRIVE_API = "https://script.google.com/macros/s/AKfycbzzqR-O-ViBpkcNtNccer
 // Paths do sistema de RH
 const PATHS = {
     usuarios: 'rh_usuarios',
+    // Grupos de acesso: as permissões vivem no GRUPO, não no usuário. Cada usuário aponta para
+    // um grupo (grupoId) e herda o conjunto de permissões dele — mudou o grupo, mudam todos os
+    // usuários de uma vez. Usuários legados com `perms` próprio continuam funcionando (fallback).
+    grupos: 'rh_grupos',
     funcionarios: 'rh_funcionarios',
     cargos: 'rh_cargos',
     unidades: 'rh_unidades',

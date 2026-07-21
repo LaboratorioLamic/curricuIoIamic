@@ -3,22 +3,144 @@
 const SESSION_KEY = 'rh_sessao';
 let currentUser = null;
 
-// Permissões disponíveis (matriz: ver/editar por módulo + financeiro)
-const PERMISSOES = [
-    { key: 'ver_dashboard', label: 'Ver Dashboard', grupo: 'Visualização' },
-    { key: 'ver_funcionarios', label: 'Ver Funcionários', grupo: 'Visualização' },
-    { key: 'ver_lancamentos', label: 'Ver Lançamentos', grupo: 'Visualização' },
-    { key: 'ver_folha', label: 'Ver Folha & Custos', grupo: 'Visualização' },
-    { key: 'ver_resultados', label: 'Ver Resultados', grupo: 'Visualização' },
-    { key: 'editar_funcionarios', label: 'Editar Funcionários', grupo: 'Edição' },
-    { key: 'editar_lancamentos', label: 'Editar Lançamentos', grupo: 'Edição' },
-    { key: 'editar_folha', label: 'Editar Folha & Custos', grupo: 'Edição' },
-    { key: 'ver_financeiro', label: 'Ver valores financeiros (salários e custos)', grupo: 'Sensível' },
+// ===== Modelo de permissões =====
+// Organizado em ÁRVORE: MÓDULO (tela do menu) → SUB-ITENS (as abas de dentro da tela), no
+// espírito do menu de cadastros que expande para mostrar cada item. Cada leaf tem só as ações
+// que o sistema REALMENTE controla — nada de coluna decorativa que não é aplicada:
+//   • consultar → gate `ver_*`   : abrir a aba/tela e ler os registros.
+//   • gerenciar → gate `editar_*`: incluir, alterar e excluir.
+//
+// Lançamentos é a tela com várias abas; a VISUALIZAÇÃO é por aba (Férias, Faltas, ASO...),
+// controlando quais abas o usuário enxerga. A GESTÃO (incluir/alterar/excluir) fica no nível
+// do módulo porque os mesmos formulários de edição são reaproveitados fora da tela de
+// Lançamentos (na ficha do funcionário) — separar por aba criaria brechas e inconsistência.
+const PERM_ACOES = {
+    consultar: { label: 'Visualizar', desc: 'Ver e abrir os registros', icon: 'eye' },
+    gerenciar: { label: 'Gerenciar', desc: 'Incluir, alterar e excluir', icon: 'edit' }
+};
+
+// Sub-abas da tela de Lançamentos (espelham LANC_TABS em lancamentos.js). `fin` = a aba é
+// financeira e também exige ver_folha + ver_financeiro para aparecer.
+const PERM_LANC_SUBS = [
+    { id: 'ferias', label: 'Férias' },
+    { id: 'ausencias', label: 'Faltas e Licenças' },
+    { id: 'aso', label: 'ASO' },
+    { id: 'demissoes', label: 'Demissões' },
+    { id: 'treinamentos', label: 'Treinamentos' },
+    { id: 'promocoes', label: 'Promoções' },
+    { id: 'transferencias', label: 'Transferências' },
+    { id: 'bancohoras', label: 'Banco de horas' },
+    { id: 'decimo', label: '13º Salário', fin: true },
+    { id: 'folhagrid', label: 'Folha mensal', fin: true }
+].map(s => ({ ...s, ver: 'ver_lanc_' + s.id }));
+
+const PERM_MODULOS = [
+    {
+        id: 'dashboard', label: 'Dashboard', icon: 'dashboard',
+        desc: 'Indicadores e visão geral do RH',
+        acoes: [{ tipo: 'consultar', key: 'ver_dashboard' }]
+    },
+    {
+        id: 'funcionarios', label: 'Funcionários', icon: 'users',
+        desc: 'Cadastro e ficha dos colaboradores',
+        acoes: [
+            { tipo: 'consultar', key: 'ver_funcionarios' },
+            { tipo: 'gerenciar', key: 'editar_funcionarios' }
+        ]
+    },
+    {
+        id: 'lancamentos', label: 'Lançamentos', icon: 'calendar',
+        desc: 'Eventos de RH — visualização por aba',
+        // Ação de gestão no nível do módulo (ver comentário acima).
+        acoes: [{ tipo: 'gerenciar', key: 'editar_lancamentos' }],
+        // Visualização por aba: cada leaf tem sua própria permissão de ver.
+        viewCoarse: 'ver_lancamentos',
+        subs: PERM_LANC_SUBS
+    },
+    {
+        id: 'folha', label: 'Folha & Custos', icon: 'money',
+        desc: 'Folha de pagamento e custos mensais',
+        acoes: [
+            { tipo: 'consultar', key: 'ver_folha' },
+            { tipo: 'gerenciar', key: 'editar_folha' }
+        ]
+    },
+    {
+        id: 'resultados', label: 'Resultados', icon: 'chart',
+        desc: 'Relatórios e análises consolidadas',
+        acoes: [{ tipo: 'consultar', key: 'ver_resultados' }]
+    }
+];
+
+// Permissões sensíveis (transversais a vários módulos)
+const PERM_SENSIVEIS = [
+    {
+        key: 'ver_financeiro', label: 'Valores financeiros', icon: 'money',
+        desc: 'Salários, custos e totais em R$ — em todos os módulos.'
+    },
     // Dado de saúde é categoria especial na LGPD (art. 11): quem controla prazo de ASO não
     // precisa ver o resultado clínico. Sem esta permissão a aba mostra datas e vencimentos
     // (o que o RH precisa para não tomar autuação), mas oculta resultado, restrições e laudo.
-    { key: 'ver_medico', label: 'Ver dados médicos (resultado do ASO, restrições e laudos)', grupo: 'Sensível' }
+    {
+        key: 'ver_medico', label: 'Dados médicos', icon: 'medical',
+        desc: 'Resultado do ASO, restrições e laudos (LGPD art. 11).'
+    }
 ];
+
+// Lista achatada (compat. com quem itera PERMISSOES: seed do 1º admin, backup, etc.)
+const PERMISSOES = [
+    ...PERM_MODULOS.flatMap(m => [
+        ...(m.acoes || []).map(a => ({ key: a.key, grupo: m.label, label: `${PERM_ACOES[a.tipo].label} — ${m.label}` })),
+        ...(m.viewCoarse ? [{ key: m.viewCoarse, grupo: m.label, label: `Ver — ${m.label}` }] : []),
+        ...(m.subs || []).map(s => ({ key: s.ver, grupo: m.label, label: `Ver ${s.label} — ${m.label}` }))
+    ]),
+    ...PERM_SENSIVEIS.map(p => ({ key: p.key, grupo: 'Sensível', label: p.label }))
+];
+const PERM_KEYS = PERMISSOES.map(p => p.key);
+
+// Expande/normaliza um conjunto de permissões para que os gates grosos e os por-aba fiquem
+// coerentes entre si:
+//   • Grupo legado que só tem `ver_lancamentos` (sem as chaves por aba) → libera todas as abas.
+//   • O gate groso `ver_lancamentos` (usado no menu e no registerPage) passa a refletir se há
+//     ao menos UMA aba visível.
+function expandirPerms(perms) {
+    const p = { ...(perms || {}) };
+    const subKeys = PERM_LANC_SUBS.map(s => s.ver);
+    const algumSub = subKeys.some(k => p[k]);
+    if (p.ver_lancamentos && !algumSub) subKeys.forEach(k => p[k] = true); // legado → todas as abas
+    p.ver_lancamentos = subKeys.some(k => p[k]);                            // coarse reflete as abas
+    return p;
+}
+
+// Cache dos grupos carregados na sessão (para resolver perms e exibir o nome do grupo).
+let gruposCache = null;
+async function carregarGrupos(force) {
+    if (!gruposCache || force) gruposCache = await DB.getAll(PATHS.grupos);
+    return gruposCache;
+}
+function grupoPorId(id) { return (gruposCache || []).find(g => g.id === id) || null; }
+
+// Resolve o conjunto de permissões efetivo de um usuário: admin = tudo; senão, as permissões
+// do GRUPO ao qual ele pertence; e, por retrocompatibilidade, as permissões gravadas
+// direto no usuário (modelo antigo) quando ele ainda não tem grupo.
+async function resolverPerms(user) {
+    if (user.admin) { const p = {}; PERM_KEYS.forEach(k => p[k] = true); return p; }
+    let base;
+    if (user.grupoId) {
+        await carregarGrupos();
+        base = grupoPorId(user.grupoId)?.perms || {};
+    } else {
+        base = user.perms || {}; // modelo legado (perms direto no usuário)
+    }
+    return expandirPerms(base);
+}
+
+// Visualização por aba de Lançamentos (admin sempre pode).
+function podeVerLanc(subId) {
+    if (!currentUser) return false;
+    if (currentUser.admin) return true;
+    return !!currentUser.perms?.['ver_lanc_' + subId];
+}
 
 function getSession() {
     try { return JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch { return null; }
@@ -47,12 +169,15 @@ async function doLogin(login, senha) {
     const user = usuarios.find(u => (u.login || '').toLowerCase() === login.toLowerCase().trim());
     if (!user || user.senhaHash !== hash) throw new Error('Login ou senha incorretos.');
     if (user.ativo === false) throw new Error('Usuário inativo. Contate um administrador.');
+    const perms = await resolverPerms(user);
     setSession({
         id: user.id,
         nome: user.nome,
         login: user.login,
         admin: !!user.admin,
-        perms: user.perms || {}
+        grupoId: user.grupoId || null,
+        grupoNome: user.grupoId ? (grupoPorId(user.grupoId)?.nome || null) : null,
+        perms
     });
     return currentUser;
 }

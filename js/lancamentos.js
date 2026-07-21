@@ -210,6 +210,14 @@ registerPage({
         ]);
         Object.assign(lancState, { funcionarios, cargos, unidades });
 
+        // Visualização por aba: cada aba só aparece se o grupo do usuário libera ver aquela aba
+        // (podeVerLanc). As abas financeiras (13º, Folha mensal) exigem, além disso, ver_folha
+        // + ver_financeiro — mesma régua da Folha mensal.
+        const abasVisiveis = LANC_TABS.filter(t =>
+            podeVerLanc(t.id) && (!t.fin || (can('ver_folha') && can('ver_financeiro'))));
+        // Se a aba ativa não está entre as visíveis (mudou de grupo, etc.), cai na primeira.
+        if (abasVisiveis.length && !abasVisiveis.some(t => t.id === lancTab)) lancTab = abasVisiveis[0].id;
+
         el.innerHTML = `
             <div class="page-header">
                 <div>
@@ -218,8 +226,7 @@ registerPage({
                 </div>
             </div>
             <div class="tabs" id="lancTabs">
-                ${LANC_TABS.filter(t => !t.fin || (can('ver_folha') && can('ver_financeiro')))
-                    .map(t => `<div class="tab${t.id === lancTab ? ' active' : ''}" data-tab="${t.id}">${t.label}</div>`).join('')}
+                ${abasVisiveis.map(t => `<div class="tab${t.id === lancTab ? ' active' : ''}" data-tab="${t.id}">${t.label}</div>`).join('')}
             </div>
             <div class="mt-16" id="lancContent"></div>`;
 

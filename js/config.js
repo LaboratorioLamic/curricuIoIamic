@@ -5,6 +5,7 @@ const TIPOS_BENEFICIO = ['Plano de saúde', 'Plano odontológico', 'Vale aliment
 
 const CFG_TABS = [
     { id: 'usuarios', label: 'Usuários' },
+    { id: 'grupos', label: 'Grupos e permissões' },
     { id: 'cargos', label: 'Cargos' },
     { id: 'unidades', label: 'Unidades' },
     { id: 'beneficios', label: 'Benefícios' },
@@ -54,6 +55,7 @@ function renderCfgTab() {
     cfgLoading();
     ({
         usuarios: renderCfgUsuarios,
+        grupos: renderCfgGrupos,
         cargos: renderCfgCargos,
         unidades: renderCfgUnidades,
         beneficios: renderCfgBeneficios,
@@ -102,29 +104,43 @@ function cfgRowActions(tr, items) {
 
 // ============ USUÁRIOS ============
 async function renderCfgUsuarios() {
-    const usuarios = (await DB.getAll(PATHS.usuarios)).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+    const [usuarios, grupos] = await Promise.all([
+        DB.getAll(PATHS.usuarios).then(us => us.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))),
+        carregarGrupos(true)
+    ]);
+    const grupoNome = id => grupos.find(g => g.id === id)?.nome;
 
     cfgList({
         searchPh: 'Buscar usuário...',
         btnLabel: 'Novo usuário',
         emptyText: 'Nenhum usuário cadastrado.',
-        thead: '<th>Usuário</th><th>Login</th><th>CPF</th><th>Perfil</th><th>Status</th><th style="width:48px"></th>',
-        rowsHtml: usuarios.map(u => `
+        thead: '<th>Usuário</th><th>Login</th><th>CPF</th><th>Perfil</th><th>Grupo de acesso</th><th>Status</th><th style="width:48px"></th>',
+        rowsHtml: usuarios.map(u => {
+            const gNome = grupoNome(u.grupoId);
+            const grupoCell = u.admin
+                ? '<span class="text-2">Acesso total</span>'
+                : gNome
+                    ? `<span class="badge badge-info">${escapeHtml(gNome)}</span>`
+                    : u.grupoId
+                        ? '<span class="badge badge-warning">Grupo removido</span>'
+                        : '<span class="badge badge-neutral">Sem grupo</span>';
+            return `
             <tr data-id="${u.id}" data-search="${escapeHtml((u.nome + ' ' + u.login).toLowerCase())}">
                 <td><div class="flex"><div class="avatar">${iniciais(u.nome)}</div><strong>${escapeHtml(u.nome)}</strong></div></td>
                 <td class="text-2">${escapeHtml(u.login)}</td>
                 <td class="text-2">${escapeHtml(u.cpf || '—')}</td>
                 <td>${u.admin ? '<span class="badge badge-accent">Administrador</span>' : '<span class="badge badge-neutral">Usuário</span>'}</td>
+                <td>${grupoCell}</td>
                 <td>${u.ativo !== false ? '<span class="badge badge-success">Ativo</span>' : '<span class="badge badge-danger">Inativo</span>'}</td>
                 <td><button class="btn-icon" data-menu>${icon('dots')}</button></td>
-            </tr>`).join(''),
-        onNew: () => formUsuario(null, usuarios)
+            </tr>`; }).join(''),
+        onNew: () => formUsuario(null, usuarios, grupos)
     });
 
     document.querySelectorAll('#cfgTbody tr[data-id]').forEach(tr => {
         const u = usuarios.find(x => x.id === tr.dataset.id);
         cfgRowActions(tr, [
-            { label: 'Editar', icon: 'edit', onClick: () => formUsuario(u, usuarios) },
+            { label: 'Editar', icon: 'edit', onClick: () => formUsuario(u, usuarios, grupos) },
             'sep',
             {
                 label: 'Excluir', icon: 'trash', danger: true, onClick: async () => {
@@ -142,9 +158,8 @@ async function renderCfgUsuarios() {
     });
 }
 
-function formUsuario(u, usuarios) {
+function formUsuario(u, usuarios, grupos = gruposCache || []) {
     const isEdit = !!u;
-    const grupos = [...new Set(PERMISSOES.map(p => p.grupo))];
     const m = openModal({
         title: isEdit ? 'Editar usuário' : 'Novo usuário',
         size: 'modal-lg',
@@ -180,17 +195,27 @@ function formUsuario(u, usuarios) {
                 </div>
             </div>
 
-            <div class="form-section" id="fuPermsWrap" style="margin-bottom:0">
-                <div class="form-section-title">Permissões</div>
-                <div class="perm-groups">
-                    ${grupos.map(g => `
-                        <div class="perm-group">
-                            <div class="perm-group-title">${g}</div>
-                            ${PERMISSOES.filter(p => p.grupo === g).map(p => `
-                                <label class="perm-check"><input type="checkbox" data-perm="${p.key}" ${u?.perms?.[p.key] ? 'checked' : ''}> ${p.label}</label>`).join('')}
-                        </div>`).join('')}
-                </div>
-                <div class="field-hint" style="margin-top:10px">Administradores possuem acesso total — as permissões acima são ignoradas.</div>
+            <div class="form-section" id="fuGrupoWrap" style="margin-bottom:0">
+                <div class="form-section-title">Grupo de acesso <span class="req">*</span></div>
+                <div class="field-hint" style="margin:-4px 0 12px">As permissões vêm do grupo. Para ajustar o que este usuário pode fazer, edite o grupo na aba <strong>Grupos e permissões</strong>.</div>
+                ${grupos.length ? `
+                <div class="grupo-picker" id="fuGrupos">
+                    ${grupos.map(g => {
+                        const n = permKeysAtivas(g.perms).length;
+                        return `
+                        <label class="grupo-opt">
+                            <input type="radio" name="fuGrupo" value="${g.id}" ${u?.grupoId === g.id ? 'checked' : ''}>
+                            <span class="grupo-opt-body">
+                                <span class="grupo-opt-ico">${icon('lock')}</span>
+                                <span class="grupo-opt-txt">
+                                    <strong>${escapeHtml(g.nome)}</strong>
+                                    <small>${g.descricao ? escapeHtml(g.descricao) : `${n} permiss${n === 1 ? 'ão' : 'ões'}`}</small>
+                                </span>
+                                <span class="grupo-opt-check">${icon('check')}</span>
+                            </span>
+                        </label>`; }).join('')}
+                </div>`
+                : `<div class="rec-empty">Nenhum grupo criado ainda. Crie um grupo na aba <strong>Grupos e permissões</strong> antes de atribuir acesso — ou marque este usuário como Administrador.</div>`}
             </div>`,
         footer: ''
     });
@@ -199,8 +224,12 @@ function formUsuario(u, usuarios) {
     cpfInput.addEventListener('input', () => cpfInput.value = maskCPF(cpfInput.value));
 
     const adminChk = m.body.querySelector('#fuAdmin');
-    const permsWrap = m.body.querySelector('#fuPermsWrap');
-    const syncPerms = () => permsWrap.style.opacity = adminChk.checked ? '.45' : '1';
+    const grupoWrap = m.body.querySelector('#fuGrupoWrap');
+    // Admin ignora o grupo (acesso total): esmaece e destrava a exigência de escolher um grupo.
+    const syncPerms = () => {
+        grupoWrap.style.opacity = adminChk.checked ? '.45' : '1';
+        grupoWrap.style.pointerEvents = adminChk.checked ? 'none' : '';
+    };
     adminChk.onchange = syncPerms;
     syncPerms();
 
@@ -217,12 +246,15 @@ function formUsuario(u, usuarios) {
         const admin = adminChk.checked;
         const ativo = m.body.querySelector('#fuAtivo').checked;
 
+        const grupoId = admin ? null : (m.body.querySelector('input[name="fuGrupo"]:checked')?.value || null);
+
         if (!nome || !login) return toast('Preencha nome e login.', 'error');
         if (usuarios.some(x => x.id !== u?.id && (x.login || '').toLowerCase() === login.toLowerCase())) return toast('Este login já está em uso.', 'error');
         if (cpf && !validaCPF(cpf)) return toast('CPF inválido.', 'error');
         if (!isEdit && pwd.length < 6) return toast('A senha deve ter no mínimo 6 caracteres.', 'error');
         if (pwd && pwd.length < 6) return toast('A senha deve ter no mínimo 6 caracteres.', 'error');
         if (pwd !== pwd2) return toast('As senhas não conferem.', 'error');
+        if (!admin && !grupoId) return toast('Selecione um grupo de acesso ou marque o usuário como Administrador.', 'error');
 
         // Proteção: não deixar o sistema sem administrador ativo
         if (isEdit && u.admin && (!admin || !ativo)) {
@@ -230,21 +262,309 @@ function formUsuario(u, usuarios) {
             if (admins.length === 0) return toast('O sistema precisa de ao menos um administrador ativo.', 'error');
         }
 
-        const perms = {};
-        m.body.querySelectorAll('[data-perm]').forEach(c => perms[c.dataset.perm] = c.checked);
-
-        const data = { nome, login, cpf, admin, ativo, perms };
+        // As permissões vivem no grupo — o usuário guarda só o vínculo (grupoId). Zera o `perms`
+        // legado para não conflitar com o grupo na hora de resolver o acesso.
+        const data = { nome, login, cpf, admin, ativo, grupoId, perms: null };
         if (pwd) data.senhaHash = await sha256(pwd);
         if (!isEdit) data.criadoEm = hoje();
 
         await DB.save(PATHS.usuarios, u?.id || null, data);
 
-        // Editou a si mesmo → atualiza sessão e sidebar
+        // Editou a si mesmo → re-resolve as permissões (podem ter mudado de grupo) e atualiza UI
         if (isEdit && u.id === currentUser.id) {
-            setSession({ ...currentUser, nome, login, admin, perms });
+            await carregarGrupos(true);
+            const perms = await resolverPerms({ admin, grupoId, perms: null });
+            setSession({ ...currentUser, nome, login, admin, grupoId, grupoNome: grupoId ? (grupoPorId(grupoId)?.nome || null) : null, perms });
             renderSidebar();
         }
         toast(isEdit ? 'Usuário atualizado.' : 'Usuário criado.');
+        m.close();
+        renderCfgTab();
+    };
+}
+
+// ============ GRUPOS E PERMISSÕES ============
+// As permissões vivem aqui, no grupo. O usuário só aponta para um grupo (ver formUsuario).
+
+// Chaves de permissão marcadas como true num objeto de perms.
+function permKeysAtivas(perms) {
+    return PERM_KEYS.filter(k => perms && perms[k]);
+}
+
+// Todas as chaves de permissão que um módulo (e seus sub-itens) controla.
+function chavesDoModulo(m) {
+    return [
+        ...(m.acoes || []).map(a => a.key),
+        ...(m.viewCoarse ? [m.viewCoarse] : []),
+        ...(m.subs || []).map(s => s.ver)
+    ];
+}
+
+// Resumo textual do que um grupo libera (para o card da lista).
+function resumoGrupo(perms) {
+    const mods = PERM_MODULOS.filter(m => chavesDoModulo(m).some(k => perms?.[k])).map(m => m.label);
+    const sens = PERM_SENSIVEIS.filter(s => perms?.[s.key]).map(s => s.label);
+    return [...mods, ...sens];
+}
+
+// Grupos padrão sugeridos — criados sob demanda no estado vazio.
+function gruposPadrao() {
+    const on = (...keys) => { const p = {}; keys.forEach(k => p[k] = true); return p; };
+    const todos = on(...PERM_KEYS);
+    // Abas de Lançamentos não-financeiras (as operacionais).
+    const abasOperacionais = PERM_LANC_SUBS.filter(s => !s.fin).map(s => s.ver);
+    return [
+        { nome: 'Administração RH', descricao: 'Acesso completo a todos os módulos, incluindo valores financeiros e dados médicos.', perms: todos },
+        {
+            nome: 'Operação RH', descricao: 'Cadastra e gerencia funcionários e lançamentos do dia a dia. Sem folha nem valores financeiros.',
+            perms: on('ver_dashboard', 'ver_funcionarios', 'editar_funcionarios', 'editar_lancamentos', 'ver_resultados', 'ver_medico', ...abasOperacionais)
+        },
+        {
+            nome: 'Consulta', descricao: 'Somente leitura dos módulos operacionais. Não altera nada e não vê valores nem dados médicos.',
+            perms: on('ver_dashboard', 'ver_funcionarios', 'ver_resultados', ...abasOperacionais)
+        }
+    ];
+}
+
+async function renderCfgGrupos() {
+    const [grupos, usuarios] = await Promise.all([
+        carregarGrupos(true).then(gs => [...gs].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))),
+        DB.getAll(PATHS.usuarios)
+    ]);
+    const membrosDe = id => usuarios.filter(u => !u.admin && u.grupoId === id).length;
+    const cont = document.getElementById('cfgContent');
+
+    if (!grupos.length) {
+        cont.innerHTML = `
+            <div class="grupos-empty">
+                <div class="grupos-empty-ico">${icon('lock')}</div>
+                <h3>Organize o acesso por grupos</h3>
+                <p>Em vez de marcar permissões usuário por usuário, crie <strong>grupos de acesso</strong> — cada usuário herda as permissões do seu grupo. Mudou a regra do grupo, mudou para todo mundo nele.</p>
+                <div class="flex" style="justify-content:center;gap:10px;flex-wrap:wrap;margin-top:4px">
+                    <button class="btn btn-primary" id="grpNew">${icon('plus')} Criar grupo</button>
+                    <button class="btn btn-secondary" id="grpSeed">${icon('check')} Criar grupos padrão</button>
+                </div>
+            </div>`;
+        document.getElementById('grpNew').onclick = () => formGrupo(null, grupos);
+        document.getElementById('grpSeed').onclick = async () => {
+            if (!await confirmDialog({ title: 'Criar grupos padrão', message: 'Serão criados 3 grupos sugeridos: <strong>Administração RH</strong>, <strong>Operação RH</strong> e <strong>Consulta</strong>. Você pode editá-los depois. Continuar?', confirmText: 'Criar' })) return;
+            for (const g of gruposPadrao()) await DB.save(PATHS.grupos, null, { ...g, criadoEm: hoje() });
+            toast('Grupos padrão criados.');
+            renderCfgTab();
+        };
+        return;
+    }
+
+    cont.innerHTML = `
+        <div class="table-toolbar" style="margin-bottom:16px">
+            <div class="cfg-tab-intro">As permissões do sistema vivem no grupo. Atribua um grupo a cada usuário na aba <strong>Usuários</strong>.</div>
+            <div class="grow"></div>
+            <button class="btn btn-primary" id="grpNew">${icon('plus')} Novo grupo</button>
+        </div>
+        <div class="grupos-grid">
+            ${grupos.map(g => {
+                const resumo = resumoGrupo(g.perms);
+                const nMembros = membrosDe(g.id);
+                const nPerms = permKeysAtivas(g.perms).length;
+                return `
+                <div class="grupo-card" data-id="${g.id}">
+                    <div class="grupo-card-head">
+                        <div class="grupo-card-ico">${icon('lock')}</div>
+                        <div class="grow">
+                            <div class="grupo-card-nome">${escapeHtml(g.nome)}</div>
+                            <div class="grupo-card-membros">${icon('users')} ${nMembros} usuário${nMembros === 1 ? '' : 's'}</div>
+                        </div>
+                        <button class="btn-icon" data-menu>${icon('dots')}</button>
+                    </div>
+                    ${g.descricao ? `<div class="grupo-card-desc">${escapeHtml(g.descricao)}</div>` : ''}
+                    <div class="grupo-card-perms">
+                        ${nPerms ? resumo.map(r => `<span class="perm-tag">${escapeHtml(r)}</span>`).join('')
+                            : '<span class="perm-tag perm-tag-none">Sem permissões</span>'}
+                    </div>
+                    <div class="grupo-card-foot">
+                        <button class="btn btn-secondary btn-sm" data-edit>${icon('edit')} Editar permissões</button>
+                    </div>
+                </div>`;
+            }).join('')}
+        </div>`;
+
+    document.getElementById('grpNew').onclick = () => formGrupo(null, grupos);
+    cont.querySelectorAll('.grupo-card').forEach(card => {
+        const g = grupos.find(x => x.id === card.dataset.id);
+        const abrir = () => formGrupo(g, grupos);
+        card.querySelector('[data-edit]').onclick = abrir;
+        card.querySelector('[data-menu]').onclick = e => {
+            e.stopPropagation();
+            openPopover(e.currentTarget, [
+                { label: 'Editar', icon: 'edit', onClick: abrir },
+                { label: 'Duplicar', icon: 'plus', onClick: () => formGrupo({ nome: `${g.nome} (cópia)`, descricao: g.descricao, perms: { ...g.perms } }, grupos, true) },
+                'sep',
+                {
+                    label: 'Excluir', icon: 'trash', danger: true, onClick: async () => {
+                        const n = membrosDe(g.id);
+                        if (n) return toast(`Não é possível excluir: ${n} usuário(s) neste grupo. Mova-os para outro grupo antes.`, 'error');
+                        if (await confirmDialog({ title: 'Excluir grupo', message: `Excluir o grupo <strong>${escapeHtml(g.nome)}</strong>?`, confirmText: 'Excluir', danger: true })) {
+                            await DB.remove(PATHS.grupos, g.id);
+                            toast('Grupo excluído.');
+                            renderCfgTab();
+                        }
+                    }
+                }
+            ]);
+        };
+    });
+}
+
+// Matriz de permissões em ÁRVORE: cada módulo é uma linha; módulos com sub-itens (Lançamentos)
+// expandem para mostrar as abas de dentro, cada uma com seu toggle de Visualizar. Tudo
+// liga/desliga com switch.
+function permMatrixHtml(perms) {
+    const sw = key => `<span class="switch"><input type="checkbox" data-perm="${key}" ${perms?.[key] ? 'checked' : ''}><span class="track"></span></span>`;
+    const acaoLabel = a => `
+        <label class="perm-act" title="${PERM_ACOES[a.tipo].desc}">
+            <span class="perm-act-txt"><strong>${PERM_ACOES[a.tipo].label}</strong><small>${PERM_ACOES[a.tipo].desc}</small></span>
+            ${sw(a.key)}
+        </label>`;
+
+    const modHtml = mod => {
+        // Módulo com sub-itens (árvore expansível)
+        if (mod.subs) {
+            const g = mod.acoes.find(a => a.tipo === 'gerenciar');
+            return `
+            <div class="perm-mod perm-mod-tree" data-mod="${mod.id}">
+                <div class="perm-mod-row">
+                    <button type="button" class="perm-expand" data-expand aria-expanded="true" title="Expandir/recolher">${icon('chevronDown')}</button>
+                    <span class="perm-mod-ico">${icon(mod.icon)}</span>
+                    <div class="perm-mod-txt grow"><strong>${mod.label}</strong><small>${mod.desc}</small></div>
+                    ${g ? acaoLabel(g) : ''}
+                </div>
+                <div class="perm-subs" data-subs>
+                    <div class="perm-sub-head">
+                        <span>${icon('eye')} Abas visíveis</span>
+                        <button type="button" class="perm-subs-all" data-subs-all>Marcar todas</button>
+                    </div>
+                    ${mod.subs.map(s => `
+                        <label class="perm-sub" title="Ver a aba ${s.label}">
+                            <span class="perm-sub-line"></span>
+                            <span class="grow">${s.label}${s.fin ? ' <span class="perm-sub-fin" title="Também exige Valores financeiros">requer financeiro</span>' : ''}</span>
+                            ${sw(s.ver)}
+                        </label>`).join('')}
+                </div>
+            </div>`;
+        }
+        // Módulo simples (ações lado a lado)
+        return `
+            <div class="perm-mod" data-mod="${mod.id}">
+                <div class="perm-mod-info">
+                    <span class="perm-mod-ico">${icon(mod.icon)}</span>
+                    <div class="perm-mod-txt"><strong>${mod.label}</strong><small>${mod.desc}</small></div>
+                </div>
+                <div class="perm-mod-acts">${mod.acoes.map(acaoLabel).join('')}</div>
+            </div>`;
+    };
+
+    return `
+        <div class="perm-matrix">
+            <div class="perm-matrix-head">
+                <div class="perm-matrix-title">Módulos do sistema</div>
+                <button type="button" class="btn btn-ghost btn-sm" data-toggle-all>${icon('check')} Atribuir todos</button>
+            </div>
+            ${PERM_MODULOS.map(modHtml).join('')}
+
+            <div class="perm-matrix-title" style="margin-top:18px">Dados sensíveis</div>
+            <div class="perm-sens">
+                ${PERM_SENSIVEIS.map(s => `
+                    <label class="perm-sens-card">
+                        <span class="perm-mod-ico">${icon(s.icon)}</span>
+                        <span class="grow perm-mod-txt"><strong>${s.label}</strong><small>${s.desc}</small></span>
+                        ${sw(s.key)}
+                    </label>`).join('')}
+            </div>
+        </div>`;
+}
+
+function formGrupo(g, grupos = [], isDuplicate = false) {
+    const isEdit = !!g?.id;
+    const m = openModal({
+        title: isEdit ? 'Editar grupo' : 'Novo grupo de acesso',
+        size: 'modal-lg',
+        body: `
+            <div class="form-section">
+                <div class="form-section-title">Identificação</div>
+                <div class="field"><label>Nome do grupo <span class="req">*</span></label>
+                    <input class="input" id="fgNome" placeholder="Ex: Operação RH" value="${escapeHtml(g?.nome || '')}"></div>
+                <div class="field" style="margin-bottom:0"><label>Descrição</label>
+                    <input class="input" id="fgDesc" placeholder="O que este grupo pode fazer (opcional)" value="${escapeHtml(g?.descricao || '')}"></div>
+            </div>
+            <div class="form-section" style="margin-bottom:0">
+                <div class="form-section-title">Permissões</div>
+                <div class="field-hint" style="margin:-4px 0 12px">Abra <strong>Lançamentos</strong> para liberar aba por aba (Férias, ASO, Faltas...). <strong>Gerenciar</strong> = incluir, alterar e excluir.</div>
+                ${permMatrixHtml(expandirPerms(g?.perms || {}))}
+            </div>`,
+        footer: ''
+    });
+
+    const checks = () => [...m.body.querySelectorAll('[data-perm]')];
+    // "Atribuir todos" vira "Limpar todos" quando tudo já está ligado.
+    const btnAll = m.body.querySelector('[data-toggle-all]');
+    const syncAllBtn = () => {
+        const all = checks().every(c => c.checked);
+        btnAll.innerHTML = `${icon(all ? 'x' : 'check')} ${all ? 'Limpar todos' : 'Atribuir todos'}`;
+    };
+    btnAll.onclick = () => {
+        const all = checks().every(c => c.checked);
+        checks().forEach(c => c.checked = !all);
+        syncAllBtn();
+    };
+    checks().forEach(c => c.addEventListener('change', syncAllBtn));
+    syncAllBtn();
+
+    // Expandir/recolher os módulos com sub-itens
+    m.body.querySelectorAll('[data-expand]').forEach(btn => {
+        btn.onclick = () => {
+            const tree = btn.closest('.perm-mod-tree');
+            const aberto = tree.classList.toggle('collapsed');
+            btn.setAttribute('aria-expanded', String(!aberto));
+        };
+    });
+    // "Marcar todas" / "Limpar todas" as abas de um módulo
+    m.body.querySelectorAll('[data-subs-all]').forEach(btn => {
+        const subChecks = () => [...btn.closest('.perm-mod-tree').querySelectorAll('.perm-sub [data-perm]')];
+        const sync = () => btn.textContent = subChecks().every(c => c.checked) ? 'Limpar todas' : 'Marcar todas';
+        btn.onclick = () => {
+            const all = subChecks().every(c => c.checked);
+            subChecks().forEach(c => c.checked = !all);
+            sync(); syncAllBtn();
+        };
+        subChecks().forEach(c => c.addEventListener('change', sync));
+        sync();
+    });
+
+    m.footer.innerHTML = `
+        <button class="btn btn-secondary" data-cancel>Cancelar</button>
+        <button class="btn btn-primary" data-save>${isEdit ? 'Salvar' : 'Criar grupo'}</button>`;
+    m.footer.querySelector('[data-cancel]').onclick = m.close;
+    m.footer.querySelector('[data-save]').onclick = async () => {
+        const nome = m.body.querySelector('#fgNome').value.trim();
+        if (!nome) return toast('Informe o nome do grupo.', 'error');
+        if (grupos.some(x => x.id !== g?.id && (x.nome || '').toLowerCase() === nome.toLowerCase()))
+            return toast('Já existe um grupo com este nome.', 'error');
+
+        const perms = {};
+        checks().forEach(c => { if (c.checked) perms[c.dataset.perm] = true; });
+
+        const data = { nome, descricao: m.body.querySelector('#fgDesc').value.trim(), perms };
+        if (!isEdit) data.criadoEm = hoje();
+        await DB.save(PATHS.grupos, g?.id || null, data);
+        await carregarGrupos(true);
+
+        // Editou um grupo que inclui o próprio usuário logado → re-resolve o acesso na hora.
+        if (isEdit && currentUser && !currentUser.admin && currentUser.grupoId === g.id) {
+            const novas = await resolverPerms(currentUser);
+            setSession({ ...currentUser, perms: novas, grupoNome: nome });
+            renderSidebar();
+        }
+        toast(isEdit ? 'Grupo atualizado.' : 'Grupo criado.');
         m.close();
         renderCfgTab();
     };
