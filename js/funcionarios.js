@@ -1453,6 +1453,14 @@ function fdHorasAnteriores(box, anteriores) {
 const FD_HIST_FALTAS = ['Falta justificada', 'Falta injustificada'];
 const FD_HIST_AFAST = ['Licença médica', 'Licença maternidade/paternidade', 'Outra licença'];
 let fdHistSub = 'timeline';
+// Ano do gráfico empilhado de Faltas/Afastamentos — null até o primeiro render, quando cai
+// no ano mais recente com lançamento (mesmo padrão de fdPagAno).
+let fdHistFaltasAno = null;
+let fdHistAfastAno = null;
+// Contagem do gráfico: 'dias' soma a duração, 'qtd' conta ocorrências — mesmo par usado em
+// resEventos (resultados.js). Cada sub-aba guarda o próprio modo.
+let fdHistFaltasModo = 'dias';
+let fdHistAfastModo = 'dias';
 
 // Reabre a ficha na aba Histórico, na mesma sub-aba — o drawer é único (openDrawer
 // fecha o anterior), então detalhes de item precisam devolver o usuário ao contexto.
@@ -1473,20 +1481,56 @@ async function fdHistorico(f, cont) {
     const treF = treinamentos.filter(t => (t.participantes || []).includes(f.id))
         .sort((a, b) => (b.inicio || '').localeCompare(a.inicio || ''));
     const porTipo = tipos => ausF.filter(a => tipos.includes(a.tipo));
-    const faltas = porTipo(FD_HIST_FALTAS), afast = porTipo(FD_HIST_AFAST), ferias = porTipo(['Férias']);
+    const faltas = porTipo(FD_HIST_FALTAS), afast = porTipo(FD_HIST_AFAST);
+
+    const promoF = promocoes.filter(p => p.funcionarioId === f.id);
+    const ultimaPromoData = promoF.reduce((mx, p) => p.data > mx ? p.data : mx, '');
+    const transfF = transferencias.filter(t => t.funcionarioId === f.id);
+    const ultimaTransfData = transfF.reduce((mx, t) => t.data > mx ? t.data : mx, '');
+
+    // `abrir` liga cada evento à mesma janela de detalhe usada nas outras sub-abas/telas —
+    // sem ela a linha do tempo é só leitura, e o RH precisa sair para achar o lançamento de
+    // novo em Faltas/Afastamentos/Histórico da empresa. Admissão fica sem `abrir`: é derivada
+    // do cadastro do funcionário, não um lançamento com janela própria.
+    // Falta/afastamento/férias viram tipo e cor próprios na timeline — mesma distinção (e
+    // mesmas cores) da badge de cada um em Faltas/Afastamentos/Dados → Férias, para o RH
+    // reconhecer a natureza do evento sem abrir o detalhe.
+    const tlTipoAus = a => FD_HIST_FALTAS.includes(a.tipo) ? 'danger'
+        : FD_HIST_AFAST.includes(a.tipo) ? 'warning'
+        : a.tipo === TIPO_FERIAS ? 'info'
+        : 'warning';
 
     const eventos = [];
     if (f.admissao) eventos.push({ data: f.admissao, tipo: 'success', titulo: 'Admissão', desc: '' });
     ausencias.filter(a => a.funcionarioId === f.id).forEach(a =>
-        eventos.push({ data: a.inicio, tipo: 'warning', titulo: a.motivo || 'Ausência', desc: `${fmtDate(a.inicio)} → ${fmtDate(a.retorno)} · ${a.dias || diasEntre(a.inicio, a.retorno)} dia(s)` }));
-    promocoes.filter(p => p.funcionarioId === f.id).forEach(p =>
-        eventos.push({ data: p.data, tipo: '', titulo: 'Promoção', desc: `${p.cargoAnteriorNome || ''} → ${p.cargoNovoNome || ''}${can('ver_financeiro') && p.pctAumento != null ? ` (+${Number(p.pctAumento).toFixed(1)}%)` : ''}` }));
-    transferencias.filter(t => t.funcionarioId === f.id).forEach(t =>
-        eventos.push({ data: t.data, tipo: 'info', titulo: 'Transferência de unidade', desc: `${t.unidadeOrigemNome || '—'} → ${t.unidadeDestinoNome || '—'}${t.motivo ? ` · ${t.motivo}` : ''}` }));
+        eventos.push({
+            data: a.inicio, tipo: tlTipoAus(a), titulo: a.tipo || 'Ausência',
+            desc: `${fmtDate(a.inicio)} → ${fmtDate(a.retorno)} · ${a.dias || diasEntre(a.inicio, a.retorno)} dia(s)`,
+            abrir: () => detalheAusencia(a, null, () => fdVoltarHistorico(f, 'timeline'))
+        }));
+    promoF.forEach(p =>
+        eventos.push({
+            data: p.data, tipo: '', titulo: 'Promoção',
+            desc: `${p.cargoAnteriorNome || ''} → ${p.cargoNovoNome || ''}${can('ver_financeiro') && p.pctAumento != null ? ` (+${Number(p.pctAumento).toFixed(1)}%)` : ''}`,
+            abrir: () => detalhePromocao(p, p.data === ultimaPromoData, null, () => fdVoltarHistorico(f, 'timeline'))
+        }));
+    transfF.forEach(t =>
+        eventos.push({
+            data: t.data, tipo: 'info', titulo: 'Transferência de unidade',
+            desc: `${t.unidadeOrigemNome || '—'} → ${t.unidadeDestinoNome || '—'}${t.motivo ? ` · ${t.motivo}` : ''}`,
+            abrir: () => detalheTransferencia(t, t.data === ultimaTransfData, null, () => fdVoltarHistorico(f, 'timeline'))
+        }));
     treinamentos.filter(t => (t.participantes || []).includes(f.id)).forEach(t =>
-        eventos.push({ data: t.inicio, tipo: '', titulo: `Treinamento: ${t.nome}`, desc: `${t.cargaHoraria || 0}h · ${t.tipo || ''}${t.responsavel ? ` · Resp.: ${t.responsavel}` : ''}` }));
+        eventos.push({
+            data: t.inicio, tipo: '', titulo: `Treinamento: ${t.nome}`,
+            desc: `${t.cargaHoraria || 0}h · ${t.tipo || ''}${t.responsavel ? ` · Resp.: ${t.responsavel}` : ''}`,
+            abrir: () => detalheTreinamento(t, null, () => fdVoltarHistorico(f, 'timeline'))
+        }));
     demissoes.filter(dm => dm.funcionarioId === f.id).forEach(dm =>
-        eventos.push({ data: dm.data, tipo: 'danger', titulo: 'Desligamento', desc: dm.motivo || '' }));
+        eventos.push({
+            data: dm.data, tipo: 'danger', titulo: 'Desligamento', desc: dm.motivo || '',
+            abrir: () => detalheDemissao(dm, null, () => fdVoltarHistorico(f, 'timeline'))
+        }));
 
     eventos.sort((a, b) => (b.data || '').localeCompare(a.data || ''));
 
@@ -1494,7 +1538,6 @@ async function fdHistorico(f, cont) {
         { id: 'timeline', label: 'Linha do tempo', n: eventos.length },
         { id: 'faltas', label: 'Faltas', n: faltas.length },
         { id: 'afastamentos', label: 'Afastamentos', n: afast.length },
-        { id: 'ferias', label: 'Férias', n: ferias.length },
         { id: 'treinamentos', label: 'Treinamentos', n: treF.length }
     ];
 
@@ -1505,14 +1548,25 @@ async function fdHistorico(f, cont) {
         <div class="mt-12" id="fdHistBody"></div>`;
 
     const box = cont.querySelector('#fdHistBody');
+    // Eventos com `abrir` (tudo que tem janela de detalhe própria) viram linhas clicáveis —
+    // Admissão fica como texto simples, sem role de botão, por não ter para onde abrir.
     const timelineHtml = () => eventos.length ? `
-        <div class="timeline">${eventos.map(e => `
-            <div class="tl-item tl-${e.tipo}">
+        <div class="timeline">${eventos.map((e, i) => `
+            <div class="tl-item tl-${e.tipo}${e.abrir ? ' tl-clicavel' : ''}" ${e.abrir ? `data-tl-i="${i}" tabindex="0" role="button"` : ''}>
                 <div class="tl-date">${fmtDate(e.data)}</div>
                 <div class="tl-title">${escapeHtml(e.titulo)}</div>
                 ${e.desc ? `<div class="tl-desc">${escapeHtml(e.desc)}</div>` : ''}
             </div>`).join('')}</div>`
         : '<p class="muted">Nenhum evento registrado.</p>';
+
+    const bindTimeline = () => {
+        box.querySelectorAll('[data-tl-i]').forEach(el => {
+            const ev = eventos[Number(el.dataset.tlI)];
+            if (!ev?.abrir) return;
+            el.onclick = ev.abrir;
+            el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ev.abrir(); } };
+        });
+    };
 
     // Linha enxuta: período · dias · rótulo · selo de anexo. Clique abre o detalhe completo.
     const listaHtml = (itens, vazio, linha) => itens.length
@@ -1534,25 +1588,103 @@ async function fdHistorico(f, cont) {
         </div>
         ${seta}`;
 
+    // Bloco comum a Faltas/Afastamentos: gráfico empilhado por tipo, mês a mês, com navegação
+    // de ano — mesma régua de fdPagamentos (mkChart no dono 'fdDados', destruído ao fechar a
+    // ficha). `anoGet`/`anoSet` leem e gravam a variável de módulo de cada sub-aba
+    // (fdHistFaltasAno / fdHistAfastAno), que persiste o ano ao trocar de sub-aba. `modoGet`/
+    // `modoSet` fazem o mesmo para o par dias/quantidade (mesmo par de resEventos, resultados.js).
+    const renderHistEmpilhado = (itens, tipos, chartId, corBase, anoGet, anoSet, modoGet, modoSet, montar) => {
+        const anosComDado = [...new Set(itens.map(a => Number((a.inicio || '').slice(0, 4))))]
+            .filter(Boolean).sort((a, b) => b - a);
+        if (!anosComDado.length) return '';
+        let ano = anoGet();
+        if (!anosComDado.includes(ano)) { ano = anosComDado[0]; anoSet(ano); }
+        const idxAno = anosComDado.indexOf(ano);
+        const temAnterior = idxAno < anosComDado.length - 1;
+        const temProximo = idxAno > 0;
+
+        const modo = modoGet();
+        // Em 'dias' soma a duração de cada lançamento; em 'qtd' cada lançamento conta 1, não
+        // importa quantos dias durou — mesma distinção de resEventos (resultados.js).
+        const valorItens = lista => modo === 'dias'
+            ? lista.reduce((s, a) => s + (Number(a.dias) || diasEntre(a.inicio, a.retorno) || 0), 0)
+            : lista.length;
+        const porMesTipo = tipos.map(tp => ({
+            tipo: tp,
+            vals: MESES.map((_, m) => valorItens(itens.filter(a => a.tipo === tp
+                && Number((a.inicio || '').slice(0, 4)) === ano
+                && Number((a.inicio || '').slice(5, 7)) - 1 === m)))
+        }));
+        const total = porMesTipo.reduce((s, s2) => s + s2.vals.reduce((a, b) => a + b, 0), 0);
+        const sufixo = modo === 'dias' ? 'dia' : 'ocorrência';
+
+        const html = `
+            <div class="flex-between" style="margin-bottom:12px">
+                <div class="month-nav">
+                    ${temAnterior ? `<button data-ano-prev title="Ano anterior com lançamento">‹</button>` : ''}
+                    <span class="month-label">${ano}</span>
+                    ${temProximo ? `<button data-ano-next title="Próximo ano com lançamento">›</button>` : ''}
+                </div><div></div>
+            </div>
+            <div class="chart-grid chart-grid-full" style="margin-bottom:16px">
+                ${chartCard({
+                    id: chartId, titulo: `${modo === 'dias' ? 'Dias' : 'Ocorrências'} por mês — ${ano}`,
+                    sub: 'Empilhado por tipo',
+                    total: `${fmtNum(total)} ${sufixo}${total === 1 ? '' : 's'}`,
+                    acao: `<button class="chart-legenda-btn" data-modo-btn title="Alternar entre dias e ocorrências">${icon('filter')}<span>Contar por: ${modo === 'dias' ? 'dias' : 'quantidade'}</span></button>`
+                })}
+            </div>`;
+
+        // Chamado depois que o HTML acima já está no DOM (canvas precisa existir antes do
+        // Chart.js poder desenhar nele) e liga a navegação de ano e o filtro de modo do bloco.
+        montar(() => {
+            mkChart('fdDados', chartId, {
+                type: 'bar',
+                data: {
+                    labels: MESES,
+                    datasets: porMesTipo.map((s, i) => dvBarra(s.tipo, s.vals, dvCor(corBase + i)))
+                },
+                options: dvOpts({ fmt: 'num', legenda: true, empilhado: true })
+            });
+            const prev = box.querySelector('[data-ano-prev]'), next = box.querySelector('[data-ano-next]');
+            if (prev) prev.onclick = () => { anoSet(anosComDado[idxAno + 1]); views[fdHistSub](); };
+            if (next) next.onclick = () => { anoSet(anosComDado[idxAno - 1]); views[fdHistSub](); };
+            const btnModo = box.querySelector('[data-modo-btn]');
+            if (btnModo) btnModo.onclick = e => openFilterPopover(e.currentTarget, {
+                options: [{ value: 'dias', label: 'Dias (soma a duração)' }, { value: 'qtd', label: 'Quantidade (conta ocorrências)' }],
+                value: modo, searchable: false,
+                onPick: v => { modoSet(v); views[fdHistSub](); }
+            });
+        });
+
+        return html;
+    };
+
     const views = {
-        timeline: () => box.innerHTML = timelineHtml(),
+        timeline: () => { box.innerHTML = timelineHtml(); bindTimeline(); },
 
         faltas: () => {
-            box.innerHTML = listaHtml(faltas, 'Nenhuma falta registrada.', a =>
-                linhaAus(a, 'badge-danger', x => x.tipo || '—'));
+            let montarChart = () => {};
+            box.innerHTML =
+                renderHistEmpilhado(faltas, FD_HIST_FALTAS, 'fdHistFaltasChart', 5,
+                    () => fdHistFaltasAno, v => fdHistFaltasAno = v,
+                    () => fdHistFaltasModo, v => fdHistFaltasModo = v,
+                    fn => montarChart = fn) +
+                listaHtml(faltas, 'Nenhuma falta registrada.', a => linhaAus(a, 'badge-danger', x => x.tipo || '—'));
+            montarChart();
             bindLinhas(faltas, a => detalheAusencia(a, null, () => fdVoltarHistorico(f, 'faltas')));
         },
 
         afastamentos: () => {
-            box.innerHTML = listaHtml(afast, 'Nenhum afastamento registrado.', a =>
-                linhaAus(a, 'badge-warning', x => x.tipo || '—'));
+            let montarChart = () => {};
+            box.innerHTML =
+                renderHistEmpilhado(afast, FD_HIST_AFAST, 'fdHistAfastChart', 0,
+                    () => fdHistAfastAno, v => fdHistAfastAno = v,
+                    () => fdHistAfastModo, v => fdHistAfastModo = v,
+                    fn => montarChart = fn) +
+                listaHtml(afast, 'Nenhum afastamento registrado.', a => linhaAus(a, 'badge-warning', x => x.tipo || '—'));
+            montarChart();
             bindLinhas(afast, a => detalheAusencia(a, null, () => fdVoltarHistorico(f, 'afastamentos')));
-        },
-
-        ferias: () => {
-            box.innerHTML = listaHtml(ferias, 'Nenhum período de férias registrado.', a =>
-                linhaAus(a, 'badge-info', () => 'Férias'));
-            bindLinhas(ferias, a => detalheAusencia(a, null, () => fdVoltarHistorico(f, 'ferias')));
         },
 
         treinamentos: () => {

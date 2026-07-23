@@ -1355,7 +1355,7 @@ async function renderDemissoes() {
     });
 }
 
-function detalheDemissao(d, onDelete) {
+function detalheDemissao(d, onDelete, onClose) {
     abrirDetalheLanc({
         titulo: lancFuncNome(d.funcionarioId),
         funcionarioId: d.funcionarioId,
@@ -1368,7 +1368,8 @@ function detalheDemissao(d, onDelete) {
         ],
         anexo: anexosDe(d),
         onEdit: () => formDemissao(d),
-        onDelete: () => onDelete(d)
+        onDelete: onDelete ? () => onDelete(d) : null,
+        onClose
     });
 }
 
@@ -2405,7 +2406,7 @@ async function renderPromocoes() {
     });
 }
 
-function detalhePromocao(p, maisRecente, onDelete) {
+function detalhePromocao(p, maisRecente, onDelete, onClose) {
     const fin = can('ver_financeiro');
     const ajuste = p.cargoAnteriorId === p.cargoNovoId;
     const pctBadge = `<span class="badge ${p.pctAumento >= 0 ? 'badge-success' : 'badge-danger'}">${p.pctAumento >= 0 ? '+' : ''}${Number(p.pctAumento || 0).toFixed(1)}%</span>`;
@@ -2423,7 +2424,8 @@ function detalhePromocao(p, maisRecente, onDelete) {
             fin ? ['% de aumento', pctBadge] : null,
             !maisRecente ? ['Observação', '<span class="text-2">Há promoção mais recente para este funcionário.</span>'] : null
         ],
-        onDelete: () => onDelete(p, maisRecente)
+        onDelete: onDelete ? () => onDelete(p, maisRecente) : null,
+        onClose
     });
 }
 
@@ -2590,7 +2592,7 @@ async function renderTransferencias() {
     });
 }
 
-function detalheTransferencia(t, maisRecente, onDelete) {
+function detalheTransferencia(t, maisRecente, onDelete, onClose) {
     abrirDetalheLanc({
         titulo: lancFuncNome(t.funcionarioId),
         funcionarioId: t.funcionarioId,
@@ -2605,7 +2607,8 @@ function detalheTransferencia(t, maisRecente, onDelete) {
             !maisRecente ? ['Observação', '<span class="text-2">Há transferência mais recente para este colaborador.</span>'] : null
         ],
         anexo: anexosDe(t),
-        onDelete: () => onDelete(t, maisRecente)
+        onDelete: onDelete ? () => onDelete(t, maisRecente) : null,
+        onClose
     });
 }
 
