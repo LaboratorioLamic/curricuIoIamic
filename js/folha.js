@@ -467,6 +467,16 @@ function bindFrNav(cont) {
 let folhaCharts = [];
 function destroyFolhaCharts() { folhaCharts.forEach(c => c.destroy()); folhaCharts = []; }
 
+// Explicações do botão "i" nos cards da Visão anual (mesmo formato de RES_EXPLICACOES em resultados.js).
+const FOLHA_ANUAL_EXPLICACOES = {
+    'Custo empresa (folha)': { oQue: 'Custo mensal da folha que efetivamente sai do caixa da empresa: remuneração bruta menos a coparticipação efetiva dos funcionários nos benefícios.', objetivo: 'É o número consolidado de custo de pessoal de cada mês do ano.' },
+    'Custo dos funcionários': { oQue: 'Custo mensal da folha atribuído aos funcionários (remuneração, encargos e demais custos), excluindo benefícios.', objetivo: 'Isolar o custo de remuneração pura, sem o componente de benefícios, para análises de custo por cabeça.' },
+    'Custo dos benefícios': { oQue: 'Custo mensal dos benefícios pago pela empresa, já descontada a coparticipação dos funcionários.', objetivo: 'Medir o investimento líquido da empresa em benefícios, separado da remuneração.' },
+    'Remuneração bruta (folha)': { oQue: 'Soma de tudo o que foi lançado na folha do mês antes de qualquer desconto de coparticipação.', objetivo: 'Servir de base de comparação para o custo empresa, que é a remuneração bruta menos os descontos efetivos.' },
+    'Descontos (coparticipação)': { oQue: 'Total lançado de coparticipação dos funcionários nos benefícios em cada mês.', objetivo: 'Mostrar quanto do custo dos benefícios é, na prática, compartilhado com a equipe — parte pode exceder o benefício e não abater o custo da empresa.' },
+    'Treinamentos (parcelas)': { oQue: 'Custo de treinamentos atribuído a cada mês, considerando o regime de parcelamento de cada treinamento lançado.', objetivo: 'Ver a distribuição mensal do investimento em capacitação ao longo do ano.' }
+};
+
 async function relFolhaAnual() {
     destroyFolhaCharts();
     const ano = folhaState.ano;
@@ -518,17 +528,12 @@ async function relFolhaAnual() {
             ${metricas.map(mt => {
                 const total = mt.vals.reduce((a, b) => a + b, 0);
                 const media = total / 12;
-                return `
-                <div class="chart-card">
-                    <div class="chart-card-head">
-                        <div class="chart-card-title">${mt.label}</div>
-                        <div class="chart-card-stats">
-                            <span class="cc-total">${fmtBRL(total)}</span>
-                            <span class="cc-media">média ${fmtBRL(media)}/mês</span>
-                        </div>
-                    </div>
-                    <div class="chart-box"><canvas id="fra_${mt.id}"></canvas></div>
-                </div>`;
+                return chartCard({
+                    id: `fra_${mt.id}`, titulo: mt.label,
+                    total: fmtBRL(total),
+                    media: `média ${fmtBRL(media)}/mês`,
+                    info: FOLHA_ANUAL_EXPLICACOES[mt.label]
+                });
             }).join('')}
         </div>
         ${tabelaMensal(`Resumo de custos — funcionários × benefícios — ${ano}`, [

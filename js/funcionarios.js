@@ -305,7 +305,14 @@ function drawerFuncionario(f, abaInicial = 'dados') {
     fdHorasRefresh = () => setTab('horas');
     // Mesma ideia para férias/13º, que vivem dentro da aba Dados — renderLancTab()
     // (lancamentos.js) e renderDecimo() (decimo.js) chamam isto se a sub-aba certa estiver ativa.
-    fdDadosRefresh = () => setTab('dados');
+    // Recarrega funcState.ausencias antes de redesenhar: sem isto, o form de férias aberto
+    // pela própria ficha salva no banco mas a aba Férias continua lendo o array carregado no
+    // render da página (comentário em fdFeriasAba), e o período recém-lançado nunca aparece
+    // sem sair e reabrir a ficha.
+    fdDadosRefresh = async () => {
+        funcState.ausencias = await DB.getAll(PATHS.ausencias);
+        setTab('dados');
+    };
 }
 
 // ---- Dados: shell de sub-abas ----

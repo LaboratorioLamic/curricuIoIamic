@@ -1749,7 +1749,8 @@ function formFechamentoBh(f, sit) {
             <div class="field">
                 <label>Destino do saldo <span class="req">*</span></label>
                 <select class="select" id="bfDestino">
-                    ${BH_DESTINOS.map(d => `<option value="${d}" ${(positivo && d === 'Pago como hora extra') || (!positivo && d === 'Compensado') ? 'selected' : ''}>${d}</option>`).join('')}
+                    ${(positivo ? ['Pago como hora extra', 'Compensado'] : ['Perdoado', 'Descontado'])
+                        .map(d => `<option value="${d}" ${d === (positivo ? 'Pago como hora extra' : 'Descontado') ? 'selected' : ''}>${d}</option>`).join('')}
                 </select>
                 <div class="field-hint">Como o saldo restante foi resolvido. Fica registrado no histórico do ciclo.</div>
             </div>
