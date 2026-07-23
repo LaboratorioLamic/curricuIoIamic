@@ -471,7 +471,7 @@ function janelaDecimo(fid) {
                             <div class="grow">
                                 <strong>${decimoTipo(p.tipo).label}</strong>
                                 <div class="muted">Pago em ${fmtDate(p.data)}${
-                                    p.avosParcela != null ? ` · ${p.avosParcela} avo${p.avosParcela !== 1 ? 's' : ''}` : ''}${
+                                    p.avosParcela != null ? ` · ${fmtNum(p.avosParcela)} avo${p.avosParcela !== 1 ? 's' : ''}` : ''}${
                                     p.encargos ? ` · encargos ${fmtBRL(p.encargos)}` : ' · sem encargos'}${p.obs ? ` — ${escapeHtml(p.obs)}` : ''}</div>
                             </div>
                             <strong class="num">${fmtBRL(p.bruto)}</strong>
@@ -500,13 +500,74 @@ function janelaDecimo(fid) {
     });
 }
 
+// Régua de 12 marcas (mesma linguagem visual em todo o 13º): cheia até `valor`, riscada acima
+// de `direito` (avos que a pessoa não tem, ex.: admitida no meio do ano).
+function avosReguaHtml(valor, direito) {
+    return `<span class="avos-regua">${Array.from({ length: 12 }, (_, i) => {
+        const k = i + 1;
+        return `<i class="${k > direito ? 'is-fora' : k <= valor ? 'is-on' : 'is-resto'}"></i>`;
+    }).join('')}</span>`;
+}
+
+// ---- Popover ilustrado das opções de avo quando o direito é ímpar ----
+//
+// Cada opção mostra a PRÓPRIA régua (não só o número), porque é a régua que o RH confere antes
+// de escolher — mesma ideia do resto do módulo: nenhum valor aparece sem a conta por trás.
+// Popover próprio (não `openFilterPopover`) porque a linha aqui é mais rica que texto simples.
+let _avosPop = null;
+function closeAvosPopover() { if (_avosPop) { _avosPop.remove(); _avosPop = null; } }
+
+function openAvosPopover(anchorEl, { opcoes, direito, valorAvo, jaPago, atual, onPick }) {
+    closePopover();
+    closeAvosPopover();
+    const pop = document.createElement('div');
+    pop.className = 'popover avos-pop';
+    pop.innerHTML = opcoes.map(o => {
+        const bruto = Math.max(0, valorAvo * o.valor - jaPago);
+        return `
+            <div class="avos-pop-item${o.modo === atual ? ' selected' : ''}" data-modo="${o.modo}">
+                ${avosReguaHtml(o.valor, direito)}
+                <div class="avos-pop-info">
+                    <span class="avos-pop-lbl">${fmtNum(o.valor)} avo${o.valor !== 1 ? 's' : ''}${o.modo === 'meio' ? ' <em>(padrão)</em>' : ''}</span>
+                    <span class="avos-pop-val">${fmtBRL(bruto)}</span>
+                </div>
+                ${o.modo === atual ? icon('check') : ''}
+            </div>`;
+    }).join('');
+    document.body.appendChild(pop);
+
+    pop.querySelectorAll('.avos-pop-item').forEach(el => el.onclick = () => {
+        closeAvosPopover();
+        onPick(el.dataset.modo);
+    });
+
+    const r = anchorEl.getBoundingClientRect();
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    let x = r.left, y = r.bottom + 6;
+    if (x + pw > window.innerWidth - 8) x = r.right - pw;
+    if (y + ph > window.innerHeight - 8) y = r.top - ph - 6;
+    pop.style.left = `${Math.max(8, x)}px`;
+    pop.style.top = `${Math.max(8, y)}px`;
+    _avosPop = pop;
+
+    setTimeout(() => {
+        document.addEventListener('mousedown', function h(e) {
+            if (_avosPop && !_avosPop.contains(e.target) && e.target !== anchorEl && !anchorEl.contains(e.target)) {
+                closeAvosPopover();
+                document.removeEventListener('mousedown', h);
+            }
+        });
+        document.addEventListener('keydown', function esc(e) {
+            if (e.key === 'Escape') { closeAvosPopover(); document.removeEventListener('keydown', esc); }
+        });
+    });
+}
+
 // ---- Formulário de parcela ----
 //
-// O valor sugerido tem MEMÓRIA DE CÁLCULO visível, e o valor pago é campo separado — mesma
-// decisão da quitação do banco de horas: o sugerido é a conta do sistema, o pago é o que saiu
-// do caixa, e a diferença entre eles é decisão humana que uma auditoria vai querer ver
-// justificada. Digitar o pago congela o campo: recalcular por troca de tipo apagaria o valor
-// negociado.
+// Valor pago e encargos são sempre a conta do sistema, travados (readonly): o RH não negocia
+// o 13º parcela a parcela, então não há campo para digitar um valor diferente do sugerido.
+// A memória de cálculo (bx-calc) continua visível para auditoria mostrar de onde veio o número.
 function formDecimo(d) {
     const isEdit = !!d?.id;
     const ano = d?.ano || decimoState.ano;
@@ -561,17 +622,17 @@ function formDecimo(d) {
             <div class="form-row">
                 <div class="field">
                     <label>Valor pago <span class="req">*</span></label>
-                    <input class="input" id="dfBruto" type="number" step="0.01" min="0" value="${d?.bruto ?? ''}">
-                    <div class="field-hint" id="dfBrutoHint">Em branco usa o sugerido. Digitar congela o valor.</div>
+                    <input class="input" id="dfBruto" type="number" step="0.01" min="0" value="${d?.bruto ?? ''}" readonly>
+                    <div class="field-hint" id="dfBrutoHint">Calculado automaticamente — não editável.</div>
                 </div>
                 <div class="field">
                     <label>Encargos</label>
-                    <input class="input" id="dfEnc" type="number" step="0.01" min="0" value="${d?.encargos ?? ''}">
+                    <input class="input" id="dfEnc" type="number" step="0.01" min="0" value="${d?.encargos ?? ''}" readonly>
                     <div class="field-hint" id="dfEncHint"></div>
                 </div>
             </div>
 
-            <div class="field"><label>Observação</label><textarea class="input" id="dfObs" rows="2" placeholder="Acordo, negociação, motivo da divergência...">${escapeHtml(d?.obs || '')}</textarea></div>`,
+            <div class="field"><label>Observação</label><textarea class="input" id="dfObs" rows="2" placeholder="Observações adicionais...">${escapeHtml(d?.obs || '')}</textarea></div>`,
         footer: `
             ${isEdit ? `<button class="btn btn-danger" data-del>${icon('trash')} Excluir</button>` : ''}
             <div class="grow"></div>
@@ -583,51 +644,68 @@ function formDecimo(d) {
     const funcEl = $('#dfFunc'), tipoEl = $('#dfTipo'), dataEl = $('#dfData');
     const avosEl = $('#dfAvos'), brutoEl = $('#dfBruto'), encEl = $('#dfEnc');
     const parcelarEl = $('#dfParcelar');
-    // Valor tocado à mão não é recalculado — o negociado tem que sobreviver à troca de tipo.
-    let brutoTocado = d?.bruto != null, encTocado = d?.encargos != null;
-    brutoEl.oninput = () => { brutoTocado = true; };
-    encEl.oninput = () => { encTocado = true; };
 
     let sugerido = null;
-    // Avos da 1ª parcela são sempre a metade do direito (Lei 4.749 art. 2º) — não há mais
-    // escolha do RH aqui, só a régua visual mostrando a proporção. Fixo em vez de configurável
-    // porque o pedido era eliminar a variação por lançamento, não só o padrão.
+    // Avos da 1ª parcela são metade do direito — mas quando o direito é ímpar, a metade não é
+    // exata. `avosModoImpar` é a escolha do RH nesse caso, entre três opções (ver `avosOpcoes`
+    // no recalc): a metade EXATA — fracionária, 3,5 de 7 avos, por exemplo — que é o padrão por
+    // dividir o avo do meio ao meio em vez de jogar o arredondamento inteiro para um lado só;
+    // a metade para baixo; ou a metade para cima. Só existe quando há de fato uma fração a
+    // decidir; volta ao padrão sempre que o funcionário ou o parcelamento mudam.
+    let avosModoImpar = 'meio';
+    if (d?.avosParcela != null && d?.avos != null && d.avos % 2 !== 0) {
+        const baixo = Math.floor(d.avos / 2);
+        avosModoImpar = d.avosParcela === baixo + 1 ? 'cima' : d.avosParcela === baixo ? 'baixo' : 'meio';
+    }
     let avosSel = null;
     let avosTeto = 12;
     let avosCtx = { direito: 12, valorAvo: 0, jaPago: 0 };
+    // Preenchido pelo `recalc()` só quando o direito é ímpar — as três opções válidas que o
+    // popover oferece: {valor, modo}. `null` quando a divisão é exata: aí não há nada para
+    // escolher, e a régua volta a ser só visual (sem clique).
+    let avosOpcoes = null;
 
-    // Face do "botão" de avos: agora é só a régua visual, sem interação — os avos da 1ª
-    // parcela são sempre a metade do direito (Lei 4.749 art. 2º), então não há escolha para
-    // mostrar como clicável.
+    // Face do "botão" de avos: régua visual + valor. Quando o direito é ímpar (`avosOpcoes`
+    // preenchido), o próprio campo vira clicável e abre um popover com as opções — não há
+    // mais escolha livre de avos, só a ambiguidade da metade não-inteira.
     const syncAvosBtn = () => {
         const bruto = Math.max(0, avosCtx.valorAvo * avosSel - avosCtx.jaPago);
+        avosEl.classList.toggle('is-static', !avosOpcoes);
         avosEl.innerHTML = `
-            <span class="avos-regua">
-                ${Array.from({ length: 12 }, (_, i) => {
-                    const k = i + 1;
-                    return `<i class="${k > avosCtx.direito ? 'is-fora' : k <= avosSel ? 'is-on' : 'is-resto'}"></i>`;
-                }).join('')}
-            </span>
-            <span class="avos-btn-lbl">${avosSel} <em>de ${avosCtx.direito} avos</em></span>
-            <span class="avos-btn-val">${fmtBRL(bruto)}</span>`;
+            ${avosReguaHtml(avosSel, avosCtx.direito)}
+            <span class="avos-btn-lbl">${fmtNum(avosSel)} <em>de ${avosCtx.direito} avos</em></span>
+            <span class="avos-btn-val">${fmtBRL(bruto)}</span>
+            ${avosOpcoes ? icon('chevronDown') : ''}`;
+        avosEl.onclick = avosOpcoes ? () => openAvosPopover(avosEl, {
+            opcoes: avosOpcoes, direito: avosCtx.direito, valorAvo: avosCtx.valorAvo, jaPago: avosCtx.jaPago,
+            atual: avosModoImpar,
+            onPick: v => { avosModoImpar = v; recalc(); }
+        }) : null;
     };
 
     // Tipo efetivo DEPENDE do estado do funcionário nesta competência — não é mais escolha
-    // livre do RH, e sim decorrência de duas coisas: se ele já saiu (rescisão) e se a 1ª
-    // parcela já foi lançada (aí só resta completar com a 2ª).
+    // livre do RH, e sim decorrência de três coisas: se ele já saiu (rescisão), se a 1ª
+    // parcela já foi lançada (aí só resta completar com a 2ª) e se a competência já estava
+    // QUITADA e o saldo reapareceu (reajuste retroativo — aí é complemento, não uma repetição
+    // do pagamento cheio).
     //
-    // Desligado → sempre "Rescisão": o proporcional vence com o acerto, não em 30/11 nem
-    // 20/12. Quem está ativo não recebe rescisão — não há rescisão para lançar.
+    // Desligado → "Rescisão" (ou "Complemento" se a rescisão já foi paga e reajustou depois).
+    // O proporcional vence com o acerto, não em 30/11 nem 20/12. Quem está ativo não recebe
+    // rescisão — não há rescisão para lançar.
     //
-    // Ativo, sem 1ª parcela ainda (nem adiantamento nas férias) → o switch "Parcelamento"
-    // decide: ligado grava "primeira" (metade dos avos, sem encargos exceto FGTS); desligado
-    // grava "integral" (tudo de uma vez, com encargos). Ligar o switch pela primeira vez é
-    // exatamente o pedido de não cobrar encargo nesse momento — só nasce no dia em que o RH
-    // publica a 1ª parcela, nunca depois.
+    // Ativo, sem 1ª parcela ainda (nem adiantamento nas férias) e SEM pagamento anterior →
+    // o switch "Parcelamento" decide: ligado grava "primeira" (metade dos avos, sem encargos
+    // exceto FGTS); desligado grava "integral" (tudo de uma vez, com encargos). Ligar o switch
+    // pela primeira vez é exatamente o pedido de não cobrar encargo nesse momento — só nasce no
+    // dia em que o RH publica a 1ª parcela, nunca depois.
     //
     // Ativo, já com 1ª parcela (ou adiantamento de férias) → não há mais escolha: só falta a
     // "segunda", que fecha o saldo com os encargos (menos FGTS, que já saiu na 1ª). O switch
     // some porque reperguntar "parcelar?" quando já se parcelou não faz sentido.
+    //
+    // Ativo, JÁ pagou tudo de uma vez (sem 1ª parcela própria) e o saldo voltou a existir →
+    // "Complemento": o integral ANTIGO já teve encargo recolhido, só a diferença leva encargo
+    // de novo (ver calculo13).
     const syncTipos = () => {
         const f = decimoState.funcionarios.find(x => x.id === funcEl.value);
         // Situação sem a parcela em edição: reabrir a 1ª parcela não pode fazê-la "já existir"
@@ -636,7 +714,10 @@ function formDecimo(d) {
         const parcBox = $('#dfParcBox');
 
         if (f?.demissao) {
-            tipoEl.value = 'rescisao';
+            // Rescisão já paga e o saldo reapareceu (reajuste retroativo após o acerto)? É
+            // complemento, não uma segunda "rescisão" — a de baixo já cobrou o integral antigo.
+            const jaRescisao = !!s && s.parcelas.some(p => p.tipo === 'rescisao');
+            tipoEl.value = jaRescisao && s.saldo > 0.01 && d?.tipo !== 'integral' ? 'complemento' : 'rescisao';
             parcBox.hidden = true;
             return;
         }
@@ -645,6 +726,15 @@ function formDecimo(d) {
         if (temPrimeira && d?.tipo !== 'integral') {
             // Complementa o que falta — nunca mais "primeira" nem escolha de parcelamento.
             tipoEl.value = 'segunda';
+            parcBox.hidden = true;
+            return;
+        }
+
+        // Competência já foi quitada de uma vez (parcela única) e o saldo voltou a existir por
+        // reajuste/promoção lançada depois — complemento da diferença, não uma nova "parcela
+        // única" (que recobraria encargo sobre o 13º inteiro de novo).
+        if (!temPrimeira && s && s.pagoTotal > 0 && s.saldo > 0.01 && d?.tipo !== 'integral') {
+            tipoEl.value = 'complemento';
             parcBox.hidden = true;
             return;
         }
@@ -686,9 +776,8 @@ function formDecimo(d) {
             return;
         }
 
-        // ---- Avos: só a 1ª parcela é dimensionável, e mesmo assim só como VISUAL ----
-        // Fixo em metade do direito (arredondada para baixo) — Lei 4.749 art. 2º. Não é mais
-        // escolha do RH: a régua só mostra a proporção, sem popover nem clique.
+        // ---- Avos: só a 1ª parcela é dimensionável, e mesmo assim só a AMBIGUIDADE da metade
+        // ímpar (Lei 4.749 art. 2º). Direito par não tem o que escolher: a régua é só visual.
         $('#dfAvosBox').hidden = tipo !== 'primeira';
         if (tipo === 'primeira') {
             // Avos já antecipados por OUTRA 1ª parcela (raro, mas o RH pode fracionar em duas).
@@ -696,11 +785,22 @@ function formDecimo(d) {
                 .reduce((acc, p) => acc + (Number(p.avosParcela) || 0), 0);
             avosTeto = Math.max(1, s.avos - jaAvos);
             // Metade do DIREITO REAL (s.avos), não de 12 fixo — quem tem 10 avos de direito
-            // recebe metade de 10 = 5, não 6.
-            avosSel = Math.min(Math.floor(s.avos / 2), avosTeto);
+            // recebe metade de 10 = 5, não 6. Quando é ímpar, a metade cai numa fração: o
+            // popover oferece as três opções válidas — a metade EXATA (fracionária, padrão,
+            // dividindo o avo do meio ao meio), a metade para baixo ou a metade para cima.
+            const metadeBaixo = Math.floor(s.avos / 2);
+            const isOdd = s.avos % 2 !== 0;
+            avosOpcoes = isOdd && metadeBaixo + 1 <= avosTeto
+                ? [{ valor: metadeBaixo, modo: 'baixo' }, { valor: s.avos / 2, modo: 'meio' }, { valor: metadeBaixo + 1, modo: 'cima' }]
+                : null;
+            if (!avosOpcoes) avosModoImpar = 'meio';
+            const valorEscolhido = { baixo: metadeBaixo, meio: s.avos / 2, cima: metadeBaixo + 1 }[avosModoImpar];
+            avosSel = Math.min(avosOpcoes ? valorEscolhido : metadeBaixo, avosTeto);
             avosCtx = { direito: s.avos, valorAvo: s.base / 12, jaPago: s.pagoTotal };
             syncAvosBtn();
-            $('#dfAvosHint').innerHTML = `Metade dos avos de direito — padrão fixo (Lei 4.749 art. 2º), sem alteração manual. O restante sai na 2ª parcela.`;
+            $('#dfAvosHint').innerHTML = avosOpcoes
+                ? `Direito ímpar de ${s.avos} avos — a metade cai numa fração. Clique nos avos acima para escolher.`
+                : `Metade dos avos de direito (Lei 4.749 art. 2º). O restante sai na 2ª parcela.`;
         }
 
         // Na rescisão o direito é o dos avos até o desligamento (já resolvido em situacao13Func).
@@ -726,29 +826,25 @@ function formDecimo(d) {
                 <span>= Base</span><strong>${fmtBRL(c.base)}</strong>
                 <span>÷ 12 <em class="bx-calc-nota">(valor de 1 avo)</em></span><strong>${fmtBRL(c.valorAvo)}</strong>
                 ${tipo === 'primeira'
-                    ? `<span>× ${c.avosParcela} avo${c.avosParcela !== 1 ? 's' : ''} nesta parcela <em class="bx-calc-nota">(de ${c.avos} — o resto sai na 2ª)</em></span><strong>${fmtBRL(c.valorAvo * c.avosParcela)}</strong>`
+                    ? `<span>× ${fmtNum(c.avosParcela)} avo${c.avosParcela !== 1 ? 's' : ''} nesta parcela <em class="bx-calc-nota">(de ${c.avos} — o resto sai na 2ª)</em></span><strong>${fmtBRL(c.valorAvo * c.avosParcela)}</strong>`
                     : `<span>× ${c.avos} avo${c.avos !== 1 ? 's' : ''} <em class="bx-calc-nota">(13º integral da competência)</em></span><strong>${fmtBRL(c.integral)}</strong>`}
                 ${c.jaPago > 0 ? `<span>− Já pago <em class="bx-calc-nota">(${detalheJaPago})</em></span><strong>−${fmtBRL(c.jaPago)}</strong>` : ''}
             </div>
-            <div class="bx-calc-total"><span>Sugerido para esta parcela</span><strong>${fmtBRL(c.bruto)}</strong></div>
+            <div class="bx-calc-total"><span>Valor desta parcela</span><strong>${fmtBRL(c.bruto)}</strong></div>
             ${c.fgts ? `<div class="bx-calc-total" style="border-top:0;padding-top:0"><span>FGTS ${fmtPct(c.fgtsPct, 2)} <em class="bx-calc-nota">(sobre esta parcela — incide sempre, inclusive na 1ª)</em></span><strong>${fmtBRL(c.fgts)}</strong></div>` : ''}
             ${c.outrosEncargos ? `<div class="bx-calc-total" style="border-top:0;padding-top:0"><span>Outros encargos ${fmtPct(c.encargosPct, 2)} <em class="bx-calc-nota">(sobre o 13º integral, não sobre a parcela)</em></span><strong>${fmtBRL(c.outrosEncargos)}</strong></div>` : ''}
             ${dataEl.value ? `<div class="qt-restante">${icon('info')} Cai na folha de <strong>${mesLabel(mesDe(dataEl.value))}</strong>, na coluna <strong>13º (calc)</strong> — definida pela data do pagamento.</div>` : ''}`;
 
-        // Parcela única quita a competência inteira: não é negociável para menos, senão
-        // "pagamento integral" viraria um pagamento parcial sem 2ª parcela para cobrir o
-        // resto. O campo trava no valor sugerido, ignorando `brutoTocado`.
-        if (tipo === 'integral') {
-            brutoEl.value = c.bruto ? c.bruto.toFixed(2) : '';
-            brutoEl.readOnly = true;
-            $('#dfBrutoHint').textContent = 'Parcela única: quita o total devido, valor travado.';
-        } else {
-            brutoEl.readOnly = false;
-            if (!brutoTocado) brutoEl.value = c.bruto ? c.bruto.toFixed(2) : '';
-            $('#dfBrutoHint').textContent = 'Em branco usa o sugerido. Digitar congela o valor.';
-        }
-        if (!encTocado) encEl.value = c.encargos ? c.encargos.toFixed(2) : '';
-        $('#dfEncHint').textContent = decimoTipo(tipo).encargos
+        // Sempre a conta do sistema, sem exceção — parcela única, 1ª ou 2ª: nenhuma delas é
+        // negociável para menos, então o campo trava no valor sugerido.
+        brutoEl.value = c.bruto ? c.bruto.toFixed(2) : '';
+        $('#dfBrutoHint').textContent = tipo === 'integral'
+            ? 'Parcela única: quita o total devido.'
+            : 'Calculado automaticamente — não editável.';
+        encEl.value = c.encargos ? c.encargos.toFixed(2) : '';
+        $('#dfEncHint').textContent = tipo === 'complemento'
+            ? `FGTS ${c.fgtsPct}% + ${c.encargosPct}% sobre a diferença (${fmtBRL(c.bruto)}) — os encargos da parte já paga foram recolhidos na época.`
+            : decimoTipo(tipo).encargos
             ? `FGTS ${c.fgtsPct}% sobre a parcela + ${c.encargosPct}% sobre ${fmtBRL(c.integral)}`
             : c.fgts ? `Adiantamento: só FGTS (${c.fgtsPct}% sobre a parcela), sem os demais encargos.`
             : 'A 1ª parcela é adiantamento: sem encargos.';
@@ -764,6 +860,9 @@ function formDecimo(d) {
         } else if (alvo) {
             pe.textContent = `Prazo legal: ${fmtDate(alvo)}`;
             pe.className = 'field-hint';
+        } else if (tipo === 'complemento') {
+            pe.textContent = 'Diferença retroativa: sem prazo legal próprio — regularize assim que o reajuste for aprovado.';
+            pe.className = 'field-hint';
         } else {
             pe.textContent = 'Rescisão: pago junto do acerto.';
             pe.className = 'field-hint';
@@ -773,11 +872,10 @@ function formDecimo(d) {
     // Trocar de funcionário pode mudar QUAIS parcelas existem (ativo × desligado), então os
     // tipos são remontados antes do recálculo. Zera também a escolha de parcelamento: o
     // switch deve voltar ao padrão para a nova pessoa, não herdar a anterior.
-    funcEl.onchange = () => { brutoTocado = false; encTocado = false; parcelarEl.dataset.init = ''; syncTipos(); recalc(); };
+    funcEl.onchange = () => { avosModoImpar = 'meio'; parcelarEl.dataset.init = ''; syncTipos(); recalc(); };
     // Switch "Parcelamento": liga/desliga entre 1ª parcela (metade, sem encargos exceto
-    // FGTS) e parcela única (tudo de uma vez, com encargos). Os avos não são mais escolhidos
-    // pelo RH — a régua é só visual (ver syncAvosBtn) — então não há popover para reabrir.
-    parcelarEl.onchange = () => { brutoTocado = false; encTocado = false; syncTipos(); recalc(); };
+    // FGTS) e parcela única (tudo de uma vez, com encargos).
+    parcelarEl.onchange = () => { avosModoImpar = 'meio'; syncTipos(); recalc(); };
     dataEl.onchange = recalc;
     syncTipos();
     recalc();
@@ -803,9 +901,8 @@ function formDecimo(d) {
         const data = dataEl.value;
         if (!fid || !data) return toast('Funcionário e data do pagamento são obrigatórios.', 'error');
         if (!sugerido) return toast('Este funcionário não tem 13º a lançar nesta competência.', 'error');
-        // Parcela única não é negociável para menos: trava no sugerido mesmo que o campo
-        // readonly tenha sido contornado, para nunca gravar uma "integral" que deixa saldo.
-        const bruto = tipoEl.value === 'integral' ? sugerido.bruto : Number(brutoEl.value);
+        // Sempre o valor calculado — o campo é readonly, não há mais negociação por lançamento.
+        const bruto = sugerido.bruto;
         if (!(bruto > 0)) return toast('Informe o valor pago.', 'error');
 
         // Saldo SEM a parcela em edição: senão a própria parcela contaria contra si mesma e o
@@ -870,17 +967,23 @@ function formDecimoLote(sits) {
     const pz = prazos13(decimoState.ano);
     const h = hoje();
 
-    // Elegíveis do lote: quem ainda deve e não é rescisão (essa se lança individualmente).
-    const eleg = sits.filter(s => !s.semDireito && s.saldo > 0.01 && s.estado !== 'rescisao');
     // Adiantamento das férias conta como primeira (Lei 4.749 art. 2º §2º).
     const temPrim = s => s.temPrimeira || s.adiantamentoFerias > 0;
+    // Complemento = competência já quitada de vez (sem 1ª parcela própria) cujo saldo voltou a
+    // existir por reajuste retroativo. É caso individual, como a rescisão: misturar num lote
+    // com "parcela única" cobraria encargo sobre o 13º inteiro de novo (ver calculo13).
+    const ehComplemento = s => !temPrim(s) && s.pagoTotal > 0;
+
+    // Elegíveis do lote: quem ainda deve e não é rescisão nem complemento (ambos se lançam
+    // individualmente).
+    const eleg = sits.filter(s => !s.semDireito && s.saldo > 0.01 && s.estado !== 'rescisao' && !ehComplemento(s));
 
     // "2ª parcela" só é oferecida quando ALGUÉM já tem a primeira — mesma regra do formulário
     // individual, aplicada ao conjunto: sem nenhuma primeira lançada, uma "2ª parcela" em
     // lote seria a primeira com nome errado, cobrando encargos que ainda não incidem e num
     // prazo (20/12) que não é o que se aplica.
     const tiposLote = DECIMO_TIPOS.filter(t =>
-        t.id === 'rescisao' ? false
+        t.id === 'rescisao' || t.id === 'complemento' ? false
         : t.id === 'segunda' ? eleg.some(temPrim)
         : true);
 
@@ -1159,7 +1262,7 @@ function renderDecimoParcelas() {
                                 <td><span class="badge ${d.tipo === 'rescisao' ? 'badge-warning' : 'badge-info'}">${decimoTipo(d.tipo).label}</span></td>
                                 <td>${fmtDate(d.data)}</td>
                                 <td class="num">${d.avosParcela != null && d.avosParcela !== d.avos
-                                    ? `${d.avosParcela} de ${d.avos}` : `${d.avos ?? '—'}/12`}</td>
+                                    ? `${fmtNum(d.avosParcela)} de ${d.avos}` : `${d.avos ?? '—'}/12`}</td>
                                 <td class="num"><strong>${fmtBRL(d.bruto)}</strong></td>
                                 <td class="num">${d.encargos ? fmtBRL(d.encargos) : '—'}</td>
                                 <td class="num">${icon('chevronRight')}</td>

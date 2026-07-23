@@ -1109,7 +1109,12 @@ const DECIMO_TIPOS = [
     { id: 'primeira', label: '1ª parcela', desc: 'Adiantamento — só FGTS (Lei 4.749 art. 2º §2º); os demais encargos ficam para a 2ª', encargos: false },
     { id: 'segunda', label: '2ª parcela', desc: 'FGTS + demais encargos sobre o total do 13º', encargos: true },
     { id: 'integral', label: 'Parcela única', desc: 'Pagamento integral — FGTS + demais encargos sobre o total', encargos: true },
-    { id: 'rescisao', label: 'Rescisão', desc: 'Proporcional no desligamento', encargos: true }
+    { id: 'rescisao', label: 'Rescisão', desc: 'Proporcional no desligamento', encargos: true },
+    // Competência já quitada (ambas as parcelas, parcela única ou rescisão) e o salário devido
+    // em dezembro/na rescisão mudou depois — reajuste retroativo, dissídio, promoção lançada
+    // tarde. Os encargos da parte já paga já foram recolhidos: só a DIFERENÇA leva encargo de
+    // novo (ver calculo13), senão o "outros encargos" cobraria o 13º inteiro uma segunda vez.
+    { id: 'complemento', label: 'Complemento (diferença retroativa)', desc: 'Diferença por reajuste após a competência já quitada — FGTS + encargos só sobre a diferença', encargos: true }
 ];
 const decimoTipo = id => DECIMO_TIPOS.find(t => t.id === id) || DECIMO_TIPOS[0];
 
@@ -1251,9 +1256,14 @@ function calculo13(f, cargo, params, avos, opts) {
     // sem incidência (Lei 4.749 art. 2º §2º). A base é o 13º INTEGRAL, não a parcela: o fato
     // gerador é o 13º inteiro, recolhido de uma vez na segunda parcela. Calcular sobre a
     // parcela recolheria a menor.
+    //
+    // Exceção: `complemento` já teve o integral ANTERIOR totalmente recolhido (é por definição
+    // uma competência que já estava quitada). Cobrar de novo sobre o integral NOVO bitributaria
+    // a parte que já pagou encargo — a base correta aqui é só a diferença (`bruto`).
     const pctEnc = Number(params?.encargosPct) || 0;
+    const baseOutrosEncargos = tipo === 'complemento' ? bruto : integral;
     const outrosEncargos = decimoTipo(tipo).encargos
-        ? Number((integral * pctEnc / 100).toFixed(2))
+        ? Number((baseOutrosEncargos * pctEnc / 100).toFixed(2))
         : 0;
     const encargos = Number((fgts + outrosEncargos).toFixed(2));
 

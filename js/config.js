@@ -1061,35 +1061,178 @@ function formBeneficio(b) {
 }
 
 // ============ PARÂMETROS ============
+// Conteúdo do botão "i" de cada campo: o que é, onde no sistema ele é usado e como o valor afeta o cálculo.
+const PARAM_INFO = {
+    fgtsPct: {
+        title: 'FGTS (%)',
+        html: `<p><strong>O que é:</strong> a alíquota do FGTS (Lei 8.036, art. 15 — padrão legal 8%).</p>
+               <p><strong>Onde afeta:</strong> Folha de pagamento e 13º salário (inclusive a 1ª parcela).</p>
+               <p><strong>Como afeta:</strong> é aplicada sobre a base de cálculo de cada lançamento para estimar o depósito de FGTS devido. É calculada separada dos "Outros encargos" porque incide em toda parcela do 13º, inclusive na 1ª, o que os demais encargos não fazem.</p>`
+    },
+    encargosPct: {
+        title: 'Outros encargos (%)',
+        html: `<p><strong>O que é:</strong> percentual estimado de INSS patronal e demais encargos sobre a folha, sem contar o FGTS.</p>
+               <p><strong>Onde afeta:</strong> Folha de pagamento, como sugestão automática por lançamento.</p>
+               <p><strong>Como afeta:</strong> é pré-preenchido em cada lançamento da folha, mas pode ser editado individualmente por lançamento sem alterar este parâmetro global.</p>`
+    },
+    diasExperiencia: {
+        title: 'Dias do período de experiência',
+        html: `<p><strong>O que é:</strong> duração padrão do contrato de experiência (padrão CLT: 90 dias).</p>
+               <p><strong>Onde afeta:</strong> Cadastro de funcionários e Dashboard (índice de aprovação após experiência).</p>
+               <p><strong>Como afeta:</strong> conta a partir da admissão para determinar quando o período de experiência termina e o funcionário deve ser avaliado/efetivado.</p>`
+    },
+    insalubridadeBase: {
+        title: 'Base de cálculo da insalubridade',
+        html: `<p><strong>O que é:</strong> a base monetária sobre a qual o grau de insalubridade (10/20/40%) é calculado.</p>
+               <p><strong>Onde afeta:</strong> Folha de pagamento, para funcionários com cargo insalubre.</p>
+               <p><strong>Como afeta:</strong> "Salário do funcionário" usa o salário individual; "Salário mínimo" usa o valor vigente (padrão legal segundo o STF), o que costuma resultar em um adicional menor. O grau (10/20/40%) continua vindo do cadastro de Cargos.</p>`
+    },
+    salarioMinimo: {
+        title: 'Salário mínimo vigente (R$)',
+        html: `<p><strong>O que é:</strong> o valor do salário mínimo nacional em vigor.</p>
+               <p><strong>Onde afeta:</strong> Cálculo de insalubridade (quando a base escolhida for "Salário mínimo").</p>
+               <p><strong>Como afeta:</strong> é multiplicado pelo grau de insalubridade do cargo. Atualize sempre que o governo reajustar o mínimo, senão o adicional calculado ficará desatualizado.</p>`
+    },
+    feriasAlertaLegalDias: {
+        title: 'Alerta de prazo legal de férias (dias)',
+        html: `<p><strong>O que é:</strong> antecedência do alerta crítico antes do fim do período concessivo de férias.</p>
+               <p><strong>Onde afeta:</strong> Sino de notificações e aba de Férias.</p>
+               <p><strong>Como afeta:</strong> se o período concessivo vencer sem que as férias sejam gozadas, a empresa deve pagá-las em dobro (art. 137 CLT). O aviso da <strong>data prevista</strong> (não crítico) usa metade deste valor de dias.</p>`
+    },
+    asoAlertaDias: {
+        title: 'Alerta de vencimento do ASO (dias)',
+        html: `<p><strong>O que é:</strong> antecedência do alerta antes do vencimento do exame periódico (ASO).</p>
+               <p><strong>Onde afeta:</strong> Sino de notificações e aba de ASO.</p>
+               <p><strong>Como afeta:</strong> conta regressivamente a partir da data de vencimento calculada com a periodicidade (6/12/24 meses) definida por cargo, no cadastro de Cargos.</p>`
+    },
+    bhCicloMeses: {
+        title: 'Duração do ciclo do banco de horas (meses)',
+        html: `<p><strong>O que é:</strong> o prazo máximo para compensar o saldo de horas (CLT art. 59, §2º).</p>
+               <p><strong>Onde afeta:</strong> Aba de Banco de horas, para todos os funcionários.</p>
+               <p><strong>Como afeta:</strong> o ciclo de cada funcionário começa no primeiro mês de saldo publicado para ele. Se o ciclo se esgotar sem compensação, o saldo positivo passa a ser devido como hora extra.</p>`
+    },
+    bhAlertaDias: {
+        title: 'Alerta de fechamento do ciclo (dias)',
+        html: `<p><strong>O que é:</strong> antecedência do alerta crítico antes do fim do ciclo do banco de horas.</p>
+               <p><strong>Onde afeta:</strong> Sino de notificações e aba de Banco de horas.</p>
+               <p><strong>Como afeta:</strong> marca a última janela de tempo em que ainda é possível compensar o saldo em vez de ter que pagá-lo como hora extra.</p>`
+    },
+    bhTetoMensalMin: {
+        title: 'Teto mensal de compensação (HH:MM)',
+        html: `<p><strong>O que é:</strong> quanto do saldo de horas dá para compensar em um único mês.</p>
+               <p><strong>Onde afeta:</strong> Aba de Banco de horas, no cálculo de quanto do saldo ainda cabe no prazo restante do ciclo.</p>
+               <p><strong>Como afeta:</strong> usado apenas para avisar quando o saldo não compensado excede o que pode ser absorvido nos meses restantes do ciclo. <strong>00:00</strong> significa sem teto (nenhum aviso desse tipo).</p>`
+    },
+    bhAdicionalPct: {
+        title: 'Adicional de hora extra (%)',
+        html: `<p><strong>O que é:</strong> percentual adicional sobre a hora normal usado só para estimativa (mínimo legal: 50%).</p>
+               <p><strong>Onde afeta:</strong> Aba de Banco de horas, na estimativa em R$ do custo do saldo não compensado.</p>
+               <p><strong>Como afeta:</strong> é multiplicativo apenas para fins de estimativa visual — <strong>não gera lançamento na folha</strong>.</p>`
+    },
+    feriasDiasPorCiclo: {
+        title: 'Dias por período de férias',
+        html: `<p><strong>O que é:</strong> o total de dias de uma competência de férias (CLT art. 130: 30 dias).</p>
+               <p><strong>Onde afeta:</strong> Aba de Férias, no fechamento da competência de cada funcionário.</p>
+               <p><strong>Como afeta:</strong> a competência só se encerra quando a soma dos dias lançados atinge este total — fracionar em vários lançamentos divide o direito, não o multiplica.</p>`
+    },
+    feriasTercoPct: {
+        title: 'Terço constitucional (%)',
+        html: `<p><strong>O que é:</strong> o adicional sobre a remuneração de férias (CF art. 7º XVII: mínimo 1/3 = 33,33%).</p>
+               <p><strong>Onde afeta:</strong> Cálculo da remuneração de férias de todos os funcionários.</p>
+               <p><strong>Como afeta:</strong> é somado ao valor das férias. Convenção coletiva pode aumentar este percentual, nunca reduzi-lo abaixo do mínimo constitucional.</p>`
+    },
+    feriasAbonoMaxDias: {
+        title: 'Abono pecuniário — máximo (dias)',
+        html: `<p><strong>O que é:</strong> o limite de dias de férias que o funcionário pode vender (CLT art. 143: até 1/3 do período).</p>
+               <p><strong>Onde afeta:</strong> Aba de Férias, na venda de dias (abono).</p>
+               <p><strong>Como afeta:</strong> dias vendidos como abono contam para fechar a competência, mesmo sem serem gozados como descanso.</p>`
+    },
+    feriasMediaHe: {
+        title: 'Média de horas extras na base de férias',
+        html: `<p><strong>O que é:</strong> se a média de horas extras habituais integra a remuneração de férias (Súmula 45 TST).</p>
+               <p><strong>Onde afeta:</strong> Cálculo da remuneração de férias.</p>
+               <p><strong>Como afeta:</strong> quando ativado, soma à base de férias a média das horas extras dos meses configurados ao lado. <strong>Confirme a regra da sua convenção coletiva</strong>, pois ela varia.</p>`
+    },
+    feriasMediaHeMeses: {
+        title: 'Meses da média de horas extras',
+        html: `<p><strong>O que é:</strong> quantos meses do período aquisitivo entram no cálculo da média de horas extras.</p>
+               <p><strong>Onde afeta:</strong> Cálculo da remuneração de férias, quando a média de HE está ativada.</p>
+               <p><strong>Como afeta:</strong> a média divide a soma das horas extras pelo total de meses configurado aqui, não apenas pelos meses em que houve hora extra.</p>`
+    },
+    decimoPrazo1: {
+        title: 'Prazo da 1ª parcela do 13º',
+        html: `<p><strong>O que é:</strong> a data-limite para pagar o adiantamento do 13º salário (Lei 4.749, art. 2º: até 30/11).</p>
+               <p><strong>Onde afeta:</strong> Aba de 13º Salário, no cronograma de parcelas, e no sino de notificações.</p>
+               <p><strong>Como afeta:</strong> nesta parcela incide apenas o FGTS — os demais encargos ficam concentrados na 2ª parcela.</p>`
+    },
+    decimoPrazo2: {
+        title: 'Prazo da 2ª parcela do 13º',
+        html: `<p><strong>O que é:</strong> a data-limite para pagar o saldo do 13º salário integral (Lei 4.749, art. 2º: até 20/12).</p>
+               <p><strong>Onde afeta:</strong> Aba de 13º Salário, no cronograma de parcelas, e no sino de notificações.</p>
+               <p><strong>Como afeta:</strong> nesta parcela incidem todos os encargos (FGTS e outros) sobre o valor integral do 13º, descontado o que já foi pago na 1ª parcela.</p>`
+    },
+    decimoDiasParaAvo: {
+        title: 'Dias para gerar o avo',
+        html: `<p><strong>O que é:</strong> o mínimo de dias trabalhados no mês para que ele conte como 1/12 (avo) do 13º (Lei 4.090, art. 1º §2º: 15 dias).</p>
+               <p><strong>Onde afeta:</strong> Cálculo dos avos de 13º de todos os funcionários.</p>
+               <p><strong>Como afeta:</strong> meses que atingem este mínimo contam um avo integral; meses abaixo dele não contam nenhum avo. Exigir mais que 15 dias reduz o direito do funcionário abaixo do mínimo legal.</p>`
+    },
+    decimoDescontarFaltas: {
+        title: 'Faltas injustificadas descontam o avo',
+        html: `<p><strong>O que é:</strong> se faltas injustificadas no mês reduzem o avo de 13º daquele mês.</p>
+               <p><strong>Onde afeta:</strong> Cálculo dos avos de 13º.</p>
+               <p><strong>Como afeta:</strong> só faltas <strong>injustificadas</strong> entram nessa conta — licença médica, férias e falta justificada são tempo de serviço e nunca descontam o avo.</p>`
+    },
+    decimoAlertaDias: {
+        title: 'Alerta de prazo do 13º (dias)',
+        html: `<p><strong>O que é:</strong> antecedência do aviso de parcela do 13º a vencer.</p>
+               <p><strong>Onde afeta:</strong> Sino de notificações e aba de 13º Salário.</p>
+               <p><strong>Como afeta:</strong> conta regressivamente a partir da data de cada parcela (1ª e 2ª) configurada acima.</p>`
+    }
+};
+
+function openParamInfo(key) {
+    const info = PARAM_INFO[key];
+    if (!info) return;
+    openModal({ title: info.title, size: 'modal-sm', body: `<div class="text-2">${info.html}</div>`, footer: '' });
+}
+
+// Rótulo de campo com botão "i" ao lado, que abre a explicação do parâmetro (PARAM_INFO[key]).
+function pLabel(text, key) {
+    return `<div class="field-label-row"><label>${text}</label>
+        <button type="button" class="param-info-btn" data-param-info="${key}" title="O que é este parâmetro?">${icon('info')}</button></div>`;
+}
+
 async function renderCfgParametros() {
     const params = (await DB.getObj(PATHS.parametros)) || {};
     const cont = document.getElementById('cfgContent');
     cont.innerHTML = `
-        <div class="card" style="max-width:560px">
+        <div class="grid grid-2">
+        <div class="card">
             <div class="card-title">Parâmetros do sistema</div>
             <div class="card-sub" style="margin-bottom:18px">Valores padrão usados nos cálculos automáticos.</div>
             <div class="form-row">
                 <div class="field">
-                    <label>FGTS (%)</label>
+                    ${pLabel('FGTS (%)', 'fgtsPct')}
                     <input class="input" id="fpFgts" type="number" min="0" max="100" step="0.1" value="${params.fgtsPct ?? 8}">
                     <div class="field-hint">Alíquota do FGTS (Lei 8.036 art. 15: 8%). Separado dos demais encargos porque incide em toda parcela do 13º, inclusive na 1ª.</div>
                 </div>
                 <div class="field">
-                    <label>Outros encargos (%)</label>
+                    ${pLabel('Outros encargos (%)', 'encargosPct')}
                     <input class="input" id="fpEncargos" type="number" min="0" max="100" step="0.1" value="${params.encargosPct ?? 20}">
                     <div class="field-hint">INSS e demais encargos sobre salário, sem o FGTS (que tem campo próprio ao lado). Sugerido automaticamente na folha (editável por lançamento).</div>
                 </div>
             </div>
             <div class="form-row">
                 <div class="field">
-                    <label>Dias do período de experiência</label>
+                    ${pLabel('Dias do período de experiência', 'diasExperiencia')}
                     <input class="input" id="fpExp" type="number" min="1" step="1" value="${params.diasExperiencia ?? 90}">
                     <div class="field-hint">Usado no índice de aprovação após experiência (padrão CLT: 90)</div>
                 </div>
             </div>
             <div class="form-row">
                 <div class="field">
-                    <label>Base de cálculo da insalubridade</label>
+                    ${pLabel('Base de cálculo da insalubridade', 'insalubridadeBase')}
                     <select class="select" id="fpInsalBase">
                         <option value="salario" ${(params.insalubridadeBase || 'salario') === 'salario' ? 'selected' : ''}>Salário do funcionário</option>
                         <option value="minimo" ${params.insalubridadeBase === 'minimo' ? 'selected' : ''}>Salário mínimo (padrão legal STF)</option>
@@ -1097,12 +1240,12 @@ async function renderCfgParametros() {
                     <div class="field-hint">Grau (10/20/40%) definido no cargo × esta base</div>
                 </div>
                 <div class="field">
-                    <label>Salário mínimo vigente (R$)</label>
+                    ${pLabel('Salário mínimo vigente (R$)', 'salarioMinimo')}
                     <input class="input" id="fpSalMin" type="number" min="0" step="0.01" value="${params.salarioMinimo ?? ''}">
                     <div class="field-hint">Usado quando a base for "Salário mínimo". Atualize quando o mínimo mudar.</div>
                 </div>
                 <div class="field" style="margin-bottom:0">
-                    <label>Alerta de prazo legal de férias (dias)</label>
+                    ${pLabel('Alerta de prazo legal de férias (dias)', 'feriasAlertaLegalDias')}
                     <input class="input" id="fpFeriasAlerta" type="number" min="1" max="365" step="1" value="${params.feriasAlertaLegalDias ?? 60}">
                     <div class="field-hint">
                         Antecedência do alerta <strong>crítico</strong> antes do fim do período concessivo — o prazo que gera
@@ -1110,7 +1253,7 @@ async function renderCfgParametros() {
                     </div>
                 </div>
                 <div class="field" style="margin-bottom:0">
-                    <label>Alerta de vencimento do ASO (dias)</label>
+                    ${pLabel('Alerta de vencimento do ASO (dias)', 'asoAlertaDias')}
                     <input class="input" id="fpAsoAlerta" type="number" min="1" max="365" step="1" value="${params.asoAlertaDias ?? ASO_PARAMS_PADRAO.alertaDias}">
                     <div class="field-hint">
                         Antecedência do alerta antes do vencimento do exame periódico. A <strong>periodicidade</strong>
@@ -1121,12 +1264,12 @@ async function renderCfgParametros() {
             <button class="btn btn-primary" id="fpSave">${icon('check')} Salvar parâmetros</button>
         </div>
 
-        <div class="card mt-16" style="max-width:560px">
+        <div class="card">
             <div class="card-title">Banco de horas</div>
             <div class="card-sub" style="margin-bottom:18px">Regras do acordo de compensação (CLT art. 59, §2º). O ciclo de cada funcionário começa no primeiro mês de saldo publicado para ele.</div>
             <div class="form-row">
                 <div class="field">
-                    <label>Duração do ciclo (meses)</label>
+                    ${pLabel('Duração do ciclo (meses)', 'bhCicloMeses')}
                     <select class="select" id="fpBhCiclo">
                         <option value="6" ${(params.bhCicloMeses ?? 6) == 6 ? 'selected' : ''}>6 meses — acordo individual</option>
                         <option value="12" ${params.bhCicloMeses == 12 ? 'selected' : ''}>12 meses — acordo coletivo</option>
@@ -1134,19 +1277,19 @@ async function renderCfgParametros() {
                     <div class="field-hint">Prazo máximo para compensar o saldo. Estourou, o saldo positivo é devido como hora extra.</div>
                 </div>
                 <div class="field">
-                    <label>Alerta de fechamento do ciclo (dias)</label>
+                    ${pLabel('Alerta de fechamento do ciclo (dias)', 'bhAlertaDias')}
                     <input class="input" id="fpBhAlerta" type="number" min="1" max="365" step="1" value="${params.bhAlertaDias ?? BH_PARAMS_PADRAO.alertaDias}">
                     <div class="field-hint">Antecedência do alerta <strong>crítico</strong> antes do fim do ciclo — a última janela para compensar em vez de pagar.</div>
                 </div>
             </div>
             <div class="form-row">
                 <div class="field" style="margin-bottom:0">
-                    <label>Teto mensal de compensação (HH:MM)</label>
+                    ${pLabel('Teto mensal de compensação (HH:MM)', 'bhTetoMensalMin')}
                     <input class="input" id="fpBhTeto" placeholder="10:00" value="${fmtHHMM(params.bhTetoMensalMin ?? BH_PARAMS_PADRAO.tetoMensalMin)}">
                     <div class="field-hint">Quanto dá para compensar em um mês. Usado para avisar quando o saldo já não cabe no prazo restante. <strong>00:00</strong> = sem teto.</div>
                 </div>
                 <div class="field" style="margin-bottom:0">
-                    <label>Adicional de hora extra (%)</label>
+                    ${pLabel('Adicional de hora extra (%)', 'bhAdicionalPct')}
                     <input class="input" id="fpBhAdicional" type="number" min="0" max="200" step="1" value="${params.bhAdicionalPct ?? BH_PARAMS_PADRAO.adicionalPct}">
                     <div class="field-hint">Só para <strong>estimar</strong> em R$ o custo do saldo não compensado (mínimo legal: 50%). Não lança na folha.</div>
                 </div>
@@ -1154,29 +1297,29 @@ async function renderCfgParametros() {
             <button class="btn btn-primary mt-16" id="fpBhSave">${icon('check')} Salvar banco de horas</button>
         </div>
 
-        <div class="card mt-16" style="max-width:560px">
+        <div class="card">
             <div class="card-title">Férias</div>
             <div class="card-sub" style="margin-bottom:18px">Regras de cálculo da remuneração (CF art. 7º XVII, CLT arts. 129-145). A competência de cada funcionário só se encerra quando os lançamentos somam os dias do período — fracionar divide o direito, não o multiplica.</div>
             <div class="form-row">
                 <div class="field">
-                    <label>Dias por período</label>
+                    ${pLabel('Dias por período', 'feriasDiasPorCiclo')}
                     <input class="input" id="fpFerDias" type="number" min="1" max="60" step="1" value="${params.feriasDiasPorCiclo ?? FERIAS_PARAMS_PADRAO.diasPorCiclo}">
                     <div class="field-hint">Total de uma competência (art. 130: 30 dias). Só fecha quando os lançamentos somam este total.</div>
                 </div>
                 <div class="field">
-                    <label>Terço constitucional (%)</label>
+                    ${pLabel('Terço constitucional (%)', 'feriasTercoPct')}
                     <input class="input" id="fpFerTerco" type="number" min="0" max="100" step="0.01" value="${Number(params.feriasTercoPct ?? FERIAS_PARAMS_PADRAO.tercoPct).toFixed(2)}">
                     <div class="field-hint">Adicional sobre a remuneração (art. 7º XVII CF: 1/3 = 33,33%). Convenção pode ser mais generosa, nunca menos.</div>
                 </div>
             </div>
             <div class="form-row">
                 <div class="field">
-                    <label>Abono pecuniário — máximo (dias)</label>
+                    ${pLabel('Abono pecuniário — máximo (dias)', 'feriasAbonoMaxDias')}
                     <input class="input" id="fpFerAbono" type="number" min="0" max="30" step="1" value="${params.feriasAbonoMaxDias ?? FERIAS_PARAMS_PADRAO.abonoMaxDias}">
                     <div class="field-hint">Dias que o funcionário pode vender (art. 143: até 1/3 do período). Contam para fechar a competência.</div>
                 </div>
                 <div class="field">
-                    <label>Média de horas extras na base</label>
+                    ${pLabel('Média de horas extras na base', 'feriasMediaHe')}
                     <label class="flex" style="gap:8px;align-items:center;margin-top:6px;cursor:pointer">
                         <span class="switch"><input type="checkbox" id="fpFerMediaHe" ${(params.feriasMediaHe ?? FERIAS_PARAMS_PADRAO.mediaHe) ? 'checked' : ''}><span class="track"></span></span>
                         <span>Incluir (Súmula 45 TST)</span>
@@ -1185,19 +1328,19 @@ async function renderCfgParametros() {
                 </div>
             </div>
             <div class="field" style="margin-bottom:0">
-                <label>Meses da média de HE</label>
+                ${pLabel('Meses da média de HE', 'feriasMediaHeMeses')}
                 <input class="input" id="fpFerMediaMeses" type="number" min="1" max="12" step="1" value="${params.feriasMediaHeMeses ?? FERIAS_PARAMS_PADRAO.mediaHeMeses}">
                 <div class="field-hint">Quantos meses do período aquisitivo entram na média. A média divide pelo total de meses, não só pelos que tiveram extra.</div>
             </div>
             <button class="btn btn-primary mt-16" id="fpFerSave">${icon('check')} Salvar férias</button>
         </div>
 
-        <div class="card mt-16" style="max-width:560px">
+        <div class="card">
             <div class="card-title">13º Salário</div>
             <div class="card-sub" style="margin-bottom:18px">Regras da gratificação natalina (Lei 4.090/62, Lei 4.749/65). A competência é o <strong>ano civil</strong>, não o aniversário de admissão: os avos são recalculados a cada abertura da tela e se autocorrigem quando uma licença, promoção ou demissão muda o direito.</div>
             <div class="form-row">
                 <div class="field">
-                    <label>Prazo da 1ª parcela</label>
+                    ${pLabel('Prazo da 1ª parcela', 'decimoPrazo1')}
                     <div class="form-row" style="gap:8px">
                         <input class="input" id="fpDecP1Dia" type="number" min="1" max="31" step="1" value="${params.decimoPrazo1Dia ?? DECIMO_PARAMS_PADRAO.prazo1Dia}">
                         <select class="select" id="fpDecP1Mes">
@@ -1207,7 +1350,7 @@ async function renderCfgParametros() {
                     <div class="field-hint">Adiantamento — só FGTS incide (Lei 4.749 art. 2º: até 30/11). Os demais encargos ficam para a 2ª parcela.</div>
                 </div>
                 <div class="field">
-                    <label>Prazo da 2ª parcela</label>
+                    ${pLabel('Prazo da 2ª parcela', 'decimoPrazo2')}
                     <div class="form-row" style="gap:8px">
                         <input class="input" id="fpDecP2Dia" type="number" min="1" max="31" step="1" value="${params.decimoPrazo2Dia ?? DECIMO_PARAMS_PADRAO.prazo2Dia}">
                         <select class="select" id="fpDecP2Mes">
@@ -1219,12 +1362,12 @@ async function renderCfgParametros() {
             </div>
             <div class="form-row">
                 <div class="field">
-                    <label>Dias para gerar o avo</label>
+                    ${pLabel('Dias para gerar o avo', 'decimoDiasParaAvo')}
                     <input class="input" id="fpDecAvo" type="number" min="1" max="31" step="1" value="${params.decimoDiasParaAvo ?? DECIMO_PARAMS_PADRAO.diasParaAvo}">
                     <div class="field-hint">Mês trabalhado com este mínimo conta 1/12 integral (Lei 4.090 art. 1º §2º: 15 dias).</div>
                 </div>
                 <div class="field">
-                    <label>Faltas injustificadas descontam o avo</label>
+                    ${pLabel('Faltas injustificadas descontam o avo', 'decimoDescontarFaltas')}
                     <label class="flex" style="gap:8px;align-items:center;margin-top:6px;cursor:pointer">
                         <span class="switch"><input type="checkbox" id="fpDecFaltas" ${(params.decimoDescontarFaltas ?? DECIMO_PARAMS_PADRAO.descontarFaltas) ? 'checked' : ''}><span class="track"></span></span>
                         <span>Descontar</span>
@@ -1233,21 +1376,26 @@ async function renderCfgParametros() {
                 </div>
             </div>
             <div class="field" style="margin-bottom:0">
-                <label>Alerta de prazo (dias)</label>
+                ${pLabel('Alerta de prazo (dias)', 'decimoAlertaDias')}
                 <input class="input" id="fpDecAlerta" type="number" min="1" max="180" step="1" value="${params.decimoAlertaDias ?? DECIMO_PARAMS_PADRAO.alertaDias}">
                 <div class="field-hint">Antecedência do aviso de parcela a vencer, no sino de notificações e na aba.</div>
             </div>
             <button class="btn btn-primary mt-16" id="fpDecSave">${icon('check')} Salvar 13º salário</button>
         </div>
 
-        <div class="card mt-16" style="max-width:560px">
+        <div class="card">
             <div class="card-title">Dados de exemplo</div>
             <div class="card-sub" style="margin-bottom:16px">Gera ~20 funcionários fictícios com lançamentos e folha do ano para validar os KPIs. Limpe antes de usar o sistema com dados reais.</div>
             <div class="flex">
                 <button class="btn btn-secondary" id="seedGerar">${icon('plus')} Gerar dados de exemplo</button>
                 <button class="btn btn-ghost" id="seedLimpar" style="color:var(--danger)">${icon('trash')} Limpar dados de exemplo</button>
             </div>
+        </div>
         </div>`;
+
+    cont.querySelectorAll('[data-param-info]').forEach(btn => {
+        btn.onclick = () => openParamInfo(btn.dataset.paramInfo);
+    });
 
     document.getElementById('seedGerar').onclick = async () => {
         const existente = await DB.getObj(SEED_PATH);
