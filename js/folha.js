@@ -6,12 +6,19 @@ const FOLHA_COLS = [
     ['insalubridade', 'Insalubridade'],
     ['bolsa', 'Bolsa estágio'],
     ['prolabore', 'Pró-labore'],
-    ['encargos', 'Encargos'],
+    ['encargos', 'Encargos (FGTS)'],
     ['outros', 'Outros custos'],
     ['beneficios', 'Benefícios']
 ];
 // Coparticipação: parte do benefício descontada do funcionário (abate do custo da empresa)
 const FOLHA_DESC = 'beneficiosDesconto';
+
+// Coluna DESCONTO DO EMPREGADO: INSS por faixa progressiva sobre salário+insalubridade+
+// pró-labore. Fica FORA de FOLHA_COLS de propósito — ao contrário de "Encargos" (FGTS,
+// custo da empresa, soma no bruto), o INSS é retenção sobre o que o funcionário já
+// receberia. Somá-lo em brutoLinha inflaria o custo da empresa com um valor que na
+// verdade sai do bolso do próprio funcionário.
+const FOLHA_INSS = 'inss';
 
 // Coluna DERIVADA: hora extra vinda do banco de horas (fechamentos pagos + Extra Banco).
 // Não está em FOLHA_COLS porque não é editável nem gravada — é recalculada a cada render
@@ -55,7 +62,7 @@ const FOLHA_DESC_ATRASO = 'descAtrasoCalc';
 const FOLHA_GRUPOS = [
     { id: 'remuneracao', label: 'Remuneração', cols: ['salario', 'insalubridade', 'bolsa', 'prolabore'], def: true },
     { id: 'feriasDecimo', label: 'Férias e 13º', cols: [FOLHA_FERIAS_CALC, FOLHA_DECIMO_CALC], def: false },
-    { id: 'encargos', label: 'Encargos', cols: ['encargos'], def: false },
+    { id: 'encargos', label: 'Encargos', cols: ['encargos', FOLHA_INSS], def: false },
     { id: 'beneficios', label: 'Benefícios', cols: ['beneficios', FOLHA_DESC], def: false },
     { id: 'extras', label: 'Extras', cols: [FOLHA_HE_BANCO, FOLHA_HE_MANUAL, FOLHA_DESC_ATRASO, 'outros'], def: false }
 ];
@@ -66,7 +73,8 @@ const FOLHA_COL_LABEL = Object.fromEntries([
     [FOLHA_HE_MANUAL, 'Hora extra (legado)'],
     [FOLHA_FERIAS_CALC, 'Férias (calc)'],
     [FOLHA_DECIMO_CALC, '13º (calc)'],
-    [FOLHA_DESC_ATRASO, 'Desc. Atraso']
+    [FOLHA_DESC_ATRASO, 'Desc. Atraso'],
+    [FOLHA_INSS, 'INSS (desconto)']
 ]);
 // Estado de grupos visíveis (compartilhado entre folha mensal e detalhamento)
 const folhaGruposVis = new Set(FOLHA_GRUPOS.filter(g => g.def).map(g => g.id));
@@ -145,6 +153,9 @@ const descontoLinha = l => Number(l?.[FOLHA_DESC]) || 0;
 // custo daquele benefício — nunca menos que zero.
 const descontoEfetivoLinha = l => Math.min(descontoLinha(l), Number(l?.beneficios) || 0);
 const totalLinha = l => brutoLinha(l) - descontoEfetivoLinha(l);
+// Valor que efetivamente chega ao funcionário: custo total menos INSS (desconto sobre o
+// próprio salário dele, nunca custo da empresa — ver FOLHA_INSS) e menos a coparticipação.
+const liquidoLinha = l => totalLinha(l) - (Number(l?.[FOLHA_INSS]) || 0);
 
 // Injeta a HE derivada do banco nas linhas de um mês. Recebe o objeto {fid: linha} da folha
 // e devolve um NOVO objeto — mutar o original faria o valor derivado vazar para o próximo
@@ -184,8 +195,8 @@ function folhaComHeBanco(dados, mesKey, fechamentos, extras, quitacoes, ctx) {
             ? feriasDoMes(fid, mesKey, c.ausencias, c.funcionarios, c.cargos, c.params, c)
             : { total: 0, total13: 0 };
         // 13º: parcelas lançadas na aba própria. Coluna derivada, mesma regra das outras duas.
-        const de = c.decimos ? decimoDoMes(fid, mesKey, c.decimos) : { total: 0, encargos: 0 };
-        if (!he.total && !da.total && !fe.total && !fe.total13 && !de.total && !de.encargos) { out[fid] = linha; return; }
+        const de = c.decimos ? decimoDoMes(fid, mesKey, c.decimos) : { total: 0, encargos: 0, inss: 0 };
+        if (!he.total && !da.total && !fe.total && !fe.total13 && !de.total && !de.encargos && !de.inss) { out[fid] = linha; return; }
         const nova = { ...linha };
         if (he.total) nova[FOLHA_HE_BANCO] = he.total;
         if (da.total) nova[FOLHA_DESC_ATRASO] = da.total;
@@ -195,11 +206,14 @@ function folhaComHeBanco(dados, mesKey, fechamentos, extras, quitacoes, ctx) {
         // deixa de ser dinheiro que saiu só porque não passou pela aba 13º Salário.
         const decimoCalcTotal = (de.total || 0) + (fe.total13 || 0);
         if (decimoCalcTotal) nova[FOLHA_DECIMO_CALC] = decimoCalcTotal;
-        // Encargos do 13º somam na coluna de encargos existente, não criam coluna própria: é
-        // o mesmo encargo (INSS/FGTS patronal), só que sobre outra base. Uma coluna separada
-        // faria o relatório anual ter duas linhas de encargo para a mesma natureza de custo.
+        // Encargos do 13º (FGTS) somam na coluna de encargos existente, não criam coluna
+        // própria: é o mesmo encargo, só que sobre outra base. Uma coluna separada faria o
+        // relatório anual ter duas linhas de encargo para a mesma natureza de custo.
         // Soma ao lançado — a célula manual continua editável e não é sobrescrita.
         if (de.encargos) nova.encargos = (Number(linha.encargos) || 0) + de.encargos;
+        // INSS do 13º soma na mesma coluna de INSS mensal — mesma natureza (desconto do
+        // empregado por faixa), só que sobre outra base.
+        if (de.inss) nova[FOLHA_INSS] = (Number(linha[FOLHA_INSS]) || 0) + de.inss;
         out[fid] = nova;
     });
     return out;
@@ -239,6 +253,7 @@ function prefillLinha(f) {
     const linha = {};
     FOLHA_COLS.forEach(([k]) => linha[k] = 0);
     linha[FOLHA_DESC] = 0;
+    linha[FOLHA_INSS] = 0;
 
     // Verbas vêm do PERFIL do cargo, não do tipo: um diretor pode ter salário base E
     // pró-labore, o que o campo único `salario` (que mudava de significado) impedia.
@@ -248,7 +263,7 @@ function prefillLinha(f) {
     const salBase = Number(f.salario) || r.salarioBase;
 
     if (r.perfil === 'estagiario') {
-        // Bolsa não é salário (Lei 11.788): sem insalubridade e sem encargos.
+        // Bolsa não é salário (Lei 11.788): sem insalubridade, sem encargos e sem INSS.
         linha.bolsa = Number(f.salario) || r.bolsa;
     } else {
         linha.salario = salBase;
@@ -257,12 +272,13 @@ function prefillLinha(f) {
         const base = (params.insalubridadeBase || 'salario') === 'minimo'
             ? (Number(params.salarioMinimo) || 0) : salBase;
         linha.insalubridade = Number(((Number(cargo?.insalubridade) || 0) / 100 * base).toFixed(2));
-        // Encargos sobre a remuneração (salário + insalubridade + pró-labore).
-        // FGTS + outros encargos (INSS etc.) são parâmetros separados (ver config: 13º usa o
-        // mesmo split para poder recolher FGTS mesmo na 1ª parcela, que não tem os demais
-        // encargos). Aqui na folha mensal os dois continuam somados numa coluna só.
-        const pctEncTotal = (Number(params.fgtsPct) || 0) + (Number(params.encargosPct) || 0);
-        linha.encargos = Number(((salBase + linha.insalubridade + linha.prolabore) * pctEncTotal / 100).toFixed(2));
+        // Encargos (FGTS, custo da empresa) sobre a remuneração (salário + insalubridade +
+        // pró-labore).
+        const baseEnc = salBase + linha.insalubridade + linha.prolabore;
+        linha.encargos = Number((baseEnc * (Number(params.fgtsPct) || 0) / 100).toFixed(2));
+        // INSS (desconto do EMPREGADO, por faixa progressiva) sobre a mesma base — não é
+        // custo da empresa, por isso fica fora de `linha.encargos` (ver FOLHA_INSS).
+        linha[FOLHA_INSS] = calculoInss(baseEnc, params.inssFaixas);
     }
     const ben = beneficiosDoFunc(f);
     linha.beneficios = ben.total;
@@ -388,6 +404,7 @@ async function relFolhaMensal() {
         [FOLHA_DECIMO_CALC, FOLHA_COL_LABEL[FOLHA_DECIMO_CALC]]);
     const iEnc = COLS_REL.findIndex(([k]) => k === 'encargos');
     COLS_REL.splice(iEnc + 1, 0,
+        [FOLHA_INSS, FOLHA_COL_LABEL[FOLHA_INSS]],
         [FOLHA_HE_BANCO, FOLHA_COL_LABEL[FOLHA_HE_BANCO]],
         [FOLHA_DESC_ATRASO, FOLHA_COL_LABEL[FOLHA_DESC_ATRASO]]);
 

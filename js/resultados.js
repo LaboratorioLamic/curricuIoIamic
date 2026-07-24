@@ -161,6 +161,10 @@ function resBase() {
             treinos: dados.treinamentos.reduce((s, t) => s + custoTreinoNoMes(t, ano, m), 0),
             beneficios: soma('beneficios'),
             encargos: soma('encargos'),
+            // INSS: desconto do empregado (por faixa), NÃO é custo da empresa — não entra em
+            // folhaTotal/funcionariosCusto (baseados em totalLinha, que já o exclui). Exposto
+            // à parte só para quem quiser acompanhar o volume retido.
+            inss: soma(FOLHA_INSS),
             // Hora extra do mês = banco de horas (fechamentos pagos, quitações, Extra Banco)
             // + o legado manual dos meses lançados antes do banco existir. São a mesma
             // natureza de custo; separá-las no relatório anual mostraria uma queda inventada
@@ -251,7 +255,7 @@ const RES_EXPLICACOES = {
     'Descontos de benefícios (funcionário)': { oQue: 'Total que os funcionários pagaram no mês pela parte deles (coparticipação) nos benefícios, descontado em folha.', objetivo: 'Mostrar quanto do custo dos benefícios é, na prática, compartilhado com a equipe naquele mês.' },
     'Custo com treinamentos (parcelas)': { oQue: 'Custo de treinamentos atribuído ao mês, considerando o regime de parcelamento de cada treinamento lançado.', objetivo: 'Ver a distribuição mensal do investimento em capacitação, já rateada pelas parcelas.' },
     'Custo com promoções (Δ salários)': { oQue: 'Soma dos aumentos salariais (salário novo − salário antigo) das promoções ocorridas no mês.', objetivo: 'Dimensionar o impacto financeiro recorrente que as promoções do mês adicionam à folha.' },
-    'Encargos': { oQue: 'Soma dos encargos (INSS, FGTS e demais tributos sobre a folha, conforme cadastrado) lançados na folha do mês.', objetivo: 'Isolar o custo tributário da folha, separado da remuneração e dos benefícios.' },
+    'Encargos': { oQue: 'Soma do FGTS lançado na folha do mês — custo da empresa, sem contar o INSS (que é desconto do empregado, não custo da empresa).', objetivo: 'Isolar o custo tributário da folha que efetivamente sai do caixa da empresa, separado da remuneração e dos benefícios.' },
     'Outros custos': { oQue: 'Soma de custos lançados na folha do mês que não se enquadram em remuneração, encargos, benefícios ou hora extra.', objetivo: 'Capturar despesas de pessoal que não têm categoria própria, para que o custo total da folha feche corretamente.' },
     'Todos os benefícios': { oQue: 'O custo mensal de cada benefício ativo, empilhado por mês.', objetivo: 'Ver como o gasto com benefícios se distribui entre os diferentes tipos oferecidos, mês a mês.', leitura: 'Use "Legenda" para isolar um benefício específico e acompanhar sua evolução sozinho.' },
 
@@ -904,7 +908,8 @@ function resFinanceiro(cont) {
         { label: 'Custo com treinamentos (parcelas)', fmt: 'brl', vals: meses.map(m => m.treinos) },
         { label: 'Custo com promoções (Δ salários)', fmt: 'brl', vals: meses.map(m => m.promoCusto) },
         { label: 'Encargos', fmt: 'brl', vals: meses.map(m => m.encargos) },
-        { label: 'Outros custos', fmt: 'brl', vals: meses.map(m => m.outros) }
+        { label: 'Outros custos', fmt: 'brl', vals: meses.map(m => m.outros) },
+        { label: 'INSS (desconto do empregado)', fmt: 'brl', vals: meses.map(m => m.inss) }
     ];
 
     // Detalhamento por benefício: adesões atuais × funcionários presentes na folha do mês
@@ -1010,6 +1015,7 @@ function resFinanceiro(cont) {
         'Descontos de benefícios (funcionário)': finOrigemPorFuncionario(descontoLinha),
         'Encargos': finOrigemPorFuncionario(l => Number(l?.encargos) || 0),
         'Outros custos': finOrigemPorFuncionario(l => Number(l?.outros) || 0),
+        'INSS (desconto do empregado)': finOrigemPorFuncionario(l => Number(l?.[FOLHA_INSS]) || 0),
         'Custo com treinamentos (parcelas)': (li, m) => dados.treinamentos
             .map(t => ({ label: t.nome || '(sem nome)', valor: custoTreinoNoMes(t, ano, m) }))
             .filter(x => x.valor)

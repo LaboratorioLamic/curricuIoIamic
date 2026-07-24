@@ -863,14 +863,15 @@
     margin-left: -5.5px; margin-top: -5.5px;
     transform: rotate(45deg); border-radius: 2px; z-index: 2;
 }
-.gt-mark[data-id] { cursor: pointer; }
-.gt-mark[data-id]:hover { filter: brightness(.9); transform: rotate(45deg) scale(1.25); }
+.gt-mark[data-id], .gt-mark[data-prev] { cursor: pointer; }
+.gt-mark[data-id]:hover, .gt-mark[data-prev]:hover { filter: brightness(.9); transform: rotate(45deg) scale(1.25); }
 .gt-mark-real { background: var(--success); }
-/* Projetado: contorno vazado — ainda não aconteceu, não pode ter o mesmo peso do lançado */
-.gt-mark-prev { background: var(--surface); border: 1.5px dashed var(--muted); }
-/* Projetado para quem JÁ está vencido/sem ASO: continua vazado (não aconteceu), mas em
-   vermelho. Declarado depois de .gt-mark-prev de propósito: mesma especificidade, e o
-   elemento carrega as duas classes — quem vem por último vence. */
+/* Projetado: fundo âmbar claro — ainda não aconteceu, mas precisa se destacar na grade
+   (contorno vazado sobre fundo claro ficava ilegível). */
+.gt-mark-prev { background: var(--warning-soft); border: 1.5px dashed var(--warning); }
+/* Projetado para quem JÁ está vencido/sem ASO: fundo vermelho claro — mesma lógica do
+   âmbar, mas sinalizando urgência. Declarado depois de .gt-mark-prev de propósito: mesma
+   especificidade, e o elemento carrega as duas classes — quem vem por último vence. */
 .gt-mark-prev.gt-mark-vencido { background: var(--danger-soft); border-color: var(--danger); }
 .gt-mark-vencido { background: var(--danger); box-shadow: 0 0 0 2px var(--danger-soft); }
 .gt-chip.gt-mark-chip {
@@ -1931,4 +1932,47 @@
 }
 .bkp-warn svg.icon { width: 20px; height: 20px; color: var(--danger); flex-shrink: 0; margin-top: 1px; }
 .bkp-warn p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--text); }
+
+/* ===== INSS: resumo em chips (Parâmetros) + editor no modal ===== */
+/* FGTS + Dias de experiência empilhados à esquerda; INSS ocupa as duas linhas à direita */
+.form-row-inss { align-items: flex-start; }
+.inss-col-esq { display: flex; flex-direction: column; gap: 16px; }
+.inss-resumo-card {
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 12px 14px; border-radius: var(--radius);
+    background: var(--surface-2); border: 1px solid var(--border);
+}
+.inss-chips { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.inss-chip {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 6px 10px 6px 12px; border-radius: 8px;
+    background: var(--surface); border: 1px solid var(--border-strong);
+    font-size: 12px;
+}
+.inss-chip-faixa { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inss-chip-aliq {
+    font-weight: 700; color: var(--accent-strong);
+    background: var(--accent-soft); border-radius: 999px;
+    padding: 2px 8px; flex-shrink: 0;
+}
+.inss-resumo-card .btn { align-self: flex-start; }
+
+/* Lista de faixas dentro do modal "Editar faixas" */
+.inss-faixa-lista { display: flex; flex-direction: column; gap: 10px; }
+.inss-faixa-row {
+    display: grid; grid-template-columns: 28px 1fr 1fr 36px;
+    align-items: flex-end; gap: 10px;
+    padding: 10px; border-radius: var(--radius);
+    background: var(--surface-2); border: 1px solid var(--border);
+}
+.inss-faixa-num {
+    align-self: center; text-align: center;
+    font-size: 12px; font-weight: 700; color: var(--muted);
+}
+.inss-faixa-row .btn-icon { align-self: center; color: var(--danger); }
+.inss-faixa-row .btn-icon:hover { background: var(--danger-soft); }
+@media (max-width: 520px) {
+    .inss-faixa-row { grid-template-columns: 1fr 1fr; }
+    .inss-faixa-num { display: none; }
+}
 .bkp-warn strong { color: var(--danger); }

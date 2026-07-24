@@ -472,7 +472,8 @@ function janelaDecimo(fid) {
                                 <strong>${decimoTipo(p.tipo).label}</strong>
                                 <div class="muted">Pago em ${fmtDate(p.data)}${
                                     p.avosParcela != null ? ` · ${fmtNum(p.avosParcela)} avo${p.avosParcela !== 1 ? 's' : ''}` : ''}${
-                                    p.encargos ? ` · encargos ${fmtBRL(p.encargos)}` : ' · sem encargos'}${p.obs ? ` — ${escapeHtml(p.obs)}` : ''}</div>
+                                    p.encargos ? ` · encargos ${fmtBRL(p.encargos)}` : ' · sem encargos'}${
+                                    p.inss ? ` · INSS −${fmtBRL(p.inss)}` : ''}${p.obs ? ` — ${escapeHtml(p.obs)}` : ''}</div>
                             </div>
                             <strong class="num">${fmtBRL(p.bruto)}</strong>
                             ${icon('chevronRight')}
@@ -626,9 +627,21 @@ function formDecimo(d) {
                     <div class="field-hint" id="dfBrutoHint">Calculado automaticamente — não editável.</div>
                 </div>
                 <div class="field">
-                    <label>Encargos</label>
+                    <label>Encargos (FGTS)</label>
                     <input class="input" id="dfEnc" type="number" step="0.01" min="0" value="${d?.encargos ?? ''}" readonly>
                     <div class="field-hint" id="dfEncHint"></div>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="field">
+                    <label>INSS (desconto do empregado)</label>
+                    <input class="input" id="dfInss" type="number" step="0.01" min="0" value="${d?.inss ?? ''}" readonly>
+                    <div class="field-hint" id="dfInssHint"></div>
+                </div>
+                <div class="field">
+                    <label>Valor líquido</label>
+                    <input class="input" id="dfLiquido" type="number" step="0.01" min="0" value="${d?.liquido ?? ''}" readonly>
+                    <div class="field-hint">Valor pago − INSS. O que efetivamente chega ao funcionário.</div>
                 </div>
             </div>
 
@@ -642,7 +655,7 @@ function formDecimo(d) {
 
     const $ = s => m.body.querySelector(s);
     const funcEl = $('#dfFunc'), tipoEl = $('#dfTipo'), dataEl = $('#dfData');
-    const avosEl = $('#dfAvos'), brutoEl = $('#dfBruto'), encEl = $('#dfEnc');
+    const avosEl = $('#dfAvos'), brutoEl = $('#dfBruto'), encEl = $('#dfEnc'), inssEl = $('#dfInss'), liquidoEl = $('#dfLiquido');
     const parcelarEl = $('#dfParcelar');
 
     let sugerido = null;
@@ -831,8 +844,9 @@ function formDecimo(d) {
                 ${c.jaPago > 0 ? `<span>− Já pago <em class="bx-calc-nota">(${detalheJaPago})</em></span><strong>−${fmtBRL(c.jaPago)}</strong>` : ''}
             </div>
             <div class="bx-calc-total"><span>Valor desta parcela</span><strong>${fmtBRL(c.bruto)}</strong></div>
-            ${c.fgts ? `<div class="bx-calc-total" style="border-top:0;padding-top:0"><span>FGTS ${fmtPct(c.fgtsPct, 2)} <em class="bx-calc-nota">(sobre esta parcela — incide sempre, inclusive na 1ª)</em></span><strong>${fmtBRL(c.fgts)}</strong></div>` : ''}
-            ${c.outrosEncargos ? `<div class="bx-calc-total" style="border-top:0;padding-top:0"><span>Outros encargos ${fmtPct(c.encargosPct, 2)} <em class="bx-calc-nota">(sobre o 13º integral, não sobre a parcela)</em></span><strong>${fmtBRL(c.outrosEncargos)}</strong></div>` : ''}
+            ${c.fgts ? `<div class="bx-calc-total" style="border-top:0;padding-top:0"><span>FGTS ${fmtPct(c.fgtsPct, 2)} <em class="bx-calc-nota">(sobre esta parcela — incide sempre, inclusive na 1ª; custo da empresa)</em></span><strong>${fmtBRL(c.fgts)}</strong></div>` : ''}
+            ${c.inss ? `<div class="bx-calc-total" style="border-top:0;padding-top:0"><span>− INSS <em class="bx-calc-nota">(por faixa, sobre o 13º integral — desconto do empregado)</em></span><strong>−${fmtBRL(c.inss)}</strong></div>` : ''}
+            ${c.inss ? `<div class="bx-calc-total"><span>Valor líquido</span><strong>${fmtBRL(c.liquido)}</strong></div>` : ''}
             ${dataEl.value ? `<div class="qt-restante">${icon('info')} Cai na folha de <strong>${mesLabel(mesDe(dataEl.value))}</strong>, na coluna <strong>13º (calc)</strong> — definida pela data do pagamento.</div>` : ''}`;
 
         // Sempre a conta do sistema, sem exceção — parcela única, 1ª ou 2ª: nenhuma delas é
@@ -842,12 +856,17 @@ function formDecimo(d) {
             ? 'Parcela única: quita o total devido.'
             : 'Calculado automaticamente — não editável.';
         encEl.value = c.encargos ? c.encargos.toFixed(2) : '';
-        $('#dfEncHint').textContent = tipo === 'complemento'
-            ? `FGTS ${c.fgtsPct}% + ${c.encargosPct}% sobre a diferença (${fmtBRL(c.bruto)}) — os encargos da parte já paga foram recolhidos na época.`
-            : decimoTipo(tipo).encargos
-            ? `FGTS ${c.fgtsPct}% sobre a parcela + ${c.encargosPct}% sobre ${fmtBRL(c.integral)}`
-            : c.fgts ? `Adiantamento: só FGTS (${c.fgtsPct}% sobre a parcela), sem os demais encargos.`
+        $('#dfEncHint').textContent = decimoTipo(tipo).encargos
+            ? `FGTS ${c.fgtsPct}% sobre a parcela — custo da empresa.`
+            : c.fgts ? `Adiantamento: só FGTS (${c.fgtsPct}% sobre a parcela).`
             : 'A 1ª parcela é adiantamento: sem encargos.';
+        inssEl.value = c.inss ? c.inss.toFixed(2) : '';
+        $('#dfInssHint').textContent = tipo === 'complemento'
+            ? `INSS por faixa sobre a diferença (${fmtBRL(c.bruto)}) — o INSS da parte já paga foi retido na época.`
+            : decimoTipo(tipo).encargos
+            ? `INSS por faixa sobre ${fmtBRL(c.integral)} (13º integral) — desconto do empregado, não sobre a parcela.`
+            : 'A 1ª parcela é adiantamento: sem INSS (Lei 4.749 art. 2º §2º).';
+        liquidoEl.value = c.liquido != null ? c.liquido.toFixed(2) : '';
 
         // Prazo legal do tipo escolhido.
         const pz = prazos13(ano);
@@ -928,13 +947,17 @@ function formDecimo(d) {
             data,
             bruto: Number(bruto.toFixed(2)),
             encargos: Number(Number(encEl.value || 0).toFixed(2)),
+            inss: Number(Number(inssEl.value || 0).toFixed(2)),
+            liquido: Number(Number(liquidoEl.value || 0).toFixed(2)),
             // `avos` = o direito da competência; `avosParcela` = quantos esta parcela paga.
             // Sem o segundo, a 2ª parcela não saberia quantos avos a 1ª já cobriu.
             avos: sugerido.avos,
             avosParcela: sugerido.avosParcela,
             obs: $('#dfObs').value.trim(),
             // Memória de cálculo CONGELADA: promoção posterior não reescreve o que já foi pago.
-            // Mesma regra do lançamento de férias e da quitação do banco de horas.
+            // Mesma regra do lançamento de férias e da quitação do banco de horas. As faixas de
+            // INSS vigentes no momento também ficam congeladas — mudar a tabela depois não pode
+            // reescrever a memória de cálculo de uma parcela já paga.
             calculo: {
                 base: sugerido.base, salario: sugerido.salario,
                 insalubridade: sugerido.insalubridade, mediaHe: sugerido.mediaHe,
@@ -942,7 +965,8 @@ function formDecimo(d) {
                 avosParcela: sugerido.avosParcela, valorAvo: sugerido.valorAvo,
                 jaPago: sugerido.jaPago, sugerido: sugerido.bruto,
                 fgtsPct: sugerido.fgtsPct, fgts: sugerido.fgts,
-                encargosPct: sugerido.encargosPct, outrosEncargos: sugerido.outrosEncargos
+                inss: sugerido.inss, liquido: sugerido.liquido,
+                inssFaixas: decimoState.params.inssFaixas || INSS_FAIXAS_PADRAO
             }
         };
         await DB.save(PATHS.decimos, isEdit ? d.id : null, reg);
@@ -1081,7 +1105,7 @@ function formDecimoLote(sits) {
                 <div class="dc-lote-val">
                     <strong>${fmtBRL(x.calc.bruto)}</strong>
                     ${x.calc.fgts ? `<em>+ ${fmtBRL(x.calc.fgts)} FGTS</em>` : ''}
-                    ${x.calc.outrosEncargos ? `<em>+ ${fmtBRL(x.calc.outrosEncargos)} enc.</em>` : ''}
+                    ${x.calc.inss ? `<em>− ${fmtBRL(x.calc.inss)} INSS</em>` : ''}
                 </div>
             </label>`).join('')
             : `<div class="dc-vazio">${icon('check')} ${tipo === 'segunda'
@@ -1098,7 +1122,8 @@ function formDecimoLote(sits) {
         const sel = selecionados();
         const t = sel.reduce((s, x) => s + x.calc.bruto, 0);
         const e = sel.reduce((s, x) => s + x.calc.encargos, 0);
-        $('#dlTot').innerHTML = `<span>${sel.length} selecionado(s)</span> <strong>${fmtBRL(t)}</strong>${e ? ` <em>+ ${fmtBRL(e)} encargos</em>` : ''}`;
+        const i = sel.reduce((s, x) => s + x.calc.inss, 0);
+        $('#dlTot').innerHTML = `<span>${sel.length} selecionado(s)</span> <strong>${fmtBRL(t)}</strong>${e ? ` <em>+ ${fmtBRL(e)} encargos</em>` : ''}${i ? ` <em>− ${fmtBRL(i)} INSS</em>` : ''}`;
     };
 
     tipoEl.onchange = () => {
@@ -1133,6 +1158,8 @@ function formDecimoLote(sits) {
                 data: dataEl.value,
                 bruto: x.calc.bruto,
                 encargos: x.calc.encargos,
+                inss: x.calc.inss,
+                liquido: x.calc.liquido,
                 avos: x.calc.avos,
                 avosParcela: x.calc.avosParcela,
                 obs: '',
@@ -1143,7 +1170,8 @@ function formDecimoLote(sits) {
                     avosParcela: x.calc.avosParcela, valorAvo: x.calc.valorAvo,
                     jaPago: x.calc.jaPago, sugerido: x.calc.bruto,
                     fgtsPct: x.calc.fgtsPct, fgts: x.calc.fgts,
-                    encargosPct: x.calc.encargosPct, outrosEncargos: x.calc.outrosEncargos
+                    inss: x.calc.inss, liquido: x.calc.liquido,
+                    inssFaixas: decimoState.params.inssFaixas || INSS_FAIXAS_PADRAO
                 }
             });
         }
@@ -1236,6 +1264,7 @@ function renderDecimoParcelas() {
     const nome = fid => func(fid)?.nome || '—';
     const totalBruto = doAno.reduce((s, d) => s + (Number(d.bruto) || 0), 0);
     const totalEnc = doAno.reduce((s, d) => s + (Number(d.encargos) || 0), 0);
+    const totalInss = doAno.reduce((s, d) => s + (Number(d.inss) || 0), 0);
 
     pane.innerHTML = `
         <div class="table-wrap">
@@ -1248,7 +1277,7 @@ function renderDecimoParcelas() {
                 <table class="table">
                     <thead><tr>
                         <th>Funcionário</th><th>Parcela</th><th>Pagamento</th>
-                        <th class="num">Avos</th><th class="num">Valor</th><th class="num">Encargos</th><th></th>
+                        <th class="num">Avos</th><th class="num">Valor</th><th class="num">Encargos</th><th class="num">INSS</th><th></th>
                     </tr></thead>
                     <tbody id="dpRows">
                         ${doAno.length ? doAno.map(d => `
@@ -1265,14 +1294,16 @@ function renderDecimoParcelas() {
                                     ? `${fmtNum(d.avosParcela)} de ${d.avos}` : `${d.avos ?? '—'}/12`}</td>
                                 <td class="num"><strong>${fmtBRL(d.bruto)}</strong></td>
                                 <td class="num">${d.encargos ? fmtBRL(d.encargos) : '—'}</td>
+                                <td class="num">${d.inss ? fmtBRL(d.inss) : '—'}</td>
                                 <td class="num">${icon('chevronRight')}</td>
                             </tr>`).join('')
-                        : `<tr><td colspan="7"><div class="dc-vazio">${icon('gift')} Nenhuma parcela lançada em ${decimoState.ano}.</div></td></tr>`}
+                        : `<tr><td colspan="8"><div class="dc-vazio">${icon('gift')} Nenhuma parcela lançada em ${decimoState.ano}.</div></td></tr>`}
                     </tbody>
                     ${doAno.length ? `<tfoot><tr>
                         <td colspan="4"><strong>Total</strong></td>
                         <td class="num"><strong>${fmtBRL(totalBruto)}</strong></td>
                         <td class="num"><strong>${fmtBRL(totalEnc)}</strong></td>
+                        <td class="num"><strong>${fmtBRL(totalInss)}</strong></td>
                         <td></td>
                     </tr></tfoot>` : ''}
                 </table>

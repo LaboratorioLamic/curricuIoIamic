@@ -1067,13 +1067,13 @@ const PARAM_INFO = {
         title: 'FGTS (%)',
         html: `<p><strong>O que é:</strong> a alíquota do FGTS (Lei 8.036, art. 15 — padrão legal 8%).</p>
                <p><strong>Onde afeta:</strong> Folha de pagamento e 13º salário (inclusive a 1ª parcela).</p>
-               <p><strong>Como afeta:</strong> é aplicada sobre a base de cálculo de cada lançamento para estimar o depósito de FGTS devido. É calculada separada dos "Outros encargos" porque incide em toda parcela do 13º, inclusive na 1ª, o que os demais encargos não fazem.</p>`
+               <p><strong>Como afeta:</strong> é aplicada sobre a base de cálculo de cada lançamento para estimar o depósito de FGTS devido, custo da empresa. É calculada separada do INSS porque incide em toda parcela do 13º, inclusive na 1ª, o que o INSS não faz.</p>`
     },
-    encargosPct: {
-        title: 'Outros encargos (%)',
-        html: `<p><strong>O que é:</strong> percentual estimado de INSS patronal e demais encargos sobre a folha, sem contar o FGTS.</p>
-               <p><strong>Onde afeta:</strong> Folha de pagamento, como sugestão automática por lançamento.</p>
-               <p><strong>Como afeta:</strong> é pré-preenchido em cada lançamento da folha, mas pode ser editado individualmente por lançamento sem alterar este parâmetro global.</p>`
+    inssFaixas: {
+        title: 'INSS (%) — tabela progressiva',
+        html: `<p><strong>O que é:</strong> tabela de faixas salariais com alíquota progressiva de INSS, <strong>descontado do empregado</strong> (não é custo da empresa).</p>
+               <p><strong>Onde afeta:</strong> Folha de pagamento e 13º salário (exceto a 1ª parcela, que é adiantamento e não tem incidência de INSS).</p>
+               <p><strong>Como afeta:</strong> a base de cálculo é dividida em fatias pelos limites de cada faixa; cada fatia paga a alíquota da sua própria faixa, e os valores se somam (não é uma alíquota única aplicada ao total). Base acima do limite da última faixa não gera INSS adicional — é o teto da tabela. O resultado reduz o valor líquido do funcionário, nunca o custo da empresa.</p>`
     },
     diasExperiencia: {
         title: 'Dias do período de experiência',
@@ -1203,6 +1203,77 @@ function pLabel(text, key) {
         <button type="button" class="param-info-btn" data-param-info="${key}" title="O que é este parâmetro?">${icon('info')}</button></div>`;
 }
 
+// ---- Modal: editar a tabela de faixas de INSS ----
+// Mesmo padrão de formBeneficio: modal próprio, com salvamento independente do card de
+// Parâmetros — editar as faixas não exige revisar/reenviar os outros campos do card.
+function formInssFaixas(params, onSaved) {
+    let faixas = (params.inssFaixas && params.inssFaixas.length ? params.inssFaixas : INSS_FAIXAS_PADRAO)
+        .map(f => ({ ate: Number(f.ate) || 0, aliquota: Number(f.aliquota) || 0 }))
+        .sort((a, b) => a.ate - b.ate);
+
+    const m = openModal({
+        title: 'Faixas de INSS',
+        body: `
+            <p class="muted" style="font-size:12px;margin-bottom:14px">
+                Desconto do empregado, por faixa progressiva de salário. Cada fatia da base paga a
+                alíquota da sua própria faixa — base acima do limite da última faixa não gera INSS
+                adicional (teto). Afeta a folha mensal e o 13º (exceto a 1ª parcela).
+            </p>
+            <div id="ifLista" class="inss-faixa-lista"></div>
+            <button type="button" class="btn btn-secondary btn-sm mt-8" id="ifAdd">${icon('plus')} Adicionar faixa</button>`,
+        footer: `
+            <button class="btn btn-secondary" data-cancel>Cancelar</button>
+            <button class="btn btn-primary" data-save>${icon('check')} Salvar faixas</button>`
+    });
+
+    const renderLista = () => {
+        const box = m.body.querySelector('#ifLista');
+        faixas.sort((a, b) => a.ate - b.ate);
+        box.innerHTML = faixas.map((f, i) => `
+            <div class="inss-faixa-row" data-i="${i}">
+                <span class="inss-faixa-num">${i + 1}ª</span>
+                <div class="field" style="margin-bottom:0">
+                    <label>Até (R$)</label>
+                    <input class="input inss-ate" type="number" min="0.01" step="0.01" value="${f.ate}">
+                </div>
+                <div class="field" style="margin-bottom:0">
+                    <label>Alíquota (%)</label>
+                    <input class="input inss-aliquota" type="number" min="0" max="100" step="0.01" value="${f.aliquota}">
+                </div>
+                <button type="button" class="btn-icon inss-faixa-del" title="Remover faixa">${icon('trash')}</button>
+            </div>`).join('');
+        box.querySelectorAll('.inss-faixa-row').forEach(row => {
+            const i = Number(row.dataset.i);
+            row.querySelector('.inss-ate').onchange = e => { faixas[i].ate = Number(e.target.value) || 0; };
+            row.querySelector('.inss-aliquota').onchange = e => { faixas[i].aliquota = Number(e.target.value) || 0; };
+            row.querySelector('.inss-faixa-del').onclick = () => {
+                if (faixas.length <= 1) return toast('Mantenha ao menos uma faixa.', 'error');
+                faixas.splice(i, 1);
+                renderLista();
+            };
+        });
+    };
+    renderLista();
+
+    m.body.querySelector('#ifAdd').onclick = () => {
+        const ultimo = faixas[faixas.length - 1];
+        faixas.push({ ate: (ultimo?.ate || 0) + 1000, aliquota: ultimo?.aliquota || 0 });
+        renderLista();
+    };
+
+    m.footer.querySelector('[data-cancel]').onclick = m.close;
+    m.footer.querySelector('[data-save]').onclick = async () => {
+        if (!faixas.length || faixas.some(f => !(f.ate > 0) || !(f.aliquota >= 0 && f.aliquota <= 100)))
+            return toast('Cada faixa precisa de um limite maior que zero e uma alíquota entre 0 e 100%.', 'error');
+        const ordenadas = faixas.slice().sort((a, b) => a.ate - b.ate);
+        await DB.set(PATHS.parametros, { ...params, inssFaixas: ordenadas });
+        params.inssFaixas = ordenadas;
+        toast('Faixas de INSS salvas.');
+        m.close();
+        onSaved && onSaved();
+    };
+}
+
 async function renderCfgParametros() {
     const params = (await DB.getObj(PATHS.parametros)) || {};
     const cont = document.getElementById('cfgContent');
@@ -1211,23 +1282,26 @@ async function renderCfgParametros() {
         <div class="card">
             <div class="card-title">Parâmetros do sistema</div>
             <div class="card-sub" style="margin-bottom:18px">Valores padrão usados nos cálculos automáticos.</div>
-            <div class="form-row">
-                <div class="field">
-                    ${pLabel('FGTS (%)', 'fgtsPct')}
-                    <input class="input" id="fpFgts" type="number" min="0" max="100" step="0.1" value="${params.fgtsPct ?? 8}">
-                    <div class="field-hint">Alíquota do FGTS (Lei 8.036 art. 15: 8%). Separado dos demais encargos porque incide em toda parcela do 13º, inclusive na 1ª.</div>
+            <div class="form-row form-row-inss">
+                <div class="inss-col-esq">
+                    <div class="field">
+                        ${pLabel('FGTS (%)', 'fgtsPct')}
+                        <input class="input" id="fpFgts" type="number" min="0" max="100" step="0.1" value="${params.fgtsPct ?? 8}">
+                        <div class="field-hint">Alíquota do FGTS (Lei 8.036 art. 15: 8%), custo da empresa. Separado do INSS porque incide em toda parcela do 13º, inclusive na 1ª.</div>
+                    </div>
+                    <div class="field" style="margin-bottom:0">
+                        ${pLabel('Dias do período de experiência', 'diasExperiencia')}
+                        <input class="input" id="fpExp" type="number" min="1" step="1" value="${params.diasExperiencia ?? 90}">
+                        <div class="field-hint">Usado no índice de aprovação após experiência (padrão CLT: 90)</div>
+                    </div>
                 </div>
-                <div class="field">
-                    ${pLabel('Outros encargos (%)', 'encargosPct')}
-                    <input class="input" id="fpEncargos" type="number" min="0" max="100" step="0.1" value="${params.encargosPct ?? 20}">
-                    <div class="field-hint">INSS e demais encargos sobre salário, sem o FGTS (que tem campo próprio ao lado). Sugerido automaticamente na folha (editável por lançamento).</div>
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="field">
-                    ${pLabel('Dias do período de experiência', 'diasExperiencia')}
-                    <input class="input" id="fpExp" type="number" min="1" step="1" value="${params.diasExperiencia ?? 90}">
-                    <div class="field-hint">Usado no índice de aprovação após experiência (padrão CLT: 90)</div>
+                <div class="field" style="margin-bottom:0">
+                    ${pLabel('INSS (%) — tabela progressiva', 'inssFaixas')}
+                    <div class="field-hint" style="margin-bottom:10px">Desconto do empregado, por faixa salarial. Sugerido automaticamente na folha e no 13º (exceto 1ª parcela).</div>
+                    <div class="inss-resumo-card">
+                        <div class="inss-chips" id="fpInssChips"></div>
+                        <button type="button" class="btn btn-secondary btn-sm" id="fpInssEditar">${icon('edit')} Editar faixas</button>
+                    </div>
                 </div>
             </div>
             <div class="form-row">
@@ -1347,7 +1421,7 @@ async function renderCfgParametros() {
                             ${MESES_FULL.map((n, i) => `<option value="${i + 1}"${(params.decimoPrazo1Mes ?? DECIMO_PARAMS_PADRAO.prazo1Mes) === i + 1 ? ' selected' : ''}>${n}</option>`).join('')}
                         </select>
                     </div>
-                    <div class="field-hint">Adiantamento — só FGTS incide (Lei 4.749 art. 2º: até 30/11). Os demais encargos ficam para a 2ª parcela.</div>
+                    <div class="field-hint">Adiantamento — só FGTS incide (Lei 4.749 art. 2º: até 30/11). O INSS fica para a 2ª parcela.</div>
                 </div>
                 <div class="field">
                     ${pLabel('Prazo da 2ª parcela', 'decimoPrazo2')}
@@ -1357,7 +1431,7 @@ async function renderCfgParametros() {
                             ${MESES_FULL.map((n, i) => `<option value="${i + 1}"${(params.decimoPrazo2Mes ?? DECIMO_PARAMS_PADRAO.prazo2Mes) === i + 1 ? ' selected' : ''}>${n}</option>`).join('')}
                         </select>
                     </div>
-                    <div class="field-hint">Encargos incidem aqui, sobre o 13º integral (até 20/12).</div>
+                    <div class="field-hint">FGTS e INSS incidem aqui, sobre o 13º integral (até 20/12).</div>
                 </div>
             </div>
             <div class="form-row">
@@ -1397,6 +1471,20 @@ async function renderCfgParametros() {
         btn.onclick = () => openParamInfo(btn.dataset.paramInfo);
     });
 
+    // ---- Resumo das faixas de INSS (chips) + botão que abre o modal de edição ----
+    const inssFaixasAtuais = () => (params.inssFaixas && params.inssFaixas.length ? params.inssFaixas : INSS_FAIXAS_PADRAO)
+        .slice().sort((a, b) => a.ate - b.ate);
+    const renderInssChips = () => {
+        const box = document.getElementById('fpInssChips');
+        box.innerHTML = inssFaixasAtuais().map((f, i, arr) => `
+            <span class="inss-chip">
+                <span class="inss-chip-faixa">${fmtBRL(i === 0 ? 0 : arr[i - 1].ate)} – ${fmtBRL(f.ate)}</span>
+                <span class="inss-chip-aliq">${fmtPct(f.aliquota, 2)}</span>
+            </span>`).join('');
+    };
+    renderInssChips();
+    document.getElementById('fpInssEditar').onclick = () => formInssFaixas(params, () => { renderInssChips(); });
+
     document.getElementById('seedGerar').onclick = async () => {
         const existente = await DB.getObj(SEED_PATH);
         if (existente) return toast('Já existem dados de exemplo. Limpe antes de gerar novamente.', 'error');
@@ -1429,7 +1517,6 @@ async function renderCfgParametros() {
             return toast('O alerta de vencimento do ASO deve ficar entre 1 e 365 dias.', 'error');
         const novos = {
             fgtsPct: Number(document.getElementById('fpFgts').value) || 0,
-            encargosPct: Number(document.getElementById('fpEncargos').value) || 0,
             diasExperiencia: Number(document.getElementById('fpExp').value) || 90,
             salarioMinimo: Number(document.getElementById('fpSalMin').value) || 0,
             insalubridadeBase: document.getElementById('fpInsalBase').value,

@@ -1185,6 +1185,37 @@ function avos13(f, ano, ausencias, ref) {
     return { avos: meses.filter(x => x.conta).length, meses, inicio, fim };
 }
 
+// ---- INSS (desconto do empregado, por faixa progressiva) ----
+//
+// Faixas padrão (2026) — usadas só quando params.inssFaixas está vazio/ausente.
+const INSS_FAIXAS_PADRAO = [
+    { ate: 1621.00, aliquota: 7.5 },
+    { ate: 2902.84, aliquota: 9 },
+    { ate: 4354.27, aliquota: 12 },
+    { ate: 8475.55, aliquota: 14 }
+];
+
+// Cálculo progressivo por faixa: cada fatia da base paga a alíquota da SUA faixa, os
+// resultados se somam (não é uma alíquota efetiva única sobre o total). Base acima do
+// limite da última faixa não gera INSS adicional — é o teto do RGPS, o valor já é o
+// máximo da tabela.
+function calculoInss(base, faixas) {
+    const f = (faixas && faixas.length ? faixas : INSS_FAIXAS_PADRAO)
+        .slice().sort((a, b) => a.ate - b.ate);
+    let restante = Math.max(0, Number(base) || 0);
+    let anterior = 0;
+    let total = 0;
+    for (const faixa of f) {
+        if (restante <= 0) break;
+        const larguraFaixa = faixa.ate - anterior;
+        const nesta = Math.min(restante, larguraFaixa);
+        if (nesta > 0) total += nesta * (Number(faixa.aliquota) || 0) / 100;
+        restante -= nesta;
+        anterior = faixa.ate;
+    }
+    return Number(total.toFixed(2));
+}
+
 // ---- CÁLCULO DO 13º ----
 //
 // Base = salário + insalubridade + média de HE habitual (Súmula 45 TST — a mesma regra das
@@ -1252,20 +1283,20 @@ function calculo13(f, cargo, params, avos, opts) {
     const pctFgts = Number(params?.fgtsPct) || 0;
     const fgts = Number((bruto * pctFgts / 100).toFixed(2));
 
-    // Outros encargos (INSS etc.): só nas parcelas que os têm — a 1ª é adiantamento puro,
-    // sem incidência (Lei 4.749 art. 2º §2º). A base é o 13º INTEGRAL, não a parcela: o fato
-    // gerador é o 13º inteiro, recolhido de uma vez na segunda parcela. Calcular sobre a
-    // parcela recolheria a menor.
+    // INSS (desconto do EMPREGADO, por faixa progressiva): só nas parcelas que o têm — a 1ª
+    // é adiantamento puro, sem incidência (Lei 4.749 art. 2º §2º). A base é o 13º INTEGRAL,
+    // não a parcela: o fato gerador é o 13º inteiro, recolhido de uma vez na segunda parcela.
+    // Calcular sobre a parcela recolheria a menor.
     //
     // Exceção: `complemento` já teve o integral ANTERIOR totalmente recolhido (é por definição
     // uma competência que já estava quitada). Cobrar de novo sobre o integral NOVO bitributaria
-    // a parte que já pagou encargo — a base correta aqui é só a diferença (`bruto`).
-    const pctEnc = Number(params?.encargosPct) || 0;
-    const baseOutrosEncargos = tipo === 'complemento' ? bruto : integral;
-    const outrosEncargos = decimoTipo(tipo).encargos
-        ? Number((baseOutrosEncargos * pctEnc / 100).toFixed(2))
-        : 0;
-    const encargos = Number((fgts + outrosEncargos).toFixed(2));
+    // a parte que já pagou INSS — a base correta aqui é só a diferença (`bruto`).
+    //
+    // Diferente do FGTS, o INSS não é custo da empresa: é retenção sobre o que o funcionário
+    // receberia, então NÃO entra em `encargos`/`total` (custo empresa) — só reduz `liquido`.
+    const baseInss = tipo === 'complemento' ? bruto : integral;
+    const inss = decimoTipo(tipo).encargos ? calculoInss(baseInss, params?.inssFaixas) : 0;
+    const encargos = fgts;
 
     return {
         salario, insalubridade, mediaHe, base,
@@ -1277,15 +1308,16 @@ function calculo13(f, cargo, params, avos, opts) {
         jaPago,
         tipo,
         bruto,
-        // `encargos` = total (FGTS + outros) para quem só quer o número de baixo. `fgts` e
-        // `outrosEncargos` existem à parte para a memória de cálculo mostrar as duas origens
-        // sem o RH ter que refazer a conta.
+        // `encargos` = FGTS (único custo empresa que resta aqui — INSS não é custo empresa).
         fgts, fgtsPct: pctFgts,
-        outrosEncargos, encargosPct: pctEnc,
         encargos,
-        // Custo da empresa nesta parcela: o que sai de caixa + encargos (FGTS sempre, outros
-        // quando incidem).
-        total: Number((bruto + encargos).toFixed(2))
+        // INSS: desconto do empregado sobre o 13º, calculado por faixa (ver calculoInss).
+        inss,
+        // Custo da empresa nesta parcela: o que sai de caixa + FGTS. INSS não soma aqui —
+        // é retenção sobre o próprio `bruto`, não custo adicional.
+        total: Number((bruto + encargos).toFixed(2)),
+        // Valor que efetivamente chega ao funcionário nesta parcela.
+        liquido: Number((bruto - inss).toFixed(2))
     };
 }
 
@@ -1460,13 +1492,15 @@ function decimoDoMes(fid, mesKey, decimos) {
             id: d.id, tipo: d.tipo,
             valor: Number(d.bruto) || 0,
             encargos: Number(d.encargos) || 0,
+            inss: Number(d.inss) || 0,
             desc: `${decimoTipo(d.tipo).label} do 13º/${d.ano}${d.avos ? ` — ${d.avos}/12 avos` : ''}`,
             data: d.data
         }));
     return {
         itens,
         total: Number(itens.reduce((s, i) => s + i.valor, 0).toFixed(2)),
-        encargos: Number(itens.reduce((s, i) => s + i.encargos, 0).toFixed(2))
+        encargos: Number(itens.reduce((s, i) => s + i.encargos, 0).toFixed(2)),
+        inss: Number(itens.reduce((s, i) => s + i.inss, 0).toFixed(2))
     };
 }
 

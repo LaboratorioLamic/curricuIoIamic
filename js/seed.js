@@ -22,7 +22,7 @@ async function gerarDadosExemplo() {
     const params = (await DB.getObj(PATHS.parametros)) || {};
     await DB.set(PATHS.parametros, {
         fgtsPct: params.fgtsPct ?? 8,
-        encargosPct: params.encargosPct ?? 20,
+        inssFaixas: params.inssFaixas && params.inssFaixas.length ? params.inssFaixas : INSS_FAIXAS_PADRAO,
         diasExperiencia: params.diasExperiencia ?? 90,
         salarioMinimo: params.salarioMinimo || 1518,
         insalubridadeBase: params.insalubridadeBase || 'salario',
@@ -240,14 +240,16 @@ async function gerarDadosExemplo() {
             const linha = {};
             FOLHA_COLS.forEach(([k]) => linha[k] = 0);
             linha[FOLHA_DESC] = 0;
+            linha[FOLHA_INSS] = 0;
             if (cargo.tipo === 'Estágio') linha.bolsa = sal;
             else if (cargo.tipo === 'Diretoria') linha.prolabore = sal;
             else {
                 linha.salario = sal;
                 const base = (paramsNow.insalubridadeBase || 'salario') === 'minimo' ? (paramsNow.salarioMinimo || 0) : sal;
                 linha.insalubridade = Number(((cargo.insalubridade || 0) / 100 * base).toFixed(2));
-                const pctEncTotalSeed = (paramsNow.fgtsPct || 0) + (paramsNow.encargosPct || 0);
-                linha.encargos = Number(((sal + linha.insalubridade) * pctEncTotalSeed / 100).toFixed(2));
+                const baseEncSeed = sal + linha.insalubridade;
+                linha.encargos = Number((baseEncSeed * (paramsNow.fgtsPct || 0) / 100).toFixed(2));
+                linha[FOLHA_INSS] = calculoInss(baseEncSeed, paramsNow.inssFaixas);
             }
             // Hora extra não é semeada na folha: a coluna manual foi aposentada pelo banco de
             // horas. A HE dos dados de exemplo vem dos fechamentos/quitações e do Extra

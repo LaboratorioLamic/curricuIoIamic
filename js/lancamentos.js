@@ -477,8 +477,8 @@ function abrirDetalheLanc({ titulo, sub, badgeHtml, heroHtml, linhas, anexo, fun
                 ${badgeHtml ? `<div class="mt-8">${badgeHtml}</div>` : ''}
             </div>`,
         body: `
-            ${heroHtml || ''}
             <div class="detail-list">${rows}</div>
+            ${heroHtml || ''}
             ${anexos.length ? `<div class="detail-section"><div class="detail-label" style="margin-bottom:8px">Anexo${anexos.length > 1 ? 's' : ''}</div><div class="anexo-galeria" id="detAnexo"></div></div>` : ''}
             ${(onEdit || onDelete) && podeEditar ? `
             <div class="detail-actions">
@@ -518,6 +518,7 @@ function seloFeriasHtml(a) {
 function detalheAusencia(a, onDelete, onClose) {
     const emCurso = ausenciaVigente(a);
     const ferias = a.tipo === TIPO_FERIAS;
+    const c = a.calculo;
     abrirDetalheLanc({
         titulo: lancFuncNome(a.funcionarioId),
         funcionarioId: a.funcionarioId,
@@ -528,8 +529,26 @@ function detalheAusencia(a, onDelete, onClose) {
             ['Início', fmtDate(a.inicio)],
             ['Data do retorno', fmtDate(a.retorno)],
             [ferias ? 'Dias de férias' : 'Dias ausentes', `<strong>${fmtNum(a.dias)}</strong>`],
+            ...(ferias && a.abonoDias ? [['Abono pecuniário', `${fmtNum(a.abonoDias)} dia(s)`]] : []),
             ['Observação', escapeHtml(a.obs || '—')]
         ],
+        heroHtml: ferias && c && can('ver_financeiro') ? `
+            <div class="bx-calc">
+                <div class="bx-calc-tit">${icon('money')} Remuneração de férias</div>
+                <div class="bx-calc-grid">
+                    <span>Salário</span><strong>${fmtBRL(c.salario)}</strong>
+                    ${c.insalubridade ? `<span>+ Insalubridade</span><strong>${fmtBRL(c.insalubridade)}</strong>` : ''}
+                    ${c.mediaHe ? `<span>+ Média de HE</span><strong>${fmtBRL(c.mediaHe)}</strong>` : ''}
+                    <span>= Base</span><strong>${fmtBRL(c.base)}</strong>
+                    <span>÷ 30 <em class="bx-calc-nota">(divisor legal, art. 142)</em></span><strong>${fmtBRL(c.valorDia)}</strong>
+                    <span>× ${a.dias} dias de gozo</span><strong>${fmtBRL(c.gozo)}</strong>
+                    ${c.abono ? `<span>+ Abono de ${a.abonoDias} dias</span><strong>${fmtBRL(c.abono)}</strong>` : ''}
+                    <span>+ Terço constitucional <em class="bx-calc-nota">(${fmtPct(c.tercoPct, 2)})</em></span><strong>${fmtBRL(c.terco)}</strong>
+                </div>
+                <div class="bx-calc-total"><span>Férias (calc)</span><strong>${fmtBRL(c.total)}</strong></div>
+                ${c.adiantamento13 ? `<div class="bx-calc-total" style="border-top:0;padding-top:0"><span>13º adiantado <em class="bx-calc-nota">(coluna separada)</em></span><strong>${fmtBRL(c.adiantamento13)}</strong></div>` : ''}
+                <div class="qt-restante">${icon('info')} Caiu na folha de <strong>${mesLabel(mesDe(a.inicio))}</strong> — definida pelo início das férias (art. 145).</div>
+            </div>` : '',
         anexo: anexosDe(a),
         onEdit: () => formAusencia(a, ferias),
         onDelete: onDelete ? () => onDelete(a) : null,
@@ -1275,8 +1294,8 @@ function feriasAgenda(ferias) {
                                 }).join('')}
                                 ${prevista ? (() => {
                                     const b = barra(prevista.inicio, prevista.retorno);
-                                    return `<span class="gt-bar gt-prev" style="left:${b.left}%;width:${b.width}%"
-                                        title="${escapeHtml(`Previsto: ${fmtDate(prevista.inicio)} → ${fmtDate(prevista.retorno)}${sit ? ` — ${sit.desc}` : ''}`)}"
+                                    return `<span class="gt-bar gt-prev" data-fid="${f.id}" style="left:${b.left}%;width:${b.width}%;cursor:pointer"
+                                        title="${escapeHtml(`Previsto: ${fmtDate(prevista.inicio)} → ${fmtDate(prevista.retorno)}${sit ? ` — ${sit.desc}` : ''} · clique para lançar`)}"
                                         >${b.width > 6 ? `<span class="gt-txt">previsto</span>` : ''}</span>`;
                                 })() : ''}
                             </div>
@@ -1304,6 +1323,12 @@ function feriasAgenda(ferias) {
 
     box.querySelectorAll('.gt-bar[data-id]').forEach(b => {
         b.onclick = () => detalheAusencia(ferias.find(x => x.id === b.dataset.id), excluirFerias);
+    });
+    box.querySelectorAll('.gt-bar.gt-prev[data-fid]').forEach(b => {
+        b.onclick = () => {
+            const { f, prevista, sit } = linhasFunc.find(x => x.f.id === b.dataset.fid);
+            formAusencia({ funcionarioId: f.id, inicio: prevista.inicio, retorno: prevista.retorno, dias: prevista.dias }, true, sit);
+        };
     });
 }
 
@@ -1779,7 +1804,7 @@ async function renderLancFolha() {
             <div class="empty-state">
                 <div class="empty-icon">${icon('money')}</div>
                 <h3>Folha de ${MESES_FULL[mes]} ${ano} não gerada</h3>
-                <p>${eleg.length} funcionário(s) elegível(is). A grade nasce pré-preenchida com salário, insalubridade, encargos (${folhaState.params.encargosPct ?? 0}%), benefícios e coparticipação.</p>
+                <p>${eleg.length} funcionário(s) elegível(is). A grade nasce pré-preenchida com salário, insalubridade, encargos (FGTS ${folhaState.params.fgtsPct ?? 0}%), INSS por faixa, benefícios e coparticipação.</p>
                 ${podeEditar && eleg.length ? `<button class="btn btn-primary mt-16" id="lfGerar">${icon('plus')} Gerar folha do mês</button>` : ''}
             </div>`;
         bindNav();
@@ -1814,22 +1839,23 @@ async function renderLancFolha() {
     COLS_VIEW.splice(iPro + 1, 0,
         [FOLHA_FERIAS_CALC, FOLHA_COL_LABEL[FOLHA_FERIAS_CALC]],
         [FOLHA_DECIMO_CALC, FOLHA_COL_LABEL[FOLHA_DECIMO_CALC]]);
+    // INSS (desconto do empregado) entra logo depois de "Encargos" (FGTS, custo empresa):
+    // mesma família de coluna calculada/travada, mas natureza oposta — não soma no custo
+    // empresa, só reduz o líquido do funcionário (ver FOLHA_INSS em folha.js).
     // A HE do banco é exibida junto das demais, mas nunca vira <input>: a coluna é derivada
-    // dos fechamentos e do Extra Banco. Entra depois de "Encargos", onde ficava a hora extra
+    // dos fechamentos e do Extra Banco. Entra depois do INSS, onde ficava a hora extra
     // manual que ela substituiu. Desc. Atraso é a mesma arquitetura, mas em rubrica negativa
     // própria — entra logo ao lado.
     const iEnc = COLS_VIEW.findIndex(([k]) => k === 'encargos');
     COLS_VIEW.splice(iEnc + 1, 0,
+        [FOLHA_INSS, FOLHA_COL_LABEL[FOLHA_INSS]],
         [FOLHA_HE_BANCO, FOLHA_COL_LABEL[FOLHA_HE_BANCO]],
         [FOLHA_DESC_ATRASO, FOLHA_COL_LABEL[FOLHA_DESC_ATRASO]]);
     // Hora extra manual: aposentada pelo banco de horas, mas meses antigos podem ter valor.
     // Só entra na grade quando existe — e como leitura, nunca como <input>: reabrir a edição
     // recriaria a duplicidade que a aposentadoria resolveu.
     const temHeLegado = folhaTemHeManual(dados);
-    if (temHeLegado) COLS_VIEW.splice(iEnc + 3, 0, [FOLHA_HE_MANUAL, FOLHA_COL_LABEL[FOLHA_HE_MANUAL]]);
-    // Folha mensal soma FGTS + outros encargos numa coluna só (os dois parâmetros só se
-    // separam no 13º, onde o FGTS precisa incidir mesmo na 1ª parcela — ver config.js).
-    const encPct = (Number(folhaState.params.fgtsPct) || 0) + (Number(folhaState.params.encargosPct) || 0);
+    if (temHeLegado) COLS_VIEW.splice(iEnc + 4, 0, [FOLHA_HE_MANUAL, FOLHA_COL_LABEL[FOLHA_HE_MANUAL]]);
     const custoEmpresa = () => idsVis.reduce((s, i) => s + totalLinha(dados[i]), 0);
     const filtrado = folhaFiltroUnidade || folhaFiltroCargo;
     // Insalubridade: grau do cargo × base configurada — mesma regra de prefillLinha (folha.js),
@@ -1908,7 +1934,11 @@ async function renderLancFolha() {
                                     : (Number(linha[k]) ? fmtBRL(linha[k]) : '<span class="muted">—</span>')}</td>`
                                 : k === 'encargos'
                                 ? `<td class="num col-${k}" data-col-c="${k}">
-                                    <span class="folha-legado" title="Calculado automaticamente: FGTS + outros encargos sobre salário e insalubridade. Não editável."><span data-encargos-val>${fmtBRL(linha[k])}</span><button type="button" class="btn-icon btn-icon-sm" data-encargos-info="${id}">${icon('info')}</button></span>
+                                    <span class="folha-legado" title="Calculado automaticamente: FGTS sobre salário e insalubridade. Custo da empresa. Não editável."><span data-encargos-val>${fmtBRL(linha[k])}</span><button type="button" class="btn-icon btn-icon-sm" data-encargos-info="${id}">${icon('info')}</button></span>
+                                   </td>`
+                                : k === FOLHA_INSS
+                                ? `<td class="num col-${k}" data-col-c="${k}">
+                                    <span class="folha-legado" title="Calculado automaticamente: INSS por faixa progressiva sobre salário e insalubridade. Desconto do empregado — não editável."><span data-inss-val>${fmtBRL(linha[k])}</span><button type="button" class="btn-icon btn-icon-sm" data-inss-info="${id}">${icon('info')}</button></span>
                                    </td>`
                                 : k === 'insalubridade'
                                 ? `<td class="num col-${k}" data-col-c="${k}">
@@ -1928,7 +1958,7 @@ async function renderLancFolha() {
                 </table>
             </div>
         </div>
-        <p class="muted" style="margin-top:10px;font-size:12px">Pré-preenchido pelos cadastros; edite as células liberadas — salvamento automático. Insalubridade e Encargos (${encPct}%) são só calculados — não editáveis — e recalculam sozinhos ao alterar o salário; clique no ícone ${icon('info')} para ver a memória de cálculo. "Benefícios" e "Desconto benef." (coparticipação, abate do custo da empresa) vêm do cadastro de benefícios da folha; clique no cadeado ${icon('lock')} para editar manualmente uma célula, ou use "Resetar linha" para recalcular pelo cadastro atual.</p>`;
+        <p class="muted" style="margin-top:10px;font-size:12px">Pré-preenchido pelos cadastros; edite as células liberadas — salvamento automático. Insalubridade, Encargos (FGTS ${fmtPct(folhaState.params.fgtsPct ?? 0, 1)}) e INSS (desconto do empregado, por faixa) são só calculados — não editáveis — e recalculam sozinhos ao alterar o salário; clique no ícone ${icon('info')} para ver a memória de cálculo. "Benefícios" e "Desconto benef." (coparticipação, abate do custo da empresa) vêm do cadastro de benefícios da folha; clique no cadeado ${icon('lock')} para editar manualmente uma célula, ou use "Resetar linha" para recalcular pelo cadastro atual.</p>`;
     bindNav();
     bindAvatarFotos(cont);
     folhaBindFiltros('lfFiltroUni', 'lfFiltroCargo', renderLancTab);
@@ -2090,9 +2120,9 @@ async function renderLancFolha() {
         };
     });
 
-    // Memória de cálculo dos encargos: base (salário + insalubridade) × FGTS% e ×
-    // outros encargos%. Só existe pra explicar o número — a coluna não é editável,
-    // ela sempre segue automaticamente a base quando salário/insalubridade mudam.
+    // Memória de cálculo dos encargos: base (salário + insalubridade) × FGTS%. Só existe
+    // pra explicar o número — a coluna não é editável, ela sempre segue automaticamente a
+    // base quando salário/insalubridade mudam.
     cont.querySelectorAll('[data-encargos-info]').forEach(btn => {
         btn.onclick = () => {
             const fid = btn.dataset.encargosInfo;
@@ -2100,16 +2130,14 @@ async function renderLancFolha() {
             const linha = dados[fid];
             const base = (Number(linha.salario) || 0) + (Number(linha.insalubridade) || 0);
             const fgtsPct = Number(folhaState.params.fgtsPct) || 0;
-            const outrosPct = Number(folhaState.params.encargosPct) || 0;
             const fgtsVal = Number((base * fgtsPct / 100).toFixed(2));
-            const outrosVal = Number((base * outrosPct / 100).toFixed(2));
             openModal({
-                title: `Encargos — ${f?.nome || ''}`,
+                title: `Encargos (FGTS) — ${f?.nome || ''}`,
                 body: `
                     <p class="muted" style="font-size:12px;margin-bottom:14px">
-                        Calculado automaticamente sobre salário + insalubridade. Não é editável aqui:
-                        os percentuais ficam em Configurações → Parâmetros, e o valor se atualiza
-                        sozinho quando salário ou insalubridade mudam nesta linha.
+                        Calculado automaticamente sobre salário + insalubridade. Custo da empresa —
+                        não é editável aqui: o percentual fica em Configurações → Parâmetros, e o
+                        valor se atualiza sozinho quando salário ou insalubridade mudam nesta linha.
                     </p>
                     <div class="he-origem-lista">
                         <div class="he-origem-row">
@@ -2123,22 +2151,72 @@ async function renderLancFolha() {
                             <span class="he-origem-ico is-fech">${icon('lock')}</span>
                             <div class="grow">
                                 <strong>FGTS (${fgtsPct}%)</strong>
-                                <div class="muted">Incide sobre a base, sempre</div>
+                                <div class="muted">Incide sobre a base, sempre. Custo da empresa.</div>
                             </div>
                             <strong class="num">${fmtBRL(fgtsVal)}</strong>
-                        </div>
-                        <div class="he-origem-row">
-                            <span class="he-origem-ico is-extra">${icon('percent')}</span>
-                            <div class="grow">
-                                <strong>Outros encargos (${outrosPct}%)</strong>
-                                <div class="muted">INSS e demais encargos patronais</div>
-                            </div>
-                            <strong class="num">${fmtBRL(outrosVal)}</strong>
                         </div>
                     </div>
                     <div class="he-origem-total">
                         <span>Total (encargos)</span>
-                        <strong>${fmtBRL(fgtsVal + outrosVal)}</strong>
+                        <strong>${fmtBRL(fgtsVal)}</strong>
+                    </div>`,
+                footer: ''
+            });
+        };
+    });
+
+    // Memória de cálculo do INSS: base (salário + insalubridade) dividida em fatias pelas
+    // faixas configuradas, cada fatia com a alíquota da sua própria faixa. Desconto do
+    // empregado — não é custo da empresa, por isso vem separado dos Encargos (FGTS) acima.
+    cont.querySelectorAll('[data-inss-info]').forEach(btn => {
+        btn.onclick = () => {
+            const fid = btn.dataset.inssInfo;
+            const f = folhaState.funcionarios.find(x => x.id === fid);
+            const linha = dados[fid];
+            const base = (Number(linha.salario) || 0) + (Number(linha.insalubridade) || 0);
+            const faixas = (folhaState.params.inssFaixas && folhaState.params.inssFaixas.length
+                ? folhaState.params.inssFaixas : INSS_FAIXAS_PADRAO).slice().sort((a, b) => a.ate - b.ate);
+            let restante = base, anterior = 0;
+            const fatias = [];
+            faixas.forEach(faixa => {
+                if (restante <= 0) return;
+                const largura = faixa.ate - anterior;
+                const nesta = Math.min(restante, largura);
+                if (nesta > 0) fatias.push({ de: anterior, ate: faixa.ate, aliquota: faixa.aliquota, base: nesta, valor: Number((nesta * faixa.aliquota / 100).toFixed(2)) });
+                restante -= nesta;
+                anterior = faixa.ate;
+            });
+            const total = Number(fatias.reduce((s, f) => s + f.valor, 0).toFixed(2));
+            openModal({
+                title: `INSS — ${f?.nome || ''}`,
+                body: `
+                    <p class="muted" style="font-size:12px;margin-bottom:14px">
+                        Calculado automaticamente sobre salário + insalubridade, por faixa progressiva.
+                        Desconto do empregado — não é custo da empresa. As faixas ficam em
+                        Configurações → Parâmetros.
+                    </p>
+                    <div class="he-origem-lista">
+                        <div class="he-origem-row">
+                            <div class="grow">
+                                <strong>Base de cálculo</strong>
+                                <div class="muted">Salário + insalubridade</div>
+                            </div>
+                            <strong class="num">${fmtBRL(base)}</strong>
+                        </div>
+                        ${fatias.map(f => `
+                        <div class="he-origem-row">
+                            <span class="he-origem-ico is-extra">${icon('percent')}</span>
+                            <div class="grow">
+                                <strong>${fmtBRL(f.de)} a ${fmtBRL(f.ate)} (${fmtPct(f.aliquota, 2)})</strong>
+                                <div class="muted">Fatia de ${fmtBRL(f.base)}</div>
+                            </div>
+                            <strong class="num">${fmtBRL(f.valor)}</strong>
+                        </div>`).join('')}
+                        ${!fatias.length ? `<div class="he-origem-row"><div class="grow muted">Sem faixas aplicáveis à base.</div></div>` : ''}
+                    </div>
+                    <div class="he-origem-total">
+                        <span>Total (INSS)</span>
+                        <strong>−${fmtBRL(total)}</strong>
                     </div>`,
                 footer: ''
             });
@@ -2256,17 +2334,29 @@ async function renderLancFolha() {
                             setTimeout(() => insalValEl.classList.remove('cell-flash'), 600);
                         }
                     }
-                    // Recalcula encargos automaticamente quando a base (salário) muda
-                    if (inp.dataset.col === 'salario' && encPct > 0) {
+                    // Recalcula encargos (FGTS) e INSS automaticamente quando a base (salário) muda
+                    if (inp.dataset.col === 'salario') {
                         const base = (Number(dados[fid].salario) || 0) + (Number(dados[fid].insalubridade) || 0);
-                        const enc = Number((base * encPct / 100).toFixed(2));
-                        dados[fid].encargos = enc;
-                        patch.encargos = enc;
-                        const encVal = tr.querySelector('.col-encargos [data-encargos-val]');
-                        if (encVal) {
-                            encVal.textContent = fmtBRL(enc);
-                            encVal.classList.add('cell-flash');
-                            setTimeout(() => encVal.classList.remove('cell-flash'), 600);
+                        const fgtsPct = Number(folhaState.params.fgtsPct) || 0;
+                        if (fgtsPct > 0) {
+                            const enc = Number((base * fgtsPct / 100).toFixed(2));
+                            dados[fid].encargos = enc;
+                            patch.encargos = enc;
+                            const encVal = tr.querySelector('.col-encargos [data-encargos-val]');
+                            if (encVal) {
+                                encVal.textContent = fmtBRL(enc);
+                                encVal.classList.add('cell-flash');
+                                setTimeout(() => encVal.classList.remove('cell-flash'), 600);
+                            }
+                        }
+                        const inss = calculoInss(base, folhaState.params.inssFaixas);
+                        dados[fid][FOLHA_INSS] = inss;
+                        patch[FOLHA_INSS] = inss;
+                        const inssVal = tr.querySelector(`.col-${FOLHA_INSS} [data-inss-val]`);
+                        if (inssVal) {
+                            inssVal.textContent = fmtBRL(inss);
+                            inssVal.classList.add('cell-flash');
+                            setTimeout(() => inssVal.classList.remove('cell-flash'), 600);
                         }
                     }
                     await DB.save(`${PATHS.folha}/${key}`, fid, patch);

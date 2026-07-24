@@ -422,9 +422,10 @@ async function fdPagamentos(f, box) {
         .map(mk => {
             const linha = folhaComHeBanco({ [f.id]: folhaAll[mk][f.id] }, mk, bhFechamentos, extras, bhQuitacoes, ctx)[f.id];
             const total = totalLinha(linha);
-            // Mesma conta simplificada de detalheFolhaMes: custo total menos Encargos (FGTS +
-            // INSS patronal), que é custo da empresa e nunca passa pelo bolso do funcionário.
-            const liquido = total - (Number(linha.encargos) || 0);
+            // Líquido real: custo total menos o INSS do empregado (ver liquidoLinha em
+            // folha.js). Encargos (FGTS) já não entra aqui — é custo da empresa, nunca passa
+            // pelo bolso do funcionário, então já está fora do que se chama de líquido.
+            const liquido = liquidoLinha(linha);
             return { mk, linha, total, liquido };
         });
 
@@ -548,13 +549,13 @@ function detalheFolhaMes(f, item) {
     ].filter(([, v]) => v);
     const desconto = descontoEfetivoLinha(l);
 
-    // Custo líquido: o que chega às mãos do funcionário — o custo total MENOS os Encargos
-    // (FGTS + INSS patronal), que são custo da empresa e nunca passam pelo bolso dele.
-    // Simplificado: o sistema não lança INSS/IRRF do funcionário (retenções na fonte), então
-    // isto não é o líquido do holerite — é "quanto do custo da empresa virou pagamento",
-    // por isso o aviso explícito abaixo do valor.
-    const encargos = Number(l.encargos) || 0;
-    const liquido = item.total - encargos;
+    // Valor líquido: o que chega às mãos do funcionário — o custo total MENOS o INSS
+    // (desconto do empregado, por faixa). Encargos (FGTS) fica de fora: é custo da empresa,
+    // nunca passa pelo bolso dele, então já não compõe o "total" na perspectiva do
+    // funcionário. IRRF não é lançado pelo sistema, então este ainda não é o líquido exato
+    // do holerite — só falta essa retenção.
+    const inss = Number(l[FOLHA_INSS]) || 0;
+    const liquido = item.total - inss;
 
     const m = openModal({
         title: `Custo de ${mesLabel(item.mk)} — ${f.nome}`,
@@ -569,15 +570,15 @@ function detalheFolhaMes(f, item) {
                 <div class="bx-calc-total"><span>Custo total (empresa)</span><strong>${fmtBRL(item.total)}</strong></div>
             </div>
             <div class="bx-calc">
-                <div class="bx-calc-tit">${icon('money')} Custo líquido</div>
+                <div class="bx-calc-tit">${icon('money')} Valor líquido</div>
                 <div class="bx-calc-grid">
                     <span>Custo total</span><strong>${fmtBRL(item.total)}</strong>
-                    ${encargos ? `<span>− Encargos (FGTS + INSS patronal)</span><strong>−${fmtBRL(encargos)}</strong>` : ''}
+                    ${inss ? `<span>− INSS <em class="bx-calc-nota">(desconto do empregado, por faixa)</em></span><strong>−${fmtBRL(inss)}</strong>` : ''}
                 </div>
-                <div class="bx-calc-total"><span>Custo líquido</span><strong>${fmtBRL(liquido)}</strong></div>
+                <div class="bx-calc-total"><span>Valor líquido</span><strong>${fmtBRL(liquido)}</strong></div>
                 <p class="muted" style="font-size:11px;margin-top:8px">
-                    O que chega às mãos do funcionário, sem os encargos que são custo da empresa e nunca passam pelo bolso dele.
-                    Não desconta INSS/IRRF do funcionário — o sistema não lança as retenções na fonte, então este não é o líquido exato do holerite.
+                    O que chega às mãos do funcionário, já descontado o INSS. Não desconta IRRF —
+                    o sistema não lança essa retenção, então este ainda não é o líquido exato do holerite.
                 </p>
             </div>`,
         footer: `<button class="btn btn-secondary" data-cancel>Fechar</button>`
