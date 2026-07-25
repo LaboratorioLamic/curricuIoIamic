@@ -1049,6 +1049,7 @@ function formQuitacaoBh(f, sit) {
             <div class="bx-calc-grid">
                 <span>Salário base</span><strong>${fmtBRL(c.salario)}</strong>
                 ${c.insalubridade ? `<span>+ Insalubridade</span><strong>${fmtBRL(c.insalubridade)}</strong>` : ''}
+                ${c.periculosidade ? `<span>+ Periculosidade</span><strong>${fmtBRL(c.periculosidade)}</strong>` : ''}
                 <span>= Base de cálculo</span><strong>${fmtBRL(c.base)}</strong>
                 <span>÷ Jornada mensal${f.jornadaMensal ? '' : ' <em class="bx-calc-nota">(padrão)</em>'}</span><strong>${c.jornadaMes} h</strong>
                 <span>= Valor da hora</span><strong>${fmtBRL(c.valorHora)}</strong>
@@ -1130,7 +1131,7 @@ function formQuitacaoBh(f, sit) {
                 valorSugerido: r.c ? r.c.total : 0,
                 data,
                 // Congelado, como no fechamento: promoção posterior não reescreve o que foi pago.
-                calculo: r.c ? { salario: r.c.salario, insalubridade: r.c.insalubridade, base: r.c.base, valorHora: r.c.valorHora, jornadaMes: r.c.jornadaMes } : null,
+                calculo: r.c ? { salario: r.c.salario, insalubridade: r.c.insalubridade, periculosidade: r.c.periculosidade, base: r.c.base, valorHora: r.c.valorHora, jornadaMes: r.c.jornadaMes } : null,
                 obs: m.body.querySelector('#qtObs').value.trim(),
                 anexos
             });
@@ -1221,6 +1222,7 @@ function detalheQuitacao(q) {
                 <div class="bx-calc-grid">
                     <span>Salário base</span><strong>${fmtBRL(c.salario)}</strong>
                     ${c.insalubridade ? `<span>+ Insalubridade</span><strong>${fmtBRL(c.insalubridade)}</strong>` : ''}
+                    ${c.periculosidade ? `<span>+ Periculosidade</span><strong>${fmtBRL(c.periculosidade)}</strong>` : ''}
                     <span>= Base de cálculo</span><strong>${fmtBRL(c.base)}</strong>
                     <span>÷ Jornada mensal</span><strong>${c.jornadaMes} h</strong>
                     <span>= Valor da hora</span><strong>${fmtBRL(c.valorHora)}</strong>
@@ -1607,6 +1609,7 @@ function formExtraBanco(x) {
             <div class="bx-calc-grid">
                 <span>Salário base</span><strong>${fmtBRL(c.salario)}</strong>
                 ${c.insalubridade ? `<span>+ Insalubridade</span><strong>${fmtBRL(c.insalubridade)}</strong>` : ''}
+                ${c.periculosidade ? `<span>+ Periculosidade</span><strong>${fmtBRL(c.periculosidade)}</strong>` : ''}
                 <span>= Base de cálculo</span><strong>${fmtBRL(c.base)}</strong>
                 <span>÷ Jornada mensal${f.jornadaMensal ? '' : ' <em class="bx-calc-nota">(padrão)</em>'}</span><strong>${c.jornadaMes} h</strong>
                 <span>= Valor da hora</span><strong>${fmtBRL(c.valorHora)}</strong>
@@ -1673,7 +1676,7 @@ function formExtraBanco(x) {
                 valor: c.total,
                 // Memória de cálculo congelada: o salário muda com promoção, e um valor
                 // recalculado depois divergiria do que foi efetivamente pago.
-                calculo: { salario: c.salario, insalubridade: c.insalubridade, base: c.base, valorHora: c.valorHora, jornadaMes: c.jornadaMes },
+                calculo: { salario: c.salario, insalubridade: c.insalubridade, periculosidade: c.periculosidade, base: c.base, valorHora: c.valorHora, jornadaMes: c.jornadaMes },
                 obs: el('#bxObs').value.trim()
             });
             toast(isEdit ? 'Hora extra atualizada.' : `Hora extra lançada — ${fmtBRL(c.total)} na folha de ${mesLabel(mesRef)}.`);
@@ -1854,7 +1857,7 @@ function formFechamentoBh(f, sit) {
                 data,
                 // Memória congelada: promoção depois do fechamento mudaria o salário e um
                 // valor recalculado divergiria do que foi pago. O que aconteceu, aconteceu.
-                calculo: calc ? { salario: calc.salario, insalubridade: calc.insalubridade, base: calc.base, valorHora: calc.valorHora, jornadaMes: calc.jornadaMes, adicionalPct: bhParams.adicionalPct } : null,
+                calculo: calc ? { salario: calc.salario, insalubridade: calc.insalubridade, periculosidade: calc.periculosidade, base: calc.base, valorHora: calc.valorHora, jornadaMes: calc.jornadaMes, adicionalPct: bhParams.adicionalPct } : null,
                 obs: m.body.querySelector('#bfObs').value.trim(),
                 anexos
             });

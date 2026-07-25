@@ -372,7 +372,8 @@ function fdInformacoes(f, cont) {
             ['Admissão', fmtDate(f.admissao)],
             ['Demissão', f.demissao ? fmtDate(f.demissao) : '—'],
             ['Tempo de empresa', tempoEmpresa(f.admissao, f.demissao)],
-            ...(cargo?.insalubridade ? [['Insalubridade', `Grau ${cargo.insalubridade}%`]] : [])
+            ...(cargo?.insalubridade ? [['Insalubridade', `Grau ${cargo.insalubridade}%`]] : []),
+            ...(cargo?.periculosidade ? [['Periculosidade', `${PERICULOSIDADE_PCT}%`]] : [])
         ]}
     ];
     if (fin) secoes.push({ titulo: 'Financeiro', icon: 'money', itens: [
@@ -671,6 +672,7 @@ async function fdDecimo13(f, box) {
                     <div class="bx-calc-grid">
                         <span>Salário</span><strong>${fmtBRL(s.salario)}</strong>
                         ${s.insalubridade ? `<span>+ Insalubridade</span><strong>${fmtBRL(s.insalubridade)}</strong>` : ''}
+                        ${s.periculosidade ? `<span>+ Periculosidade</span><strong>${fmtBRL(s.periculosidade)}</strong>` : ''}
                         ${s.mediaHe ? `<span>+ Média de HE</span><strong>${fmtBRL(s.mediaHe)}</strong>` : ''}
                         <span>= Base</span><strong>${fmtBRL(s.base)}</strong>
                         ${s.adiantamentoFerias ? `<span>− Adiantado nas férias</span><strong>−${fmtBRL(s.adiantamentoFerias)}</strong>` : ''}

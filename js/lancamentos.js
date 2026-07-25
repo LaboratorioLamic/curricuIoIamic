@@ -538,6 +538,7 @@ function detalheAusencia(a, onDelete, onClose) {
                 <div class="bx-calc-grid">
                     <span>Salário</span><strong>${fmtBRL(c.salario)}</strong>
                     ${c.insalubridade ? `<span>+ Insalubridade</span><strong>${fmtBRL(c.insalubridade)}</strong>` : ''}
+                    ${c.periculosidade ? `<span>+ Periculosidade</span><strong>${fmtBRL(c.periculosidade)}</strong>` : ''}
                     ${c.mediaHe ? `<span>+ Média de HE</span><strong>${fmtBRL(c.mediaHe)}</strong>` : ''}
                     <span>= Base</span><strong>${fmtBRL(c.base)}</strong>
                     <span>÷ 30 <em class="bx-calc-nota">(divisor legal, art. 142)</em></span><strong>${fmtBRL(c.valorDia)}</strong>
@@ -784,7 +785,7 @@ function formAusencia(a, modoFerias, sugerido) {
                     // Memória congelada, como no fechamento do banco: promoção posterior não
                     // reescreve o que já foi pago. O recibo saiu com estes números.
                     calculo: cf ? {
-                        salario: cf.salario, insalubridade: cf.insalubridade, mediaHe: cf.mediaHe,
+                        salario: cf.salario, insalubridade: cf.insalubridade, periculosidade: cf.periculosidade, mediaHe: cf.mediaHe,
                         base: cf.base, valorDia: cf.valorDia, gozo: cf.gozo, abono: cf.abono,
                         terco: cf.terco, tercoPct: cf.tercoPct,
                         adiantamento13: cf.adiantamento13, total: cf.total
@@ -1804,7 +1805,7 @@ async function renderLancFolha() {
             <div class="empty-state">
                 <div class="empty-icon">${icon('money')}</div>
                 <h3>Folha de ${MESES_FULL[mes]} ${ano} não gerada</h3>
-                <p>${eleg.length} funcionário(s) elegível(is). A grade nasce pré-preenchida com salário, insalubridade, encargos (FGTS ${folhaState.params.fgtsPct ?? 0}%), INSS por faixa, benefícios e coparticipação.</p>
+                <p>${eleg.length} funcionário(s) elegível(is). A grade nasce pré-preenchida com salário, insalubridade, periculosidade, encargos (FGTS ${folhaState.params.fgtsPct ?? 0}%), INSS por faixa, benefícios e coparticipação.</p>
                 ${podeEditar && eleg.length ? `<button class="btn btn-primary mt-16" id="lfGerar">${icon('plus')} Gerar folha do mês</button>` : ''}
             </div>`;
         bindNav();
@@ -1864,9 +1865,14 @@ async function renderLancFolha() {
         const f = folhaState.funcionarios.find(x => x.id === fid);
         const cargo = folhaState.cargos.find(c => c.id === f?.cargoId);
         const salBase = Number(dados[fid].salario) || 0;
-        const base = (folhaState.params.insalubridadeBase || 'salario') === 'minimo'
-            ? (Number(folhaState.params.salarioMinimo) || 0) : salBase;
-        return Number(((Number(cargo?.insalubridade) || 0) / 100 * base).toFixed(2));
+        return calculoInsalubridade(cargo, folhaState.params, salBase);
+    };
+    // Periculosidade: 30% fixo sobre o salário total da linha — nunca sobre o mínimo.
+    const calcPericulosidade = fid => {
+        const f = folhaState.funcionarios.find(x => x.id === fid);
+        const cargo = folhaState.cargos.find(c => c.id === f?.cargoId);
+        const salBase = Number(dados[fid].salario) || 0;
+        return calculoPericulosidade(cargo, salBase);
     };
 
     cont.innerHTML = `
@@ -1934,15 +1940,19 @@ async function renderLancFolha() {
                                     : (Number(linha[k]) ? fmtBRL(linha[k]) : '<span class="muted">—</span>')}</td>`
                                 : k === 'encargos'
                                 ? `<td class="num col-${k}" data-col-c="${k}">
-                                    <span class="folha-legado" title="Calculado automaticamente: FGTS sobre salário e insalubridade. Custo da empresa. Não editável."><span data-encargos-val>${fmtBRL(linha[k])}</span><button type="button" class="btn-icon btn-icon-sm" data-encargos-info="${id}">${icon('info')}</button></span>
+                                    <span class="folha-legado" title="Calculado automaticamente: FGTS sobre salário, insalubridade e periculosidade. Custo da empresa. Não editável."><span data-encargos-val>${fmtBRL(linha[k])}</span><button type="button" class="btn-icon btn-icon-sm" data-encargos-info="${id}">${icon('info')}</button></span>
                                    </td>`
                                 : k === FOLHA_INSS
                                 ? `<td class="num col-${k}" data-col-c="${k}">
-                                    <span class="folha-legado" title="Calculado automaticamente: INSS por faixa progressiva sobre salário e insalubridade. Desconto do empregado — não editável."><span data-inss-val>${fmtBRL(linha[k])}</span><button type="button" class="btn-icon btn-icon-sm" data-inss-info="${id}">${icon('info')}</button></span>
+                                    <span class="folha-legado" title="Calculado automaticamente: INSS por faixa progressiva sobre salário, insalubridade e periculosidade. Desconto do empregado — não editável."><span data-inss-val>${fmtBRL(linha[k])}</span><button type="button" class="btn-icon btn-icon-sm" data-inss-info="${id}">${icon('info')}</button></span>
                                    </td>`
                                 : k === 'insalubridade'
                                 ? `<td class="num col-${k}" data-col-c="${k}">
                                     <span class="folha-legado" title="Calculado automaticamente: grau de insalubridade do cargo × base configurada. Não editável."><span data-insal-val>${fmtBRL(linha[k])}</span><button type="button" class="btn-icon btn-icon-sm" data-insal-info="${id}">${icon('info')}</button></span>
+                                   </td>`
+                                : k === 'periculosidade'
+                                ? `<td class="num col-${k}" data-col-c="${k}">
+                                    <span class="folha-legado" title="Calculado automaticamente: ${PERICULOSIDADE_PCT}% fixo sobre o salário total, quando o cargo é marcado como perigoso. Não editável."><span data-pericul-val>${fmtBRL(linha[k])}</span><button type="button" class="btn-icon btn-icon-sm" data-pericul-info="${id}">${icon('info')}</button></span>
                                    </td>`
                                 : `<td class="num col-${k}" data-col-c="${k}">${podeEditar
                                 ? `<input class="input folha-cell" data-col="${k}" type="number" min="0" step="0.01" value="${Number(linha[k]) || 0}">`
@@ -1958,7 +1968,7 @@ async function renderLancFolha() {
                 </table>
             </div>
         </div>
-        <p class="muted" style="margin-top:10px;font-size:12px">Pré-preenchido pelos cadastros; edite as células liberadas — salvamento automático. Insalubridade, Encargos (FGTS ${fmtPct(folhaState.params.fgtsPct ?? 0, 1)}) e INSS (desconto do empregado, por faixa) são só calculados — não editáveis — e recalculam sozinhos ao alterar o salário; clique no ícone ${icon('info')} para ver a memória de cálculo. "Benefícios" e "Desconto benef." (coparticipação, abate do custo da empresa) vêm do cadastro de benefícios da folha; clique no cadeado ${icon('lock')} para editar manualmente uma célula, ou use "Resetar linha" para recalcular pelo cadastro atual.</p>`;
+        <p class="muted" style="margin-top:10px;font-size:12px">Pré-preenchido pelos cadastros; edite as células liberadas — salvamento automático. Insalubridade, Periculosidade, Encargos (FGTS ${fmtPct(folhaState.params.fgtsPct ?? 0, 1)}) e INSS (desconto do empregado, por faixa) são só calculados — não editáveis — e recalculam sozinhos ao alterar o salário; clique no ícone ${icon('info')} para ver a memória de cálculo. "Benefícios" e "Desconto benef." (coparticipação, abate do custo da empresa) vêm do cadastro de benefícios da folha; clique no cadeado ${icon('lock')} para editar manualmente uma célula, ou use "Resetar linha" para recalcular pelo cadastro atual.</p>`;
     bindNav();
     bindAvatarFotos(cont);
     folhaBindFiltros('lfFiltroUni', 'lfFiltroCargo', renderLancTab);
@@ -2120,30 +2130,31 @@ async function renderLancFolha() {
         };
     });
 
-    // Memória de cálculo dos encargos: base (salário + insalubridade) × FGTS%. Só existe
-    // pra explicar o número — a coluna não é editável, ela sempre segue automaticamente a
-    // base quando salário/insalubridade mudam.
+    // Memória de cálculo dos encargos: base (salário + insalubridade + periculosidade) × FGTS%.
+    // Só existe pra explicar o número — a coluna não é editável, ela sempre segue
+    // automaticamente a base quando salário/insalubridade/periculosidade mudam.
     cont.querySelectorAll('[data-encargos-info]').forEach(btn => {
         btn.onclick = () => {
             const fid = btn.dataset.encargosInfo;
             const f = folhaState.funcionarios.find(x => x.id === fid);
             const linha = dados[fid];
-            const base = (Number(linha.salario) || 0) + (Number(linha.insalubridade) || 0);
+            const base = (Number(linha.salario) || 0) + (Number(linha.insalubridade) || 0) + (Number(linha.periculosidade) || 0);
             const fgtsPct = Number(folhaState.params.fgtsPct) || 0;
             const fgtsVal = Number((base * fgtsPct / 100).toFixed(2));
             openModal({
                 title: `Encargos (FGTS) — ${f?.nome || ''}`,
                 body: `
                     <p class="muted" style="font-size:12px;margin-bottom:14px">
-                        Calculado automaticamente sobre salário + insalubridade. Custo da empresa —
-                        não é editável aqui: o percentual fica em Configurações → Parâmetros, e o
-                        valor se atualiza sozinho quando salário ou insalubridade mudam nesta linha.
+                        Calculado automaticamente sobre salário + insalubridade + periculosidade. Custo
+                        da empresa — não é editável aqui: o percentual fica em Configurações →
+                        Parâmetros, e o valor se atualiza sozinho quando salário, insalubridade ou
+                        periculosidade mudam nesta linha.
                     </p>
                     <div class="he-origem-lista">
                         <div class="he-origem-row">
                             <div class="grow">
                                 <strong>Base de cálculo</strong>
-                                <div class="muted">Salário + insalubridade</div>
+                                <div class="muted">Salário + insalubridade + periculosidade</div>
                             </div>
                             <strong class="num">${fmtBRL(base)}</strong>
                         </div>
@@ -2165,15 +2176,16 @@ async function renderLancFolha() {
         };
     });
 
-    // Memória de cálculo do INSS: base (salário + insalubridade) dividida em fatias pelas
-    // faixas configuradas, cada fatia com a alíquota da sua própria faixa. Desconto do
-    // empregado — não é custo da empresa, por isso vem separado dos Encargos (FGTS) acima.
+    // Memória de cálculo do INSS: base (salário + insalubridade + periculosidade) dividida em
+    // fatias pelas faixas configuradas, cada fatia com a alíquota da sua própria faixa.
+    // Desconto do empregado — não é custo da empresa, por isso vem separado dos Encargos
+    // (FGTS) acima.
     cont.querySelectorAll('[data-inss-info]').forEach(btn => {
         btn.onclick = () => {
             const fid = btn.dataset.inssInfo;
             const f = folhaState.funcionarios.find(x => x.id === fid);
             const linha = dados[fid];
-            const base = (Number(linha.salario) || 0) + (Number(linha.insalubridade) || 0);
+            const base = (Number(linha.salario) || 0) + (Number(linha.insalubridade) || 0) + (Number(linha.periculosidade) || 0);
             const faixas = (folhaState.params.inssFaixas && folhaState.params.inssFaixas.length
                 ? folhaState.params.inssFaixas : INSS_FAIXAS_PADRAO).slice().sort((a, b) => a.ate - b.ate);
             let restante = base, anterior = 0;
@@ -2191,15 +2203,15 @@ async function renderLancFolha() {
                 title: `INSS — ${f?.nome || ''}`,
                 body: `
                     <p class="muted" style="font-size:12px;margin-bottom:14px">
-                        Calculado automaticamente sobre salário + insalubridade, por faixa progressiva.
-                        Desconto do empregado — não é custo da empresa. As faixas ficam em
-                        Configurações → Parâmetros.
+                        Calculado automaticamente sobre salário + insalubridade + periculosidade, por
+                        faixa progressiva. Desconto do empregado — não é custo da empresa. As faixas
+                        ficam em Configurações → Parâmetros.
                     </p>
                     <div class="he-origem-lista">
                         <div class="he-origem-row">
                             <div class="grow">
                                 <strong>Base de cálculo</strong>
-                                <div class="muted">Salário + insalubridade</div>
+                                <div class="muted">Salário + insalubridade + periculosidade</div>
                             </div>
                             <strong class="num">${fmtBRL(base)}</strong>
                         </div>
@@ -2268,6 +2280,50 @@ async function renderLancFolha() {
         };
     });
 
+    // Memória de cálculo da periculosidade: 30% fixo (art. 193 CLT) sobre o salário total da
+    // linha — nunca sobre o mínimo, ao contrário da insalubridade. Só existe pra explicar o
+    // número — não é editável, recalcula sozinha quando o salário muda.
+    cont.querySelectorAll('[data-pericul-info]').forEach(btn => {
+        btn.onclick = () => {
+            const fid = btn.dataset.periculInfo;
+            const f = folhaState.funcionarios.find(x => x.id === fid);
+            const cargo = folhaState.cargos.find(c => c.id === f?.cargoId);
+            const base = Number(dados[fid].salario) || 0;
+            const valor = Number((base * PERICULOSIDADE_PCT / 100).toFixed(2));
+            openModal({
+                title: `Periculosidade — ${f?.nome || ''}`,
+                body: `
+                    <p class="muted" style="font-size:12px;margin-bottom:14px">
+                        Calculado automaticamente: ${PERICULOSIDADE_PCT}% fixo sobre o salário total desta
+                        linha (art. 193 CLT). Não é editável aqui: para alterar, desmarque "cargo
+                        perigoso" no cadastro do cargo (<strong>${escapeHtml(cargo?.nome || '—')}</strong>).
+                    </p>
+                    <div class="he-origem-lista">
+                        <div class="he-origem-row">
+                            <div class="grow">
+                                <strong>Base de cálculo</strong>
+                                <div class="muted">Salário desta linha</div>
+                            </div>
+                            <strong class="num">${fmtBRL(base)}</strong>
+                        </div>
+                        <div class="he-origem-row">
+                            <span class="he-origem-ico is-fech">${icon('percent')}</span>
+                            <div class="grow">
+                                <strong>Adicional de periculosidade (${PERICULOSIDADE_PCT}%)</strong>
+                                <div class="muted">Definido no cargo</div>
+                            </div>
+                            <strong class="num">${fmtBRL(valor)}</strong>
+                        </div>
+                    </div>
+                    <div class="he-origem-total">
+                        <span>Total (periculosidade)</span>
+                        <strong>${fmtBRL(valor)}</strong>
+                    </div>`,
+                footer: ''
+            });
+        };
+    });
+
     bindGruposChips(cont, () => {
         cont.querySelectorAll('.grp-chip[data-grp]').forEach(b => b.classList.toggle('on', folhaGruposVis.has(b.dataset.grp)));
         aplicaGrupos();
@@ -2321,8 +2377,8 @@ async function renderLancFolha() {
                     const val = Number(inp.value) || 0;
                     dados[fid][inp.dataset.col] = val;
                     const patch = { [inp.dataset.col]: val };
-                    // Salário muda → insalubridade reage primeiro (se a base for "salário"),
-                    // e só então encargos, que depende do par salário+insalubridade já atualizado.
+                    // Salário muda → insalubridade e periculosidade reagem primeiro, e só então
+                    // encargos, que depende da base salário+insalubridade+periculosidade já atualizada.
                     if (inp.dataset.col === 'salario') {
                         const insal = calcInsalubridade(fid);
                         dados[fid].insalubridade = insal;
@@ -2333,10 +2389,19 @@ async function renderLancFolha() {
                             insalValEl.classList.add('cell-flash');
                             setTimeout(() => insalValEl.classList.remove('cell-flash'), 600);
                         }
+                        const pericul = calcPericulosidade(fid);
+                        dados[fid].periculosidade = pericul;
+                        patch.periculosidade = pericul;
+                        const periculValEl = tr.querySelector('.col-periculosidade [data-pericul-val]');
+                        if (periculValEl) {
+                            periculValEl.textContent = fmtBRL(pericul);
+                            periculValEl.classList.add('cell-flash');
+                            setTimeout(() => periculValEl.classList.remove('cell-flash'), 600);
+                        }
                     }
                     // Recalcula encargos (FGTS) e INSS automaticamente quando a base (salário) muda
                     if (inp.dataset.col === 'salario') {
-                        const base = (Number(dados[fid].salario) || 0) + (Number(dados[fid].insalubridade) || 0);
+                        const base = (Number(dados[fid].salario) || 0) + (Number(dados[fid].insalubridade) || 0) + (Number(dados[fid].periculosidade) || 0);
                         const fgtsPct = Number(folhaState.params.fgtsPct) || 0;
                         if (fgtsPct > 0) {
                             const enc = Number((base * fgtsPct / 100).toFixed(2));
@@ -2414,7 +2479,7 @@ async function apagarFolhaMes(ano, mes, key) {
 async function resetFolhaTudo(ano, mes, key) {
     if (await confirmDialog({
         title: 'Resetar folha do mês',
-        message: `Recalcular <strong>toda</strong> a folha de <strong>${MESES_FULL[mes]} ${ano}</strong> a partir dos cadastros (salário, insalubridade, encargos, benefícios)? Todas as edições manuais deste mês serão perdidas.`,
+        message: `Recalcular <strong>toda</strong> a folha de <strong>${MESES_FULL[mes]} ${ano}</strong> a partir dos cadastros (salário, insalubridade, periculosidade, encargos, benefícios)? Todas as edições manuais deste mês serão perdidas.`,
         confirmText: 'Resetar tudo', danger: true
     })) {
         const eleg = elegiveisNoMes(ano, mes);

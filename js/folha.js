@@ -4,6 +4,7 @@
 const FOLHA_COLS = [
     ['salario', 'Salários'],
     ['insalubridade', 'Insalubridade'],
+    ['periculosidade', 'Periculosidade'],
     ['bolsa', 'Bolsa estágio'],
     ['prolabore', 'Pró-labore'],
     ['encargos', 'Encargos (FGTS)'],
@@ -60,7 +61,7 @@ const FOLHA_DESC_ATRASO = 'descAtrasoCalc';
 // ---- Grupos de colunas (ocultar/mostrar categorias) ----
 // cols = chaves de FOLHA_COLS/FOLHA_DESC. "aberto padrão" = Remuneração; Custo empresa é sempre fixo.
 const FOLHA_GRUPOS = [
-    { id: 'remuneracao', label: 'Remuneração', cols: ['salario', 'insalubridade', 'bolsa', 'prolabore'], def: true },
+    { id: 'remuneracao', label: 'Remuneração', cols: ['salario', 'insalubridade', 'periculosidade', 'bolsa', 'prolabore'], def: true },
     { id: 'feriasDecimo', label: 'Férias e 13º', cols: [FOLHA_FERIAS_CALC, FOLHA_DECIMO_CALC], def: false },
     { id: 'encargos', label: 'Encargos', cols: ['encargos', FOLHA_INSS], def: false },
     { id: 'beneficios', label: 'Benefícios', cols: ['beneficios', FOLHA_DESC], def: false },
@@ -269,12 +270,12 @@ function prefillLinha(f) {
         linha.salario = salBase;
         linha.prolabore = r.prolabore;
         // Insalubridade: grau do cargo × base configurada (salário do funcionário ou mínimo)
-        const base = (params.insalubridadeBase || 'salario') === 'minimo'
-            ? (Number(params.salarioMinimo) || 0) : salBase;
-        linha.insalubridade = Number(((Number(cargo?.insalubridade) || 0) / 100 * base).toFixed(2));
+        linha.insalubridade = calculoInsalubridade(cargo, params, salBase);
+        // Periculosidade: 30% fixo sobre o salário total (nunca sobre o mínimo).
+        linha.periculosidade = calculoPericulosidade(cargo, salBase);
         // Encargos (FGTS, custo da empresa) sobre a remuneração (salário + insalubridade +
-        // pró-labore).
-        const baseEnc = salBase + linha.insalubridade + linha.prolabore;
+        // periculosidade + pró-labore).
+        const baseEnc = salBase + linha.insalubridade + linha.periculosidade + linha.prolabore;
         linha.encargos = Number((baseEnc * (Number(params.fgtsPct) || 0) / 100).toFixed(2));
         // INSS (desconto do EMPREGADO, por faixa progressiva) sobre a mesma base — não é
         // custo da empresa, por isso fica fora de `linha.encargos` (ver FOLHA_INSS).

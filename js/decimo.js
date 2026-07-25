@@ -435,6 +435,7 @@ function janelaDecimo(fid) {
                     <div class="bx-calc-grid">
                         <span>Salário</span><strong>${fmtBRL(s.salario)}</strong>
                         ${s.insalubridade ? `<span>+ Insalubridade</span><strong>${fmtBRL(s.insalubridade)}</strong>` : ''}
+                        ${s.periculosidade ? `<span>+ Periculosidade</span><strong>${fmtBRL(s.periculosidade)}</strong>` : ''}
                         ${s.mediaHe ? `<span>+ Média de HE <em class="bx-calc-nota">(Súmula 45 TST)</em></span><strong>${fmtBRL(s.mediaHe)}</strong>` : ''}
                         <span>= Base</span><strong>${fmtBRL(s.base)}</strong>
                         <span>÷ 12 × ${s.avos} avo${s.avos !== 1 ? 's' : ''}</span><strong>${fmtBRL(s.devido)}</strong>
@@ -835,6 +836,7 @@ function formDecimo(d) {
             <div class="bx-calc-grid">
                 <span>Salário</span><strong>${fmtBRL(c.salario)}</strong>
                 ${c.insalubridade ? `<span>+ Insalubridade</span><strong>${fmtBRL(c.insalubridade)}</strong>` : ''}
+                ${c.periculosidade ? `<span>+ Periculosidade</span><strong>${fmtBRL(c.periculosidade)}</strong>` : ''}
                 ${c.mediaHe ? `<span>+ Média de HE <em class="bx-calc-nota">(Súmula 45 TST)</em></span><strong>${fmtBRL(c.mediaHe)}</strong>` : ''}
                 <span>= Base</span><strong>${fmtBRL(c.base)}</strong>
                 <span>÷ 12 <em class="bx-calc-nota">(valor de 1 avo)</em></span><strong>${fmtBRL(c.valorAvo)}</strong>
@@ -960,7 +962,7 @@ function formDecimo(d) {
             // reescrever a memória de cálculo de uma parcela já paga.
             calculo: {
                 base: sugerido.base, salario: sugerido.salario,
-                insalubridade: sugerido.insalubridade, mediaHe: sugerido.mediaHe,
+                insalubridade: sugerido.insalubridade, periculosidade: sugerido.periculosidade, mediaHe: sugerido.mediaHe,
                 integral: sugerido.integral, avos: sugerido.avos,
                 avosParcela: sugerido.avosParcela, valorAvo: sugerido.valorAvo,
                 jaPago: sugerido.jaPago, sugerido: sugerido.bruto,
@@ -1165,7 +1167,7 @@ function formDecimoLote(sits) {
                 obs: '',
                 calculo: {
                     base: x.calc.base, salario: x.calc.salario,
-                    insalubridade: x.calc.insalubridade, mediaHe: x.calc.mediaHe,
+                    insalubridade: x.calc.insalubridade, periculosidade: x.calc.periculosidade, mediaHe: x.calc.mediaHe,
                     integral: x.calc.integral, avos: x.calc.avos,
                     avosParcela: x.calc.avosParcela, valorAvo: x.calc.valorAvo,
                     jaPago: x.calc.jaPago, sugerido: x.calc.bruto,

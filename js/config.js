@@ -583,7 +583,7 @@ async function renderCfgCargos() {
         searchPh: 'Buscar cargo...',
         btnLabel: 'Novo cargo',
         emptyText: 'Nenhum cargo cadastrado.',
-        thead: '<th>Cargo</th><th>Tipo</th><th>Perfil</th><th class="num">Remuneração</th><th class="num">Insalubridade</th><th class="num" title="Periodicidade do exame periódico (NR-7)">ASO</th><th style="width:48px"></th>',
+        thead: '<th>Cargo</th><th>Tipo</th><th>Perfil</th><th class="num">Remuneração</th><th class="num">Insalubridade</th><th class="num">Periculosidade</th><th class="num" title="Periodicidade do exame periódico (NR-7)">ASO</th><th style="width:48px"></th>',
         rowsHtml: cargos.map(c => {
             const r = remuneracaoCargo(c, cfgParams);
             const def = CARGO_PERFIS.find(p => p.id === r.perfil);
@@ -601,6 +601,7 @@ async function renderCfgCargos() {
                 <td><span class="badge badge-neutral">${escapeHtml(def.label)}</span></td>
                 <td class="num">${verbas.length ? verbas.join('<br>') : '—'}</td>
                 <td class="num">${c.insalubridade ? `<span class="badge badge-warning">${c.insalubridade}%</span>` : '—'}</td>
+                <td class="num">${c.periculosidade ? `<span class="badge badge-danger">${PERICULOSIDADE_PCT}%</span>` : '—'}</td>
                 <td class="num text-2">${asoPeriodicidadeDe(c)} meses</td>
                 <td><button class="btn-icon" data-menu>${icon('dots')}</button></td>
             </tr>`; }).join(''),
@@ -673,8 +674,17 @@ function formCargo(c) {
                         ${[[0, 'Nenhum'], [10, 'Mínimo — 10%'], [20, 'Médio — 20%'], [40, 'Máximo — 40%']].map(([v, l]) =>
                             `<option value="${v}" ${(c?.insalubridade || 0) === v ? 'selected' : ''}>${l}</option>`).join('')}
                     </select>
-                    <div class="field-hint">% sobre o salário mínimo (Parâmetros). Adicional sugerido automaticamente na folha.</div>
+                    <div class="field-hint">% sobre a base de Parâmetros (salário do funcionário ou salário mínimo). Adicional sugerido automaticamente na folha.</div>
                 </div>
+                <div class="field"><label>Periculosidade</label>
+                    <label class="fc-min">
+                        <span class="switch"><input type="checkbox" id="fcPericul" ${c?.periculosidade ? 'checked' : ''}><span class="track"></span></span>
+                        <span>Cargo perigoso (${PERICULOSIDADE_PCT}%)</span>
+                    </label>
+                    <div class="field-hint">Adicional fixo de ${PERICULOSIDADE_PCT}% sobre o salário total do funcionário (art. 193 CLT). Não cumulativo com insalubridade na prática — cabe ao RH escolher qual marcar.</div>
+                </div>
+            </div>
+            <div class="form-row">
                 <div class="field"><label>Periodicidade do ASO</label>
                     <select class="select" id="fcAsoPer">
                         ${ASO_PERIODICIDADES.map(v =>
@@ -764,6 +774,7 @@ function formCargo(c) {
             // Espelho do legado: valor "principal" do perfil, como o campo antigo esperava.
             salario: perfil === 'estagiario' ? bolsa : salarioBase,
             insalubridade: Number(m.body.querySelector('#fcInsal').value) || 0,
+            periculosidade: m.body.querySelector('#fcPericul').checked,
             asoPeriodicidadeMeses: Number(m.body.querySelector('#fcAsoPer').value) || ASO_PERIODICIDADE_PADRAO
         });
         toast(isEdit ? 'Cargo atualizado.' : 'Cargo criado.');
@@ -1085,13 +1096,14 @@ const PARAM_INFO = {
         title: 'Base de cálculo da insalubridade',
         html: `<p><strong>O que é:</strong> a base monetária sobre a qual o grau de insalubridade (10/20/40%) é calculado.</p>
                <p><strong>Onde afeta:</strong> Folha de pagamento, para funcionários com cargo insalubre.</p>
-               <p><strong>Como afeta:</strong> "Salário do funcionário" usa o salário individual; "Salário mínimo" usa o valor vigente (padrão legal segundo o STF), o que costuma resultar em um adicional menor. O grau (10/20/40%) continua vindo do cadastro de Cargos.</p>`
+               <p><strong>Como afeta:</strong> "Salário do funcionário" usa o salário individual; "Salário mínimo" usa o valor vigente (padrão legal segundo o STF), o que costuma resultar em um adicional menor. O grau (10/20/40%) continua vindo do cadastro de Cargos.</p>
+               <p><strong>Periculosidade não usa este parâmetro:</strong> é sempre ${PERICULOSIDADE_PCT}% sobre o salário total do funcionário, configurada por cargo em Configurações → Cargos.</p>`
     },
     salarioMinimo: {
         title: 'Salário mínimo vigente (R$)',
         html: `<p><strong>O que é:</strong> o valor do salário mínimo nacional em vigor.</p>
                <p><strong>Onde afeta:</strong> Cálculo de insalubridade (quando a base escolhida for "Salário mínimo").</p>
-               <p><strong>Como afeta:</strong> é multiplicado pelo grau de insalubridade do cargo. Atualize sempre que o governo reajustar o mínimo, senão o adicional calculado ficará desatualizado.</p>`
+               <p><strong>Como afeta:</strong> é multiplicado pelo grau de insalubridade do cargo. Atualize sempre que o governo reajustar o mínimo, senão o adicional calculado ficará desatualizado. Não afeta a periculosidade, que sempre usa o salário total do funcionário.</p>`
     },
     feriasAlertaLegalDias: {
         title: 'Alerta de prazo legal de férias (dias)',

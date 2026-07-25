@@ -903,6 +903,24 @@ function mediaHeFerias(fid, aquisitivoIni, aquisitivoFim, fechamentos, extras, q
     return { media: Number((total / meses).toFixed(2)), meses, total: Number(total.toFixed(2)), comValor };
 }
 
+// Adicional de periculosidade (art. 193 CLT, §1º): percentual FIXO de 30%, sempre sobre o
+// SALÁRIO TOTAL do funcionário — nunca sobre o salário mínimo e nunca cumulativo com
+// insalubridade na mesma base (a lei exige optar por um dos dois, mas aqui cada verba tem
+// origem própria no cargo, então quem cadastra o cargo é quem decide o que marcar).
+const PERICULOSIDADE_PCT = 30;
+const calculoPericulosidade = (cargo, salario) =>
+    cargo?.periculosidade ? Number((salario * PERICULOSIDADE_PCT / 100).toFixed(2)) : 0;
+
+// Grau de insalubridade (NR-15) × base configurada em Parâmetros (salário do funcionário ou
+// salário mínimo — art. 192 CLT manda mínimo, mas súmulas/CCTs às vezes elevam para o salário
+// efetivo, daí a base ser configurável).
+const calculoInsalubridade = (cargo, params, salario) => {
+    const grau = Number(cargo?.insalubridade) || 0;
+    const baseInsal = (params?.insalubridadeBase || 'salario') === 'minimo'
+        ? (Number(params?.salarioMinimo) || 0) : salario;
+    return Number((grau / 100 * baseInsal).toFixed(2));
+};
+
 // Remuneração de férias de UM lançamento.
 //
 // `dias` = dias gozados; `abonoDias` = dias vendidos (art. 143, até 1/3 do período). Ambos
@@ -914,14 +932,12 @@ function calculoFerias(f, cargo, params, dias, abonoDias, opts) {
     const o = opts || {};
     // Ponto único: resolve salário do funcionário → cargo → salário mínimo (quando marcado).
     const salario = salarioDe(f, cargo, params);
-    const grau = Number(cargo?.insalubridade) || 0;
-    const baseInsal = (params?.insalubridadeBase || 'salario') === 'minimo'
-        ? (Number(params?.salarioMinimo) || 0) : salario;
-    const insalubridade = Number((grau / 100 * baseInsal).toFixed(2));
+    const insalubridade = calculoInsalubridade(cargo, params, salario);
+    const periculosidade = calculoPericulosidade(cargo, salario);
     const mediaHe = Number(o.mediaHe) || 0;
 
-    // Base = salário + insalubridade + média de HE habitual (Súmula 45 TST).
-    const base = salario + insalubridade + mediaHe;
+    // Base = salário + insalubridade + periculosidade + média de HE habitual (Súmula 45 TST).
+    const base = salario + insalubridade + periculosidade + mediaHe;
     // Divisor 30 é fixo em lei (art. 142: remuneração / 30 × dias), não é a jornada mensal.
     const valorDia = base / 30;
     const d = Math.max(0, Number(dias) || 0);
@@ -939,7 +955,7 @@ function calculoFerias(f, cargo, params, dias, abonoDias, opts) {
 
     const totalFerias = gozo + tercoGozo + abono + tercoAbono;
     return {
-        salario, insalubridade, mediaHe, base,
+        salario, insalubridade, periculosidade, mediaHe, base,
         valorDia: Number(valorDia.toFixed(4)),
         dias: d, abonoDias: ab,
         gozo: Number(gozo.toFixed(2)),
@@ -1034,12 +1050,10 @@ function calculoHoraExtra(f, cargo, params, minutos, adicionalPct, jornadaMes) {
     jornadaMes = Number(jornadaMes) || jornadaDe(f);
     // Ponto único: resolve salário do funcionário → cargo → salário mínimo (quando marcado).
     const salario = salarioDe(f, cargo, params);
-    const grau = Number(cargo?.insalubridade) || 0;
-    const baseInsal = (params?.insalubridadeBase || 'salario') === 'minimo'
-        ? (Number(params?.salarioMinimo) || 0) : salario;
-    const insalubridade = Number((grau / 100 * baseInsal).toFixed(2));
+    const insalubridade = calculoInsalubridade(cargo, params, salario);
+    const periculosidade = calculoPericulosidade(cargo, salario);
 
-    const base = salario + insalubridade;
+    const base = salario + insalubridade + periculosidade;
     const valorHora = jornadaMes > 0 ? base / jornadaMes : 0;
     const horas = (Number(minutos) || 0) / 60;
     const pct = Number(adicionalPct) || 0;
@@ -1047,7 +1061,7 @@ function calculoHoraExtra(f, cargo, params, minutos, adicionalPct, jornadaMes) {
     const total = horas * valorHoraExtra;
 
     return {
-        salario, insalubridade, base, jornadaMes,
+        salario, insalubridade, periculosidade, base, jornadaMes,
         valorHora: Number(valorHora.toFixed(4)),
         valorHoraExtra: Number(valorHoraExtra.toFixed(4)),
         horas, adicionalPct: pct,
@@ -1232,13 +1246,11 @@ function calculo13(f, cargo, params, avos, opts) {
     if (perfil === 'estagiario') {
         return { semDireito: 'estagiario', salario: 0, base: 0, avos: 0, integral: 0, total: 0, bruto: 0, encargos: 0 };
     }
-    const grau = Number(cargo?.insalubridade) || 0;
-    const baseInsal = (params?.insalubridadeBase || 'salario') === 'minimo'
-        ? (Number(params?.salarioMinimo) || 0) : salario;
-    const insalubridade = Number((grau / 100 * baseInsal).toFixed(2));
+    const insalubridade = calculoInsalubridade(cargo, params, salario);
+    const periculosidade = calculoPericulosidade(cargo, salario);
     const mediaHe = Number(o.mediaHe) || 0;
 
-    const base = salario + insalubridade + mediaHe;
+    const base = salario + insalubridade + periculosidade + mediaHe;
     const a = Math.max(0, Math.min(12, Number(avos) || 0));
     // Valor cheio do 13º pelos avos: base ÷ 12 × avos.
     const integral = Number((base / 12 * a).toFixed(2));
@@ -1299,7 +1311,7 @@ function calculo13(f, cargo, params, avos, opts) {
     const encargos = fgts;
 
     return {
-        salario, insalubridade, mediaHe, base,
+        salario, insalubridade, periculosidade, mediaHe, base,
         avos: a,
         integral,
         // `avosParcela` = quantos avos ESTA parcela paga; `valorAvo` = quanto vale cada um.
@@ -1451,7 +1463,7 @@ function situacao13Func(f, ano, ctx) {
         // `avosAcumulados` = os já vencidos até hoje, só para a provisão contábil.
         avos: av.avos, meses: av.meses, avosAcumulados: avAcum.avos,
         base: calcDireito.base, salario: calcDireito.salario,
-        insalubridade: calcDireito.insalubridade, mediaHe,
+        insalubridade: calcDireito.insalubridade, periculosidade: calcDireito.periculosidade, mediaHe,
         devido, provisao: semDireito ? 0 : calcAcum.integral,
         adiantamentoFerias: adiant.total, adiantamentoItens: adiant.itens,
         parcelas, pagoParcelas, pagoTotal, saldo,

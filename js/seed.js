@@ -36,12 +36,12 @@ async function gerarDadosExemplo() {
     // Cargos — asoPeriodicidadeMeses reflete risco ocupacional (PCMSO), não o grau de
     // insalubridade: o Coordenador tem insalubridade 0 e ainda assim exame anual.
     const cargosDef = [
-        { nome: 'Auxiliar de Produção', tipo: 'Operacional', salario: 1900, insalubridade: 20, asoPeriodicidadeMeses: 6 },
-        { nome: 'Técnico de Laboratório', tipo: 'Operacional', salario: 2800, insalubridade: 40, asoPeriodicidadeMeses: 6 },
-        { nome: 'Analista Administrativo', tipo: 'Administrativo', salario: 3200, insalubridade: 0, asoPeriodicidadeMeses: 12 },
-        { nome: 'Coordenador de Equipe', tipo: 'Gestão', salario: 5600, insalubridade: 0, asoPeriodicidadeMeses: 12 },
-        { nome: 'Estagiário', tipo: 'Estágio', salario: 1100, insalubridade: 0, asoPeriodicidadeMeses: 12 },
-        { nome: 'Diretor de Operações', tipo: 'Diretoria', salario: 12000, insalubridade: 0, asoPeriodicidadeMeses: 24 }
+        { nome: 'Auxiliar de Produção', tipo: 'Operacional', salario: 1900, insalubridade: 20, periculosidade: false, asoPeriodicidadeMeses: 6 },
+        { nome: 'Técnico de Laboratório', tipo: 'Operacional', salario: 2800, insalubridade: 40, periculosidade: true, asoPeriodicidadeMeses: 6 },
+        { nome: 'Analista Administrativo', tipo: 'Administrativo', salario: 3200, insalubridade: 0, periculosidade: false, asoPeriodicidadeMeses: 12 },
+        { nome: 'Coordenador de Equipe', tipo: 'Gestão', salario: 5600, insalubridade: 0, periculosidade: false, asoPeriodicidadeMeses: 12 },
+        { nome: 'Estagiário', tipo: 'Estágio', salario: 1100, insalubridade: 0, periculosidade: false, asoPeriodicidadeMeses: 12 },
+        { nome: 'Diretor de Operações', tipo: 'Diretoria', salario: 12000, insalubridade: 0, periculosidade: false, asoPeriodicidadeMeses: 24 }
     ];
     const cargoIds = [];
     for (const c of cargosDef) { const id = await DB.save(PATHS.cargos, null, c); cargoIds.push(id); seed.cargos.push(id); }
@@ -247,7 +247,8 @@ async function gerarDadosExemplo() {
                 linha.salario = sal;
                 const base = (paramsNow.insalubridadeBase || 'salario') === 'minimo' ? (paramsNow.salarioMinimo || 0) : sal;
                 linha.insalubridade = Number(((cargo.insalubridade || 0) / 100 * base).toFixed(2));
-                const baseEncSeed = sal + linha.insalubridade;
+                linha.periculosidade = cargo.periculosidade ? Number((sal * PERICULOSIDADE_PCT / 100).toFixed(2)) : 0;
+                const baseEncSeed = sal + linha.insalubridade + linha.periculosidade;
                 linha.encargos = Number((baseEncSeed * (paramsNow.fgtsPct || 0) / 100).toFixed(2));
                 linha[FOLHA_INSS] = calculoInss(baseEncSeed, paramsNow.inssFaixas);
             }
