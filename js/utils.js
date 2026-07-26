@@ -180,9 +180,13 @@ function prazoTexto(dias) {
 // `tercoPct` (33.3333) é o adicional do art. 7º XVII CF — parametrizável porque convenção
 // coletiva pode ser mais generosa, nunca menos. `abonoMaxDias` (10) = art. 143: até 1/3 do
 // período pode ser vendido. `mediaHeMeses` (12) = período aquisitivo (Súmula 45 TST).
+// `mesesVencimento` (24) = tempo total, do início do aquisitivo até a féria VENCER (dobra
+// art. 137). O aquisitivo continua fixo em 12m (o direito nasce por lei em 12m e não se
+// negocia); o parâmetro move só o fim do concessivo: concessivoFim = aquisitivoIni + 24m.
 const FERIAS_PARAMS_PADRAO = {
     alertaLegalDias: 60,
     diasPorCiclo: 30,
+    mesesVencimento: 24,
     tercoPct: 100 / 3,
     abonoMaxDias: 10,
     mediaHe: true,
@@ -194,6 +198,8 @@ const setFeriasParams = p => {
     feriasParams = {
         alertaLegalDias: Number(p?.feriasAlertaLegalDias) || FERIAS_PARAMS_PADRAO.alertaLegalDias,
         diasPorCiclo: num(p?.feriasDiasPorCiclo, FERIAS_PARAMS_PADRAO.diasPorCiclo),
+        // Nunca menos que 12: o direito já nasce em 12m; vencer antes disso é impossível.
+        mesesVencimento: Math.max(12, num(p?.feriasMesesVencimento, FERIAS_PARAMS_PADRAO.mesesVencimento)),
         tercoPct: num(p?.feriasTercoPct, FERIAS_PARAMS_PADRAO.tercoPct),
         abonoMaxDias: num(p?.feriasAbonoMaxDias, FERIAS_PARAMS_PADRAO.abonoMaxDias),
         // Checkbox: `??` e não `||` — false é escolha, não ausência.
@@ -201,6 +207,29 @@ const setFeriasParams = p => {
         mediaHeMeses: num(p?.feriasMediaHeMeses, FERIAS_PARAMS_PADRAO.mediaHeMeses)
     };
 };
+
+// Âncora do ciclo de férias. Normalmente é a própria admissão. Mas ao cadastrar um
+// funcionário ANTIGO, publicar a folha retroativa de anos inteiros só para "quitar" ciclos
+// vencidos que ninguém vai lançar é inviável. `feriasBase` reancora o cálculo: mesmo dia/mês
+// da contratação (o aniversário do ciclo é preservado), mas o ANO puxado para onde a folha
+// começa a ser publicada — assim os ciclos anteriores a esse ponto não existem. Vazio =
+// comportamento legal puro pela admissão (funcionário normal, nada muda).
+const feriasAnchor = f => f?.feriasBase || f?.admissao;
+
+// Sugestão de `feriasBase` para funcionário antigo: o aniversário (dia/mês da admissão) mais
+// recente que NÃO passe da data de referência (o mês em que se começa a controlar). String
+// pura — lexicográfica, sem fuso. Retorna null quando a admissão é recente o bastante para o
+// ciclo real já servir (aí não há o que reancorar).
+function feriasBaseSugerida(admissao, ref) {
+    if (!admissao) return null;
+    const h = ref || hoje();
+    let mmdd = admissao.slice(5);                 // "MM-DD"
+    if (mmdd === '02-29') mmdd = '02-28';         // ano não-bissexto: clamp seguro
+    const anoRef = Number(h.slice(0, 4));
+    let iso = `${anoRef}-${mmdd}`;
+    if (iso > h) iso = `${anoRef - 1}-${mmdd}`;
+    return iso > admissao ? iso : null;
+}
 
 // ============ CONTROLE DE ASO (NR-7) ============
 //
@@ -1688,7 +1717,8 @@ const diasFeriasLanc = a => (Number(a?.dias) || 0) + (Number(a?.abonoDias) || 0)
 function competenciasFerias(f, ausencias, ref) {
     if (!f?.admissao) return [];
     const h = ref || hoje();
-    if (f.admissao > h) return [];
+    const adm = feriasAnchor(f);
+    if (adm > h) return [];
     const total = feriasParams.diasPorCiclo;
 
     const gozadas = (ausencias || [])
@@ -1696,7 +1726,7 @@ function competenciasFerias(f, ausencias, ref) {
         .sort((a, b) => a.inicio.localeCompare(b.inicio));
 
     // Quantas competências a régua já produziu: as completas + a que está em formação.
-    const completos = Math.max(0, Math.floor(mesesEntre(f.admissao, h) / 12));
+    const completos = Math.max(0, Math.floor(mesesEntre(adm, h) / 12));
 
     // Aloca dias e guarda QUAIS lançamentos tocaram cada competência — sem isso a janela não
     // conseguiria mostrar "estes 15 dias vieram daqui".
@@ -1717,9 +1747,9 @@ function competenciasFerias(f, ausencias, ref) {
     }
 
     return Array.from({ length: completos + 1 }, (_, i) => {
-        const aquisitivoIni = addMeses(f.admissao, i * 12);
-        const aquisitivoFim = addMeses(f.admissao, (i + 1) * 12);
-        const concessivoFim = addMeses(aquisitivoFim, 12);
+        const aquisitivoIni = addMeses(adm, i * 12);
+        const aquisitivoFim = addMeses(adm, (i + 1) * 12);
+        const concessivoFim = addMeses(aquisitivoIni, feriasParams.mesesVencimento);
         const usados = Math.min(alocado[i] || 0, total);
         const restantes = Math.max(0, total - usados);
         const emFormacao = h < aquisitivoFim;
@@ -1763,7 +1793,7 @@ function tetoDiasFerias(f, ausencias, ref) {
     // Competências que já venceram (direito adquirido) e ainda não foram gozadas. `ciclo` é o
     // índice da corrente; quantos aquisitivos completos existem além dela é o atraso.
     const h = ref || hoje();
-    const completos = Math.max(0, Math.floor(mesesEntre(f.admissao, h) / 12));
+    const completos = Math.max(0, Math.floor(mesesEntre(feriasAnchor(f), h) / 12));
     const vencidas = Math.max(0, completos - sit.ciclo - (sit.status === 'aquisitivo' ? 0 : 1));
 
     // Saldo da corrente (30, ou o que falta se fracionada) + 30 por competência atrasada.
@@ -1779,7 +1809,8 @@ function tetoDiasFerias(f, ausencias, ref) {
 function situacaoFeriasFunc(f, ausencias, ref) {
     if (!f?.admissao || f.demissao) return null;
     const h = ref || hoje();
-    if (f.admissao > h) return null;                     // admissão futura: nada a calcular
+    const adm = feriasAnchor(f);
+    if (adm > h) return null;                             // admissão futura: nada a calcular
 
     // Férias em curso quitam o ciclo na hora que COMEÇAM, não só quando terminam — senão o
     // prazo legal do ciclo seguinte segue contando durante o gozo e a pessoa aparece como
@@ -1788,8 +1819,8 @@ function situacaoFeriasFunc(f, ausencias, ref) {
         .filter(a => a.funcionarioId === f.id && a.tipo === 'Férias' && a.inicio <= h)
         .sort((a, b) => a.inicio.localeCompare(b.inicio));
 
-    // Ciclos aquisitivos JÁ COMPLETOS pelo tempo de casa (admissão + 12m, +24m, ...)
-    const ciclosCompletos = Math.max(0, Math.floor(mesesEntre(f.admissao, h) / 12));
+    // Ciclos aquisitivos JÁ COMPLETOS pelo tempo de casa (âncora + 12m, +24m, ...)
+    const ciclosCompletos = Math.max(0, Math.floor(mesesEntre(adm, h) / 12));
 
     // ---- Competência se fecha por DIAS, não por número de lançamentos ----
     // O fracionamento (art. 134 §1º: até 3 períodos, um deles ≥ 14 dias) é UM direito
@@ -1827,9 +1858,9 @@ function situacaoFeriasFunc(f, ausencias, ref) {
     const diasRestantes = Math.max(0, total - diasNaCorrente);
     const fracionada = diasNaCorrente > 0 && diasRestantes > 0;
 
-    let aquisitivoIni = addMeses(f.admissao, ciclo * 12);
-    let aquisitivoFim = addMeses(f.admissao, (ciclo + 1) * 12);
-    let concessivoFim = addMeses(aquisitivoFim, 12);
+    let aquisitivoIni = addMeses(adm, ciclo * 12);
+    let aquisitivoFim = addMeses(adm, (ciclo + 1) * 12);
+    let concessivoFim = addMeses(aquisitivoIni, feriasParams.mesesVencimento);
 
     // Está de férias agora e esse gozo já COMPLETOU a competência? Avança — o prazo legal em
     // exibição deve ser o do direito ainda em aberto, não o que a féria em curso satisfez.
@@ -1839,9 +1870,9 @@ function situacaoFeriasFunc(f, ausencias, ref) {
     const feriasEmCurso = gozadas.find(a => ausenciaVigente(a, h));
     if (feriasEmCurso && !fracionada && diasNaCorrente >= total && feriasEmCurso.inicio < concessivoFim) {
         ciclo++;
-        aquisitivoIni = addMeses(f.admissao, ciclo * 12);
-        aquisitivoFim = addMeses(f.admissao, (ciclo + 1) * 12);
-        concessivoFim = addMeses(aquisitivoFim, 12);
+        aquisitivoIni = addMeses(adm, ciclo * 12);
+        aquisitivoFim = addMeses(adm, (ciclo + 1) * 12);
+        concessivoFim = addMeses(aquisitivoIni, feriasParams.mesesVencimento);
     }
 
     const critico = feriasParams.alertaLegalDias;

@@ -792,6 +792,7 @@ function fdFeriasAba(f, box) {
             </div>
             <p class="dc-desc">${escapeHtml(sit.desc)}</p>
             ${diasDevidos ? `<div class="df-dobra">${icon('alert')} <span><strong>${diasDevidos} dias</strong> já vencidos são devidos <strong>em dobro</strong> (art. 137 CLT).</span></div>` : ''}
+            ${f.feriasBase ? `<div class="df-nota">${icon('info')} <span>Controle reancorado em <strong>${fmtDate(f.feriasBase)}</strong> (funcionário antigo). Ciclos anteriores a essa data não são calculados — a admissão real é ${fmtDate(f.admissao)}.</span></div>` : ''}
         </div>
         ${podeEditar && !fer ? `<div class="flex" style="gap:8px;margin-bottom:18px"><button class="btn btn-primary btn-sm" id="fdFerLancar">${icon('plus')} Lançar férias</button></div>` : ''}
         <div class="dc-sec">
@@ -1782,12 +1783,19 @@ function formFuncionario(f) {
                         <select class="select" id="ffUnidade">${funcState.unidades.map(u => `<option value="${u.id}" ${f?.unidadeId === u.id ? 'selected' : ''}>${escapeHtml(u.nome)}</option>`).join('')}</select>
                     </div>
                 </div>
-                <div class="form-row"${isEdit && f.demissao ? '' : ' style="margin-bottom:0"'}>
+                <div class="form-row">
                     <div class="field" style="margin-bottom:0"><label>Data de admissão <span class="req">*</span></label><input class="input" id="ffAdm" type="date" max="${hoje()}" value="${f?.admissao || ''}"></div>
                     <div class="field" style="margin-bottom:0"><label>Jornada mensal (horas)</label>
                         <input class="input" id="ffJornada" type="number" min="1" max="744" step="1" placeholder="${JORNADA_MENSAL_PADRAO}" value="${f?.jornadaMensal ?? ''}">
                         <div class="field-hint">Divisor do valor-hora no cálculo de hora extra. Vazio = ${JORNADA_MENSAL_PADRAO}h (44h semanais). Jornada de 40h/semana usa 200.</div>
                     </div>
+                </div>
+                <div class="form-row"${isEdit && f.demissao ? '' : ' style="margin-bottom:0"'}>
+                    <div class="field" style="margin-bottom:0"><label>Início do controle de férias</label>
+                        <input class="input" id="ffFeriasBase" type="date" max="${hoje()}" value="${f?.feriasBase || ''}">
+                        <div class="field-hint" id="ffFeriasBaseHint"></div>
+                    </div>
+                    <div></div>
                 </div>
                 ${isEdit && f.demissao ? `
                 <div class="form-row" style="margin-bottom:0">
@@ -1812,6 +1820,29 @@ function formFuncionario(f) {
 
     const foneInput = m.body.querySelector('#ffFone');
     foneInput.addEventListener('input', () => foneInput.value = maskFone(foneInput.value));
+
+    // ---- Início do controle de férias (funcionário antigo) ----
+    // Reancora o cálculo de férias sem exigir folha retroativa: mesmo dia/mês da admissão,
+    // ano no ponto em que se passa a controlar. Vazio = cálculo legal puro pela admissão.
+    const admInput = m.body.querySelector('#ffAdm');
+    const febInput = m.body.querySelector('#ffFeriasBase');
+    const febHint = m.body.querySelector('#ffFeriasBaseHint');
+    const atualizaFeb = () => {
+        const adm = admInput.value;
+        febInput.min = adm || '';
+        if (!adm) { febHint.textContent = 'Preencha a admissão primeiro.'; return; }
+        const sug = feriasBaseSugerida(adm, hoje());
+        if (!sug) {
+            febHint.textContent = 'Deixe vazio: para admissão recente o cálculo já parte da própria data.';
+            return;
+        }
+        febHint.innerHTML = `Só para <strong>funcionário antigo</strong> — evita lançar folha retroativa. `
+            + `Vazio = férias contadas desde a admissão (todos os ciclos passados aparecem). `
+            + `Sugerido: <a href="#" id="ffFebUsar">${fmtDate(sug)}</a>.`;
+        febHint.querySelector('#ffFebUsar').onclick = e => { e.preventDefault(); febInput.value = sug; };
+    };
+    admInput.addEventListener('change', atualizaFeb);
+    atualizaFeb();
 
     // ---- Foto: comprime (256x256) e só sobe ao banco no salvar — evita gravar upload de
     // quem desistiu do formulário. `preview` guarda o dataURL já comprimido; `removida` marca
@@ -1882,6 +1913,15 @@ function formFuncionario(f) {
         // e experiência. Corrigir aqui é mais barato do que sinalizar em toda tela derivada.
         if (admissao > hoje()) return toast('Data de admissão não pode ser futura.', 'error');
 
+        // Base de controle de férias (funcionário antigo). Igual à admissão = redundante →
+        // guarda null para o cálculo cair no fallback pela própria admissão.
+        const feriasBaseRaw = m.body.querySelector('#ffFeriasBase').value || null;
+        if (feriasBaseRaw) {
+            if (feriasBaseRaw < admissao) return toast('O início do controle de férias não pode ser anterior à admissão.', 'error');
+            if (feriasBaseRaw > hoje()) return toast('O início do controle de férias não pode ser futuro.', 'error');
+        }
+        const feriasBase = feriasBaseRaw && feriasBaseRaw !== admissao ? feriasBaseRaw : null;
+
         // Jornada zero dividiria o salário por zero no valor-hora. Vazio é legítimo (usa o
         // padrão); zero não é — barrar aqui evita um Infinity chegando à folha.
         const jornadaRaw = m.body.querySelector('#ffJornada').value;
@@ -1900,6 +1940,7 @@ function formFuncionario(f) {
             email: m.body.querySelector('#ffEmail').value.trim(),
             vestimenta: m.body.querySelector('#ffVest').value,
             admissao,
+            feriasBase,
             jornadaMensal: jornada
         };
         const demInput = m.body.querySelector('#ffDem');

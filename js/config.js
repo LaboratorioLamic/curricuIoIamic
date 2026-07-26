@@ -1111,6 +1111,12 @@ const PARAM_INFO = {
                <p><strong>Onde afeta:</strong> Sino de notificações e aba de Férias.</p>
                <p><strong>Como afeta:</strong> se o período concessivo vencer sem que as férias sejam gozadas, a empresa deve pagá-las em dobro (art. 137 CLT). O aviso da <strong>data prevista</strong> (não crítico) usa metade deste valor de dias.</p>`
     },
+    feriasMesesVencimento: {
+        title: 'Prazo para vencer as férias (meses)',
+        html: `<p><strong>O que é:</strong> tempo total, contado do início do período aquisitivo, até as férias vencerem. Padrão 24 meses (12 do aquisitivo + 12 do concessivo, art. 134/137 CLT).</p>
+               <p><strong>Onde afeta:</strong> cálculo de situação de férias em todas as telas (aba de Férias, cartões, programação, sino).</p>
+               <p><strong>Como afeta:</strong> o direito continua nascendo em 12 meses; este parâmetro move só a data de vencimento (a dobra). Não pode ser menor que 12. O cálculo é feito pelo dia e mês da admissão — ou pela base de controle de férias, quando o funcionário foi cadastrado como antigo.</p>`
+    },
     asoAlertaDias: {
         title: 'Alerta de vencimento do ASO (dias)',
         html: `<p><strong>O que é:</strong> antecedência do alerta antes do vencimento do exame periódico (ASO).</p>
@@ -1393,6 +1399,13 @@ async function renderCfgParametros() {
                     <div class="field-hint">Total de uma competência (art. 130: 30 dias). Só fecha quando os lançamentos somam este total.</div>
                 </div>
                 <div class="field">
+                    ${pLabel('Prazo para vencer (meses)', 'feriasMesesVencimento')}
+                    <input class="input" id="fpFerVenc" type="number" min="12" max="60" step="1" value="${params.feriasMesesVencimento ?? FERIAS_PARAMS_PADRAO.mesesVencimento}">
+                    <div class="field-hint">Do início do aquisitivo até vencer (dobra, art. 137). Padrão 24 (12 aquisitivo + 12 concessivo). Mínimo 12.</div>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="field">
                     ${pLabel('Terço constitucional (%)', 'feriasTercoPct')}
                     <input class="input" id="fpFerTerco" type="number" min="0" max="100" step="0.01" value="${Number(params.feriasTercoPct ?? FERIAS_PARAMS_PADRAO.tercoPct).toFixed(2)}">
                     <div class="field-hint">Adicional sobre a remuneração (art. 7º XVII CF: 1/3 = 33,33%). Convenção pode ser mais generosa, nunca menos.</div>
@@ -1576,6 +1589,9 @@ async function renderCfgParametros() {
         const dias = Number(document.getElementById('fpFerDias').value);
         if (!(dias >= 1 && dias <= 60))
             return toast('Os dias por período devem ficar entre 1 e 60.', 'error');
+        const vencMeses = Number(document.getElementById('fpFerVenc').value);
+        if (!(vencMeses >= 12 && vencMeses <= 60))
+            return toast('O prazo para vencer as férias deve ficar entre 12 e 60 meses.', 'error');
         const terco = Number(document.getElementById('fpFerTerco').value);
         if (!(terco >= 0 && terco <= 100))
             return toast('O terço constitucional deve ficar entre 0 e 100%.', 'error');
@@ -1601,6 +1617,7 @@ async function renderCfgParametros() {
 
         const novos = {
             feriasDiasPorCiclo: dias,
+            feriasMesesVencimento: vencMeses,
             feriasTercoPct: terco,
             feriasAbonoMaxDias: abono,
             feriasMediaHe: document.getElementById('fpFerMediaHe').checked,
