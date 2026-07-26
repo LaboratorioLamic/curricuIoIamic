@@ -1096,7 +1096,7 @@ const PARAM_INFO = {
         title: 'Base de cálculo da insalubridade',
         html: `<p><strong>O que é:</strong> a base monetária sobre a qual o grau de insalubridade (10/20/40%) é calculado.</p>
                <p><strong>Onde afeta:</strong> Folha de pagamento, para funcionários com cargo insalubre.</p>
-               <p><strong>Como afeta:</strong> "Salário do funcionário" usa o salário individual; "Salário mínimo" usa o valor vigente (padrão legal segundo o STF), o que costuma resultar em um adicional menor. O grau (10/20/40%) continua vindo do cadastro de Cargos.</p>
+               <p><strong>Como afeta:</strong> "Salário do funcionário" usa o salário individual; "Salário mínimo" usa o valor vigente (padrão legal), o que costuma resultar em um adicional menor. O grau (10/20/40%) continua vindo do cadastro de Cargos.</p>
                <p><strong>Periculosidade não usa este parâmetro:</strong> é sempre ${PERICULOSIDADE_PCT}% sobre o salário total do funcionário, configurada por cargo em Configurações → Cargos.</p>`
     },
     salarioMinimo: {
@@ -1327,7 +1327,7 @@ async function renderCfgParametros() {
                     ${pLabel('Base de cálculo da insalubridade', 'insalubridadeBase')}
                     <select class="select" id="fpInsalBase">
                         <option value="salario" ${(params.insalubridadeBase || 'salario') === 'salario' ? 'selected' : ''}>Salário do funcionário</option>
-                        <option value="minimo" ${params.insalubridadeBase === 'minimo' ? 'selected' : ''}>Salário mínimo (padrão legal STF)</option>
+                        <option value="minimo" ${params.insalubridadeBase === 'minimo' ? 'selected' : ''}>Salário mínimo (padrão legal)</option>
                     </select>
                     <div class="field-hint">Grau (10/20/40%) definido no cargo × esta base</div>
                 </div>
