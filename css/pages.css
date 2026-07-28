@@ -755,6 +755,10 @@
    ciclo vencido custa dinheiro. Grave, mas de outra natureza — a cor separa as duas. */
 .alert-ico-sm-bh { background: var(--warning-soft); color: var(--warning); }
 .alert-ico-sm-decimo { background: var(--warning-soft); color: var(--warning); }
+/* Contrato de aprendizagem em vermelho, junto do ASO: passar do termo não custa dinheiro —
+   descaracteriza o contrato, e o efeito (vínculo por prazo indeterminado) não se desfaz
+   pagando. É a mesma família de dano do ASO vencido, não a do ciclo de banco. */
+.alert-ico-sm-aprendiz { background: var(--danger-soft); color: var(--danger); }
 
 /* Situação do ASO no topo da aba Documentos da ficha — responde de relance a única
    pergunta que a ficha precisa responder: pode exercer a função hoje? */

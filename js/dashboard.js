@@ -192,11 +192,14 @@ function perfilEquipe(ativos, cargos) {
     const porEscolaridade = conta(ativos, f => f.escolaridade);
     const porTipoCargo = conta(ativos, f => cargos.find(c => c.id === f.cargoId)?.tipo);
     const porSexo = conta(ativos, f => f.sexo);
-    const faixas = { '18–25': 0, '26–35': 0, '36–45': 0, '46–55': 0, '56+': 0 };
+    // A primeira faixa começa em 14, não em 18: o contrato de aprendizagem admite menor de
+    // idade (art. 428 da CLT), e o ternário abaixo não tinha piso — um aprendiz de 15 anos
+    // era contado como "18–25", uma faixa etária que ele não tem.
+    const faixas = { '14–17': 0, '18–25': 0, '26–35': 0, '36–45': 0, '46–55': 0, '56+': 0 };
     ativos.forEach(f => {
         const i = idade(f.nascimento);
         if (i == null) return;
-        faixas[i <= 25 ? '18–25' : i <= 35 ? '26–35' : i <= 45 ? '36–45' : i <= 55 ? '46–55' : '56+']++;
+        faixas[i <= 17 ? '14–17' : i <= 25 ? '18–25' : i <= 35 ? '26–35' : i <= 45 ? '36–45' : i <= 55 ? '46–55' : '56+']++;
     });
     return { porEscolaridade, porTipoCargo, porSexo, faixas };
 }

@@ -89,7 +89,7 @@ async function renderBancoHoras() {
 
     // Contador de urgência: vencidos = ciclo fechado com saldo não liquidado (vira passivo)
     const urgentes = lancState.funcionarios
-        .map(f => cicloBhFunc(f, bhState.banco, fechamentos, null, quitacoes))
+        .map(f => cicloBhFunc(f, bhState.banco, fechamentos, null, quitacoes, bhCargoDoFunc(f)))
         .filter(s => s && s.status === 'vencido').length;
 
     cont.innerHTML = `
@@ -150,8 +150,8 @@ function bhProgramacao() {
     const fin = can('ver_financeiro');
 
     const todos = lancState.funcionarios
-        .map(f => ({ f, sit: cicloBhFunc(f, bhState.banco, bhState.fechamentos, null, bhState.quitacoes) }))
-        .filter(x => x.sit && x.sit.status !== 'sem_ciclo');
+        .map(f => ({ f, sit: cicloBhFunc(f, bhState.banco, bhState.fechamentos, null, bhState.quitacoes, bhCargoDoFunc(f)) }))
+        .filter(x => !bhSemCiclo(x.sit));
 
     const linhas = todos
         .filter(x => bhPassaFiltro(x.f))
@@ -290,8 +290,13 @@ async function bhGrade() {
 
     // Elegível: trabalhou ao menos um dia no mês. Quem já tem linha aparece sempre, mesmo
     // se desligado depois — o saldo lançado não some da grade por causa do desligamento.
+    // Aprendiz fica fora da grade: o art. 432 da CLT veda compensação de jornada no contrato de
+    // aprendizagem, então não existe saldo a lançar. Filtro próprio aqui porque esta lista NÃO
+    // passa por cicloBhFunc — é montada por `elegiveisNoMes`, e a vedação que vive lá não a
+    // alcançaria. Quem já tem linha gravada continua aparecendo (`extras`): um saldo lançado
+    // antes da troca de cargo não pode sumir da tela sem ninguém decidir o que fazer com ele.
     const eleg = elegiveisNoMes(ano, mes)
-        .filter(f => bhPassaFiltro(f))
+        .filter(f => bhPassaFiltro(f) && !ehAprendiz(bhCargoDoFunc(f)))
         .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
     const extras = Object.keys(dados)
         .filter(id => !eleg.some(f => f.id === id))
@@ -326,7 +331,7 @@ async function bhGrade() {
                     </tr></thead>
                     <tbody id="bhTbody">${todos.map(f => {
                         const l = dados[f.id];
-                        const sit = cicloBhFunc(f, bhState.banco, bhState.fechamentos, null, bhState.quitacoes);
+                        const sit = cicloBhFunc(f, bhState.banco, bhState.fechamentos, null, bhState.quitacoes, bhCargoDoFunc(f));
                         // Acumulado ATÉ este mês (não o do ciclo inteiro): a linha responde
                         // "como estava o saldo depois deste mês", que é a leitura da grade.
                         const acum = bhAcumuladoAte(f, key);
@@ -357,9 +362,9 @@ async function bhGrade() {
                             <td class="num" data-acum>${quit
                                 ? `<button class="bh-quit-tag" data-quit="${quit.id}" title="Pago em ${fmtDate(quit.data)}${quit.valor ? ` — ${fmtBRL(quit.valor)}` : ''}. Clique para ver a quitação.">${icon('lock')} quitado</button>`
                                 : (l ? bhSaldoHtml(acum) : '<span class="muted">—</span>')}</td>
-                            <td class="text-2" data-ciclo>${sit && sit.status !== 'sem_ciclo'
+                            <td class="text-2" data-ciclo>${!bhSemCiclo(sit)
                                 ? `${mesLabel(sit.inicio)} → ${mesLabel(sit.fimMes)}<div class="prog-aq">${escapeHtml(sit.label)}</div>`
-                                : '<span class="muted">sem ciclo</span>'}</td>
+                                : `<span class="muted">${sit?.status === 'vedado' ? 'vedado (aprendiz)' : 'sem ciclo'}</span>`}</td>
                             <td>${editavel && l ? `<button class="btn-icon btn-icon-sm" data-limpar title="Remover o lançamento deste mês">${icon('trash')}</button>` : ''}</td>
                         </tr>`;
                     }).join('')}</tbody>
@@ -409,8 +414,8 @@ async function bhGrade() {
 // Acumulado do ciclo do funcionário ATÉ o mês `ateMes` (inclusive). Reusa o motor para não
 // duplicar a regra de qual ciclo é o corrente.
 function bhAcumuladoAte(f, ateMes) {
-    const sit = cicloBhFunc(f, bhState.banco, bhState.fechamentos, null, bhState.quitacoes);
-    if (!sit || sit.status === 'sem_ciclo') return 0;
+    const sit = cicloBhFunc(f, bhState.banco, bhState.fechamentos, null, bhState.quitacoes, bhCargoDoFunc(f));
+    if (bhSemCiclo(sit)) return 0;
     // Só os meses EM ABERTO: o acumulado da grade responde "quanto ainda se deve depois
     // deste mês". Somar mês quitado inflaria o saldo com horas que já foram pagas.
     return sit.abertos.filter(m => m.mes <= ateMes).reduce((s, m) => s + m.saldoMin, 0);
@@ -506,13 +511,13 @@ async function bhRemoverLinha(key, fid) {
 function bhAtualizaLinha(tr, fid, key) {
     const f = lancState.funcionarios.find(x => x.id === fid);
     const l = bhState.banco[key]?.[fid];
-    const sit = cicloBhFunc(f, bhState.banco, bhState.fechamentos, null, bhState.quitacoes);
+    const sit = cicloBhFunc(f, bhState.banco, bhState.fechamentos, null, bhState.quitacoes, bhCargoDoFunc(f));
 
     tr.querySelector('[data-saldo]').innerHTML = l ? bhSaldoHtml(bhSaldoLinha(l)) : '<span class="muted">—</span>';
     tr.querySelector('[data-acum]').innerHTML = l ? bhSaldoHtml(bhAcumuladoAte(f, key)) : '<span class="muted">—</span>';
-    tr.querySelector('[data-ciclo]').innerHTML = sit && sit.status !== 'sem_ciclo'
+    tr.querySelector('[data-ciclo]').innerHTML = !bhSemCiclo(sit)
         ? `${mesLabel(sit.inicio)} → ${mesLabel(sit.fimMes)}<div class="prog-aq">${escapeHtml(sit.label)}</div>`
-        : '<span class="muted">sem ciclo</span>';
+        : `<span class="muted">${sit?.status === 'vedado' ? 'vedado (aprendiz)' : 'sem ciclo'}</span>`;
 
     // Rodapé e badge do mês
     const dados = bhState.banco[key] || {};
@@ -535,8 +540,8 @@ function bhAtualizaLinha(tr, fid, key) {
 // prazo sem falar nada".
 function bhAvisaAncora(fid, key) {
     const f = lancState.funcionarios.find(x => x.id === fid);
-    const sit = cicloBhFunc(f, bhState.banco, bhState.fechamentos, null, bhState.quitacoes);
-    if (!sit || sit.status === 'sem_ciclo') return;
+    const sit = cicloBhFunc(f, bhState.banco, bhState.fechamentos, null, bhState.quitacoes, bhCargoDoFunc(f));
+    if (bhSemCiclo(sit)) return;
     if (sit.ancora !== key) return;      // não é o primeiro lançamento dele: nada mudou
     toast(`Ciclo de ${f?.nome?.split(' ')[0] || 'funcionário'} ancorado em ${mesLabel(key)} — fecha em ${fmtDate(sit.fim)}.`, 'info', 5000);
     bhGrade();
@@ -553,8 +558,8 @@ function bhCiclos() {
 
     const itens = lancState.funcionarios
         .filter(f => bhPassaFiltro(f))
-        .map(f => ({ f, sit: cicloBhFunc(f, bhState.banco, bhState.fechamentos, null, bhState.quitacoes), hist: historicoCiclosBh(f, bhState.banco, bhState.fechamentos, null, bhState.quitacoes) }))
-        .filter(x => x.sit && x.sit.status !== 'sem_ciclo')
+        .map(f => ({ f, sit: cicloBhFunc(f, bhState.banco, bhState.fechamentos, null, bhState.quitacoes, bhCargoDoFunc(f)), hist: historicoCiclosBh(f, bhState.banco, bhState.fechamentos, null, bhState.quitacoes) }))
+        .filter(x => !bhSemCiclo(x.sit))
         .sort((a, b) => (BH_ORDEM[a.sit.status] - BH_ORDEM[b.sit.status]) || ((a.sit.dias ?? 0) - (b.sit.dias ?? 0)));
 
     box.innerHTML = `

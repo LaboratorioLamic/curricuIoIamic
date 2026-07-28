@@ -8,6 +8,11 @@ const MOTIVOS_DEMISSAO = [
     'Término de contrato de experiência',
     'Rescisão antecipada do contrato de experiência por iniciativa do empregador',
     'Rescisão antecipada do contrato de experiência por iniciativa do empregado',
+    // Aprendizagem tem motivos próprios porque o contrato é outro: prazo determinado de até
+    // 2 anos, com hipóteses de extinção antecipada listadas no art. 433 da CLT. Encaixá-lo em
+    // "término de experiência" contaminaria a rotatividade com um motivo que não é o dele.
+    'Término do contrato de aprendizagem',
+    'Rescisão antecipada do contrato de aprendizagem',
     'Falecimento do empregado',
     'Outro'
 ];
@@ -599,7 +604,8 @@ function formAusencia(a, modoFerias, sugerido) {
                 </div>
             </div>
             <div class="bx-calc" id="faCalc"></div>
-            <div class="fa-comp" id="faComp"></div>` : ''}
+            <div class="fa-comp" id="faComp"></div>
+            <div class="fa-comp" id="faEscolar"></div>` : ''}
             <div class="field"><label>Observação</label><textarea class="input" id="faObs" rows="2" placeholder="${ferias ? 'Período aquisitivo, acordo com o gestor...' : 'Detalhes (opcional)'}">${escapeHtml(a?.obs || '')}</textarea></div>
             <div class="field"><label>Anexo (${ferias ? 'aviso de férias, recibo' : 'atestado, comprovante'})</label><div id="faAnexo"></div></div>`,
         footer: ''
@@ -622,6 +628,7 @@ function formAusencia(a, modoFerias, sugerido) {
     const adiantEl = m.body.querySelector('#faAdiant13');
     const calcEl = m.body.querySelector('#faCalc');
     const compEl = m.body.querySelector('#faComp');
+    const escolarEl = m.body.querySelector('#faEscolar');
     const funcEl = m.body.querySelector('#faFunc');
 
     // O cálculo precisa das ausências (para saber a competência) e das fontes de HE (para a
@@ -649,6 +656,22 @@ function formAusencia(a, modoFerias, sugerido) {
         m.body.querySelector('#faAbonoHint').innerHTML = abono > teto
             ? `<span class="txt-danger">Máximo ${teto} dias (art. 143: até 1/3 do período).</span>`
             : `Dias vendidos (art. 143, máx. ${teto}). Contam para a competência.`;
+
+        // Menor de 18: as férias devem coincidir com as escolares (art. 136 §2º da CLT). É
+        // aviso, não trava — o sistema não conhece o calendário da escola, e só o RH sabe se a
+        // data combina. Fica fora do `if (!f || dias <= 0)` abaixo porque depende só de quem
+        // é a pessoa, não de o período já estar preenchido.
+        // Idade no INÍCIO das férias, não hoje: quem faz 18 antes do período já não está
+        // sujeito à regra, e o aviso apareceria por engano no lançamento seguinte.
+        const anosNoInicio = f ? idadeEm(f.nascimento, iniEl.value || null) : null;
+        escolarEl.innerHTML = anosNoInicio != null && anosNoInicio < 18 ? `
+            <div class="fa-comp-box is-parcial">
+                ${icon('alert')}
+                <div>
+                    <strong>Menor de 18 anos — férias devem coincidir com as escolares</strong>
+                    <div class="muted">Art. 136 §2º da CLT: o empregado menor de 18 tem direito a fazer coincidir suas férias com as férias escolares. Confirme o calendário da instituição antes de lançar.</div>
+                </div>
+            </div>` : '';
 
         if (!f || dias <= 0) { calcEl.innerHTML = ''; compEl.innerHTML = ''; return null; }
 
@@ -1805,7 +1828,7 @@ async function renderLancFolha() {
             <div class="empty-state">
                 <div class="empty-icon">${icon('money')}</div>
                 <h3>Folha de ${MESES_FULL[mes]} ${ano} não gerada</h3>
-                <p>${eleg.length} funcionário(s) elegível(is). A grade nasce pré-preenchida com salário, insalubridade, periculosidade, encargos (FGTS ${folhaState.params.fgtsPct ?? 0}%), INSS por faixa, benefícios e coparticipação.</p>
+                <p>${eleg.length} funcionário(s) elegível(is). A grade nasce pré-preenchida com salário, insalubridade, periculosidade, encargos (FGTS ${folhaState.params.fgtsPct ?? 0}%, ou ${FGTS_PCT_APRENDIZ}% nos contratos de aprendizagem), INSS por faixa, benefícios e coparticipação.</p>
                 ${podeEditar && eleg.length ? `<button class="btn btn-primary mt-16" id="lfGerar">${icon('plus')} Gerar folha do mês</button>` : ''}
             </div>`;
         bindNav();
@@ -1968,7 +1991,7 @@ async function renderLancFolha() {
                 </table>
             </div>
         </div>
-        <p class="muted" style="margin-top:10px;font-size:12px">Pré-preenchido pelos cadastros; edite as células liberadas — salvamento automático. Insalubridade, Periculosidade, Encargos (FGTS ${fmtPct(folhaState.params.fgtsPct ?? 0, 1)}) e INSS (desconto do empregado, por faixa) são só calculados — não editáveis — e recalculam sozinhos ao alterar o salário; clique no ícone ${icon('info')} para ver a memória de cálculo. "Benefícios" e "Desconto benef." (coparticipação, abate do custo da empresa) vêm do cadastro de benefícios da folha; clique no cadeado ${icon('lock')} para editar manualmente uma célula, ou use "Resetar linha" para recalcular pelo cadastro atual.</p>`;
+        <p class="muted" style="margin-top:10px;font-size:12px">Pré-preenchido pelos cadastros; edite as células liberadas — salvamento automático. Insalubridade, Periculosidade, Encargos (FGTS ${fmtPct(folhaState.params.fgtsPct ?? 0, 1)}; ${fmtPct(FGTS_PCT_APRENDIZ, 1)} nos contratos de aprendizagem) e INSS (desconto do empregado, por faixa) são só calculados — não editáveis — e recalculam sozinhos ao alterar o salário; clique no ícone ${icon('info')} para ver a memória de cálculo. "Benefícios" e "Desconto benef." (coparticipação, abate do custo da empresa) vêm do cadastro de benefícios da folha; clique no cadeado ${icon('lock')} para editar manualmente uma célula, ou use "Resetar linha" para recalcular pelo cadastro atual.</p>`;
     bindNav();
     bindAvatarFotos(cont);
     folhaBindFiltros('lfFiltroUni', 'lfFiltroCargo', renderLancTab);
@@ -2139,16 +2162,19 @@ async function renderLancFolha() {
             const f = folhaState.funcionarios.find(x => x.id === fid);
             const linha = dados[fid];
             const base = (Number(linha.salario) || 0) + (Number(linha.insalubridade) || 0) + (Number(linha.periculosidade) || 0);
-            const fgtsPct = Number(folhaState.params.fgtsPct) || 0;
+            // Alíquota do CARGO, não a global: aprendiz recolhe 2% (art. 15 §7º Lei 8.036/90).
+            const cargoEnc = folhaState.cargos.find(c => c.id === f?.cargoId);
+            const fgtsPct = fgtsPctDe(cargoEnc, folhaState.params);
             const fgtsVal = Number((base * fgtsPct / 100).toFixed(2));
             openModal({
                 title: `Encargos (FGTS) — ${f?.nome || ''}`,
                 body: `
                     <p class="muted" style="font-size:12px;margin-bottom:14px">
                         Calculado automaticamente sobre salário + insalubridade + periculosidade. Custo
-                        da empresa — não é editável aqui: o percentual fica em Configurações →
-                        Parâmetros, e o valor se atualiza sozinho quando salário, insalubridade ou
-                        periculosidade mudam nesta linha.
+                        da empresa — não é editável aqui: ${ehAprendiz(cargoEnc)
+                            ? `a alíquota do contrato de aprendizagem é fixada em ${FGTS_PCT_APRENDIZ}% pelo art. 15 §7º da Lei 8.036/90 e não segue o parâmetro geral`
+                            : 'o percentual fica em Configurações → Parâmetros'}, e o valor se atualiza
+                        sozinho quando salário, insalubridade ou periculosidade mudam nesta linha.
                     </p>
                     <div class="he-origem-lista">
                         <div class="he-origem-row">
@@ -2402,7 +2428,10 @@ async function renderLancFolha() {
                     // Recalcula encargos (FGTS) e INSS automaticamente quando a base (salário) muda
                     if (inp.dataset.col === 'salario') {
                         const base = (Number(dados[fid].salario) || 0) + (Number(dados[fid].insalubridade) || 0) + (Number(dados[fid].periculosidade) || 0);
-                        const fgtsPct = Number(folhaState.params.fgtsPct) || 0;
+                        // Alíquota do CARGO: aprendiz recolhe 2% (art. 15 §7º Lei 8.036/90).
+                        const fgtsPct = fgtsPctDe(
+                            folhaState.cargos.find(c => c.id === folhaState.funcionarios.find(x => x.id === fid)?.cargoId),
+                            folhaState.params);
                         if (fgtsPct > 0) {
                             const enc = Number((base * fgtsPct / 100).toFixed(2));
                             dados[fid].encargos = enc;

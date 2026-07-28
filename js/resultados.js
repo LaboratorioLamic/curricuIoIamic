@@ -211,6 +211,7 @@ const RES_EXPLICACOES = {
     demissoesAno: { oQue: 'Quantidade total de funcionários desligados no ano selecionado, por qualquer motivo.', objetivo: 'Medir o volume de saídas do ano, base para calcular turnover e planejar reposições.' },
     headcountFim: { oQue: 'Quantidade de funcionários ativos no último dia do ano selecionado.', objetivo: 'Fotografia do tamanho real da equipe ao final do período, para comparar ano a ano.' },
     'Índice de aprovação após período de experiência': { oQue: 'Percentual de admitidos no ano que já completaram o período de experiência e não foram desligados por não terem sido aprovados nele.', objetivo: 'Medir a qualidade do processo seletivo — um índice baixo sugere revisão em como as vagas são triadas ou descritas.' },
+    cotaAprendiz: { oQue: `Quantidade de aprendizes ativos e o quanto representam do headcount médio do ano. O art. 429 da CLT exige entre ${COTA_APRENDIZ_MIN_PCT}% e ${COTA_APRENDIZ_MAX_PCT}% de aprendizes.`, objetivo: 'Acompanhar se a empresa está dentro da faixa da cota legal de aprendizagem e antecipar contratações antes de uma fiscalização.', leitura: `Atenção: é uma aproximação, não o cálculo oficial. A base legal conta apenas os cargos cujas funções demandam formação profissional (e exclui os próprios aprendizes), enquanto aqui o denominador é o headcount médio do ano inteiro. Use como termômetro — o número declarado ao MTE precisa ser apurado sobre a base correta.` },
     'Quantidade de treinamentos ofertados': { oQue: 'Número de turmas ou eventos de treinamento iniciados no ano selecionado (não conta participações individuais).', objetivo: 'Acompanhar o volume de iniciativas de capacitação oferecidas pela empresa.' },
     'Total de horas de treinamento': { oQue: 'Soma de todas as horas de treinamento ministradas no ano, multiplicando a carga horária de cada evento pelo número de participantes.', objetivo: 'Dimensionar o investimento total em capacitação, em tempo.' },
     'Média de horas de treinamento por funcionário treinado': { oQue: 'Total de horas de treinamento dividido pelo número de funcionários distintos que participaram de pelo menos um treinamento.', objetivo: 'Medir a intensidade média de capacitação por pessoa alcançada — não por toda a empresa.' },
@@ -621,6 +622,16 @@ function resGeral(cont) {
     const benefAno = meses.reduce((s, m) => s + m.beneficios, 0) - descontosAno;
     const funcAno = folhaAno - benefAno;
 
+    // ---- Cota de aprendizes (art. 429 da CLT: 5% a 15%) ----
+    // Aproximação declarada, não o cálculo oficial: a base legal conta só as funções que
+    // demandam formação profissional, e o sistema não sabe quais são. Usa o headcount médio do
+    // ano como denominador — o mesmo dos custos médios logo abaixo, para os números da página
+    // não divergirem entre si. Serve para o RH saber se está perto do piso, não para declarar.
+    const aprendizesAtivos = dados.funcionarios
+        .filter(f => !f.demissao && ehAprendiz(dados.cargos.find(c => c.id === f.cargoId))).length;
+    const cotaPct = headMedioAno > 0 ? aprendizesAtivos / headMedioAno * 100 : null;
+    const cotaForaDaFaixa = cotaPct != null && (cotaPct < COTA_APRENDIZ_MIN_PCT || cotaPct > COTA_APRENDIZ_MAX_PCT);
+
     cont.innerHTML = `
         <div class="res-grid">
         ${tabelaIndicadores(`Indicadores de rotatividade para ${ano}`, [
@@ -630,7 +641,10 @@ function resGeral(cont) {
             [`Total de funcionários em ${ano} (fim do ano)`, fmtNum(headFimAno), 'users', null, 'headcountFim'],
             ['Índice de aprovação após período de experiência', aprovacao == null ? 'Sem admissões elegíveis' : fmtPct(aprovacao), 'check', 'ok'],
             // Turnover alto é problema: acima de 25%/ano acende alerta em vez de neutro.
-            ['Índice de Turnover (rotatividade)', fmtPct(turnoverAno), turnoverAno > 25 ? 'trendDown' : 'percent', turnoverAno > 25 ? 'alerta' : null]
+            ['Índice de Turnover (rotatividade)', fmtPct(turnoverAno), turnoverAno > 25 ? 'trendDown' : 'percent', turnoverAno > 25 ? 'alerta' : null],
+            ['Aprendizes sobre o quadro (cota legal)',
+                cotaPct == null ? '—' : `${fmtNum(aprendizesAtivos)} · ${fmtPct(cotaPct)} (faixa ${COTA_APRENDIZ_MIN_PCT}%–${COTA_APRENDIZ_MAX_PCT}%)`,
+                'briefcase', cotaForaDaFaixa ? 'alerta' : 'ok', 'cotaAprendiz']
         ], { icone: 'refresh', tom: 'info' })}
         ${tabelaIndicadores(`Indicadores de treinamento para ${ano}`, [
             // "Ofertados" conta turmas/eventos iniciados no ano — não participações.
@@ -1118,8 +1132,8 @@ function resBancoHoras(cont) {
     // dezembro afirma que o saldo VAI continuar aquele, quando na verdade ninguém lançou
     // nada ainda. A linha para onde o dado para.
     const acumVals = mesesDoAno.map(mk => futuro(mk) ? null : funcs.reduce((s, f) => {
-        const sit = cicloBhFunc(f, banco, dados.bhFechamentos, `${mk}-28`, dados.bhQuitacoes);
-        if (!sit || sit.status === 'sem_ciclo' || sit.fechado) return s;
+        const sit = cicloBhFunc(f, banco, dados.bhFechamentos, `${mk}-28`, dados.bhQuitacoes, resCargoDoFunc(f));
+        if (bhSemCiclo(sit) || sit.fechado) return s;
         return s + sit.meses.filter(x => x.mes <= mk).reduce((a, b) => a + b.saldoMin, 0);
     }, 0));
 
@@ -1150,8 +1164,8 @@ function resBancoHoras(cont) {
 
     // ---- Situação atual por funcionário (base do mapa e do ranking) ----
     const sits = funcs
-        .map(f => ({ f, sit: cicloBhFunc(f, banco, dados.bhFechamentos, null, dados.bhQuitacoes) }))
-        .filter(x => x.sit && x.sit.status !== 'sem_ciclo');
+        .map(f => ({ f, sit: cicloBhFunc(f, banco, dados.bhFechamentos, null, dados.bhQuitacoes, resCargoDoFunc(f)) }))
+        .filter(x => !bhSemCiclo(x.sit));
 
     if (!_bhStatusVis.set) _bhStatusVis.set = new Set(BH_STATUS_FILTRO.map(s => s.key));
     const visiveis = () => sits.filter(x => _bhStatusVis.set.has(x.sit.status));
@@ -1407,15 +1421,16 @@ const BH_MAPA_COR = { vencido: '#dc2626', critico: '#d97706', atencao: '#d97706'
 // pelo cargo do próprio dados — mesma precedência de salarioDoFunc em bancohoras.js.
 // Mesmo ponto único da folha e do banco de horas: resolve `salarioBase`/`salario` (legado) e
 // o salário mínimo dos cargos marcados como "usa mínimo".
+const resCargoDoFunc = f => resState.dados.cargos.find(c => c.id === f?.cargoId) || null;
 const resSalarioDoFunc = f =>
-    salarioDe(f, resState.dados.cargos.find(c => c.id === f?.cargoId), resState.dados.params);
+    salarioDe(f, resCargoDoFunc(f), resState.dados.params);
 
 // Modo tabela: a série mensal já sai em tabelaMensal; os ciclos individuais precisam de
 // tabela própria — eles não cabem no eixo Jan–Dez, que é o ponto da aba inteira.
 function bhTabelaCiclos(funcs, banco, fechamentos, fin, quitacoes) {
     const sits = funcs
-        .map(f => ({ f, sit: cicloBhFunc(f, banco, fechamentos, null, quitacoes) }))
-        .filter(x => x.sit && x.sit.status !== 'sem_ciclo')
+        .map(f => ({ f, sit: cicloBhFunc(f, banco, fechamentos, null, quitacoes, resCargoDoFunc(f)) }))
+        .filter(x => !bhSemCiclo(x.sit))
         .sort((a, b) => (BH_ORDEM[a.sit.status] - BH_ORDEM[b.sit.status]) || ((a.sit.dias ?? 0) - (b.sit.dias ?? 0)));
 
     if (!sits.length) return '';

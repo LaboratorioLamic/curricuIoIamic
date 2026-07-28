@@ -260,7 +260,9 @@ function prefillLinha(f) {
     // pró-labore, o que o campo único `salario` (que mudava de significado) impedia.
     // O salário do funcionário, quando existe, sobrepõe o do cargo — é o valor individual
     // negociado; o do cargo é só a referência.
-    const r = remuneracaoCargo(cargo, params);
+    // `f` entra em remuneracaoCargo por causa do aprendiz: o salário dele é o mínimo-HORA
+    // multiplicado pela jornada individual da ficha (art. 428 §2º), não um valor do cargo.
+    const r = remuneracaoCargo(cargo, params, f);
     const salBase = Number(f.salario) || r.salarioBase;
 
     if (r.perfil === 'estagiario') {
@@ -276,7 +278,8 @@ function prefillLinha(f) {
         // Encargos (FGTS, custo da empresa) sobre a remuneração (salário + insalubridade +
         // periculosidade + pró-labore).
         const baseEnc = salBase + linha.insalubridade + linha.periculosidade + linha.prolabore;
-        linha.encargos = Number((baseEnc * (Number(params.fgtsPct) || 0) / 100).toFixed(2));
+        // Alíquota do CARGO: aprendiz recolhe 2% (art. 15 §7º da Lei 8.036/90).
+        linha.encargos = Number((baseEnc * fgtsPctDe(cargo, params) / 100).toFixed(2));
         // INSS (desconto do EMPREGADO, por faixa progressiva) sobre a mesma base — não é
         // custo da empresa, por isso fica fora de `linha.encargos` (ver FOLHA_INSS).
         linha[FOLHA_INSS] = calculoInss(baseEnc, params.inssFaixas);

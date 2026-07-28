@@ -1219,12 +1219,13 @@ async function fdHoras(f, cont) {
         lancState.cargos = funcState.cargos;
     }
 
-    const sit = cicloBhFunc(f, banco, fechamentos, null, quitacoes);
+    const sit = cicloBhFunc(f, banco, fechamentos, null, quitacoes, cargoDe(f));
     const hist = historicoCiclosBh(f, banco, fechamentos, null, quitacoes).slice().reverse();
 
-    if (!sit || sit.status === 'sem_ciclo') {
+    if (bhSemCiclo(sit)) {
         cont.innerHTML = emptyState({
-            icon: 'clock', title: 'Sem banco de horas',
+            icon: sit?.status === 'vedado' ? 'lock' : 'clock',
+            title: sit?.status === 'vedado' ? 'Banco de horas vedado' : 'Sem banco de horas',
             text: sit?.desc || 'Nenhum saldo lançado. O ciclo nasce no primeiro mês publicado na Grade mensal (Lançamentos → Banco de horas).'
         });
         return;
@@ -1755,13 +1756,20 @@ function formFuncionario(f) {
                     </div>
                     <div class="field"><label>Data de nascimento <span class="req">*</span></label><input class="input" id="ffNasc" type="date" value="${f?.nascimento || ''}"></div>
                 </div>
-                <div class="form-row" style="margin-bottom:0">
+                <div class="form-row">
                     <div class="field" style="margin-bottom:0"><label>Escolaridade <span class="req">*</span></label>
                         <select class="select" id="ffEsc">${ESCOLARIDADES.map(e => `<option ${f?.escolaridade === e ? 'selected' : ''}>${e}</option>`).join('')}</select>
                     </div>
                     <div class="field" style="margin-bottom:0"><label>Vestimenta</label>
                         <select class="select" id="ffVest"><option value="">—</option>${VESTIMENTAS.map(v => `<option ${f?.vestimenta === v ? 'selected' : ''}>${v}</option>`).join('')}</select>
                     </div>
+                </div>
+                <div class="field" style="margin-bottom:0"><label>Pessoa com deficiência</label>
+                    <label class="fc-min">
+                        <span class="switch"><input type="checkbox" id="ffPcd" ${f?.pcd ? 'checked' : ''}><span class="track"></span></span>
+                        <span>PcD</span>
+                    </label>
+                    <div class="field-hint">No contrato de aprendizagem, dispensa o limite de ${APRENDIZ_IDADE_MAX} anos e o prazo de ${APRENDIZ_CONTRATO_MESES_MAX} meses (art. 428 §§5º e 8º da CLT).</div>
                 </div>
             </div>
 
@@ -1795,7 +1803,11 @@ function formFuncionario(f) {
                         <input class="input" id="ffFeriasBase" type="date" max="${hoje()}" value="${f?.feriasBase || ''}">
                         <div class="field-hint" id="ffFeriasBaseHint"></div>
                     </div>
-                    <div></div>
+                    <div class="field" style="margin-bottom:0" id="ffContratoFimBox" hidden>
+                        <label>Fim do contrato de aprendizagem <span class="req">*</span></label>
+                        <input class="input" id="ffContratoFim" type="date" value="${f?.contratoFim || ''}">
+                        <div class="field-hint" id="ffContratoFimHint"></div>
+                    </div>
                 </div>
                 ${isEdit && f.demissao ? `
                 <div class="form-row" style="margin-bottom:0">
@@ -1843,6 +1855,44 @@ function formFuncionario(f) {
     };
     admInput.addEventListener('change', atualizaFeb);
     atualizaFeb();
+
+    // ---- Contrato de aprendizagem ----
+    // O termo final só existe para o aprendiz: é contrato por PRAZO DETERMINADO (art. 428 §3º),
+    // e sem a data gravada nada avisa o RH antes de o vínculo virar indeterminado por descuido.
+    // O campo aparece/some conforme o cargo escolhido, mesmo padrão de `data-verba` no cargo.
+    const cargoInput = m.body.querySelector('#ffCargo');
+    const pcdInput = m.body.querySelector('#ffPcd');
+    const jornadaInput = m.body.querySelector('#ffJornada');
+    const escInput = m.body.querySelector('#ffEsc');
+    const cfBox = m.body.querySelector('#ffContratoFimBox');
+    const cfInput = m.body.querySelector('#ffContratoFim');
+    const cfHint = m.body.querySelector('#ffContratoFimHint');
+    const cargoSelecionado = () => funcState.cargos.find(c => c.id === cargoInput.value);
+    const atualizaAprendiz = () => {
+        const aprendiz = ehAprendiz(cargoSelecionado());
+        cfBox.hidden = !aprendiz;
+        // Restaura o padrão ao sair do perfil: senão o teto do aprendiz fica sugerido para um
+        // cargo comum depois de trocar o select.
+        if (!aprendiz) { jornadaInput.placeholder = String(JORNADA_MENSAL_PADRAO); return; }
+        const adm = admInput.value;
+        const semLimite = pcdInput.checked;
+        const teto = adm ? addMeses(adm, APRENDIZ_CONTRATO_MESES_MAX) : '';
+        cfInput.min = adm || '';
+        cfInput.max = semLimite ? '' : teto;
+        const jorMax = aprendizJornadaMax({ escolaridade: escInput.value });
+        jornadaInput.placeholder = String(jorMax);
+        if (!adm) { cfHint.textContent = 'Preencha a admissão primeiro.'; return; }
+        cfHint.innerHTML = semLimite
+            ? `Aprendiz com deficiência: sem o teto de ${APRENDIZ_CONTRATO_MESES_MAX} meses (art. 428 §8º). Jornada máxima de ${jorMax}h/mês.`
+            : `Máximo ${APRENDIZ_CONTRATO_MESES_MAX} meses (art. 428 §3º) — até <a href="#" id="ffCfUsar">${fmtDate(teto)}</a>. Jornada máxima de ${jorMax}h/mês.`;
+        const usar = cfHint.querySelector('#ffCfUsar');
+        if (usar) usar.onclick = e => { e.preventDefault(); cfInput.value = teto; };
+    };
+    cargoInput.addEventListener('change', atualizaAprendiz);
+    admInput.addEventListener('change', atualizaAprendiz);
+    pcdInput.addEventListener('change', atualizaAprendiz);
+    escInput.addEventListener('change', atualizaAprendiz);
+    atualizaAprendiz();
 
     // ---- Foto: comprime (256x256) e só sobe ao banco no salvar — evita gravar upload de
     // quem desistiu do formulário. `preview` guarda o dataURL já comprimido; `removida` marca
@@ -1929,19 +1979,63 @@ function formFuncionario(f) {
         if (jornada !== null && !(jornada >= 1 && jornada <= 744))
             return toast('Jornada mensal deve ficar entre 1 e 744 horas (o máximo de horas de um mês).', 'error');
 
+        const escolaridade = m.body.querySelector('#ffEsc').value;
+        const pcd = pcdInput.checked;
+        const cargoSel = funcState.cargos.find(c => c.id === cargoInput.value);
+        const contratoFim = cfInput.value || null;
+
+        // ---- Contrato de aprendizagem (CLT arts. 402-433) ----
+        // Barra na entrada, como a admissão futura: um aprendiz cadastrado fora dos limites
+        // legais contamina folha, cota e o alerta de término, e a irregularidade só apareceria
+        // numa fiscalização. Todas as regras aqui são de lei, não de política interna.
+        if (ehAprendiz(cargoSel)) {
+            // Idade na ADMISSÃO, não hoje: a faixa do art. 428 é requisito da contratação.
+            // Quem entrou aos 23 e já fez 25 segue num contrato válido — validar pela idade
+            // atual recusaria a edição de uma ficha correta.
+            const anos = idadeEm(nascimento, admissao);
+            if (anos != null && anos < APRENDIZ_IDADE_MIN)
+                return toast(`Contrato de aprendizagem exige no mínimo ${APRENDIZ_IDADE_MIN} anos na admissão (art. 428 da CLT). Idade na admissão: ${anos}.`, 'error');
+            // O teto de 24 anos não se aplica ao aprendiz com deficiência (art. 428 §5º).
+            if (anos != null && anos > APRENDIZ_IDADE_MAX && !pcd)
+                return toast(`Contrato de aprendizagem vai até ${APRENDIZ_IDADE_MAX} anos (art. 428 da CLT) — sem limite apenas para aprendiz com deficiência. Idade na admissão: ${anos}.`, 'error');
+
+            // Prorrogação e compensação são vedadas (art. 432): a jornada é teto, não média.
+            const jorMax = aprendizJornadaMax({ escolaridade });
+            if (jornada !== null && jornada > jorMax)
+                return toast(`Jornada do aprendiz limitada a ${jorMax}h/mês (art. 432 da CLT)${jorMax === APRENDIZ_JORNADA_MES_MAX ? ' — as 8h diárias só valem para quem concluiu o ensino fundamental' : ''}.`, 'error');
+
+            if (!contratoFim)
+                return toast('Informe o fim do contrato de aprendizagem — é contrato por prazo determinado (art. 428 §3º da CLT).', 'error');
+            if (contratoFim <= admissao)
+                return toast('O fim do contrato de aprendizagem deve ser posterior à admissão.', 'error');
+            if (!pcd && contratoFim > addMeses(admissao, APRENDIZ_CONTRATO_MESES_MAX))
+                return toast(`O contrato de aprendizagem não pode passar de ${APRENDIZ_CONTRATO_MESES_MAX} meses (art. 428 §3º da CLT) — no máximo até ${fmtDate(addMeses(admissao, APRENDIZ_CONTRATO_MESES_MAX))}.`, 'error');
+
+            // Menor de 18 não trabalha em local insalubre ou perigoso (CF art. 7º XXXIII e
+            // art. 405 I da CLT). O risco é do CARGO; a idade é da ficha — só aqui os dois se
+            // encontram, por isso a checagem vive no save do funcionário.
+            const risco = (Number(cargoSel.insalubridade) || 0) > 0 || !!cargoSel.periculosidade;
+            if (risco && anos != null && anos < 18)
+                return toast(`O cargo "${cargoSel.nome}" tem insalubridade/periculosidade: menores de 18 anos não podem ser alocados (CF art. 7º XXXIII e art. 405 da CLT).`, 'error');
+        }
+
         const data = {
             nome,
             sexo: m.body.querySelector('#ffSexo').value,
             nascimento,
-            escolaridade: m.body.querySelector('#ffEsc').value,
-            cargoId: m.body.querySelector('#ffCargo').value,
+            escolaridade,
+            pcd,
+            cargoId: cargoInput.value,
             unidadeId: m.body.querySelector('#ffUnidade').value,
             telefone: foneInput.value.trim(),
             email: m.body.querySelector('#ffEmail').value.trim(),
             vestimenta: m.body.querySelector('#ffVest').value,
             admissao,
             feriasBase,
-            jornadaMensal: jornada
+            jornadaMensal: jornada,
+            // Fora do perfil aprendiz o campo não existe: gravar `null` limpa um termo que
+            // sobrou de quando a pessoa era aprendiz e foi efetivada.
+            contratoFim: ehAprendiz(cargoSel) ? contratoFim : null
         };
         const demInput = m.body.querySelector('#ffDem');
         if (demInput) data.demissao = demInput.value || null;

@@ -1,6 +1,6 @@
 // ===== Configurações (somente admin): Usuários, Cargos, Unidades, Benefícios, Parâmetros =====
 
-const TIPOS_CARGO = ['Operacional', 'Administrativo', 'Gestão', 'Estágio', 'Diretoria'];
+const TIPOS_CARGO = ['Operacional', 'Administrativo', 'Gestão', 'Estágio', 'Aprendizagem', 'Diretoria'];
 const TIPOS_BENEFICIO = ['Plano de saúde', 'Plano odontológico', 'Vale alimentação', 'Vale refeição', 'Vale transporte', 'Seguro de vida', 'Educação', 'Outro'];
 
 const CFG_TABS = [
@@ -589,8 +589,15 @@ async function renderCfgCargos() {
             const def = CARGO_PERFIS.find(p => p.id === r.perfil);
             // Mostra as verbas que o perfil tem — a coluna antiga dizia "salário base" mesmo
             // quando o valor era bolsa de estágio.
+            // Aprendiz não tem valor mensal no cargo: o salário depende da jornada de CADA
+            // funcionário (art. 428 §2º — mínimo-hora). Mostrar um mensal aqui seria inventar
+            // uma jornada que o cargo não conhece, então a listagem exibe o valor-HORA.
+            const aprendizHora = ehAprendiz(c) && c.usaSalarioMinimo
+                ? `${fmtBRL(salarioHoraMinimo(cfgParams))} <span class="text-2">/hora</span> <span class="fc-min-tag" title="Salário mínimo-hora dos Parâmetros × jornada da ficha de cada aprendiz">mín./h</span>`
+                : '';
             const verbas = [
-                r.salarioBase ? `${fmtBRL(r.salarioBase)}${r.usaSalarioMinimo ? ' <span class="fc-min-tag" title="Acompanha o salário mínimo dos Parâmetros">mín.</span>' : ''}` : '',
+                aprendizHora,
+                aprendizHora ? '' : r.salarioBase ? `${fmtBRL(r.salarioBase)}${r.usaSalarioMinimo ? ' <span class="fc-min-tag" title="Acompanha o salário mínimo dos Parâmetros">mín.</span>' : ''}` : '',
                 r.bolsa ? `${fmtBRL(r.bolsa)} <span class="text-2">bolsa</span>` : '',
                 r.prolabore ? `${fmtBRL(r.prolabore)} <span class="text-2">pró-labore</span>` : ''
             ].filter(Boolean);
@@ -649,7 +656,7 @@ function formCargo(c) {
             </div>
             <div class="cargo-verbas" id="fcVerbas">
                 <div class="field" data-verba="salarioBase">
-                    <label>Salário base (R$) <span class="req">*</span></label>
+                    <label id="fcSalarioLbl">Salário base (R$) <span class="req">*</span></label>
                     <input class="input" id="fcSalario" type="number" min="0" step="0.01" value="${c?.salarioBase ?? c?.salario ?? ''}">
                     <label class="fc-min">
                         <span class="switch"><input type="checkbox" id="fcUsaMin" ${c?.usaSalarioMinimo ? 'checked' : ''}><span class="track"></span></span>
@@ -684,6 +691,9 @@ function formCargo(c) {
                     <div class="field-hint">Adicional fixo de ${PERICULOSIDADE_PCT}% sobre o salário total do funcionário (art. 193 CLT). Não cumulativo com insalubridade na prática — cabe ao RH escolher qual marcar.</div>
                 </div>
             </div>
+            <div class="field-hint txt-danger" id="fcRiscoAprendiz" hidden style="margin-top:-8px">
+                Cargo de aprendizagem com risco: <strong>menores de 18 anos não podem ser alocados</strong> (CF art. 7º XXXIII e art. 405 da CLT). A ficha vai recusar aprendizes menores neste cargo.
+            </div>
             <div class="form-row">
                 <div class="field"><label>Periodicidade do ASO</label>
                     <select class="select" id="fcAsoPer">
@@ -708,21 +718,48 @@ function formCargo(c) {
     const salEl = m.body.querySelector('#fcSalario');
     const minEl = m.body.querySelector('#fcUsaMin');
     const salHint = m.body.querySelector('#fcSalHint');
+    const salLbl = m.body.querySelector('#fcSalarioLbl');
 
     const syncMinimo = () => {
         const on = minEl.checked;
+        const aprendiz = btnPerfil.dataset.perfil === 'aprendiz';
         // Campo travado, não escondido: o RH tem que VER quanto o cargo vai pagar. Um input
         // vazio e desabilitado não diria nada.
         salEl.disabled = on;
         salEl.classList.toggle('cell-auto', on);
-        if (on) salEl.value = minimo ? minimo.toFixed(2) : '';
+        // O rótulo acompanha a unidade do número mostrado: no aprendiz com mínimo o campo
+        // exibe R$/hora, e chamá-lo de "salário base" faria o RH ler R$ 6,90 como mensal.
+        salLbl.innerHTML = (on && aprendiz ? 'Salário-hora (R$/h)' : 'Salário base (R$)') + ' <span class="req">*</span>';
+        // No aprendiz o campo mostra o valor-HORA, não o mensal: o mensal só existe quando a
+        // jornada de um funcionário concreto entra na conta (ver salarioBaseCargo).
+        if (on) salEl.value = minimo ? (aprendiz ? (minimo / JORNADA_MENSAL_PADRAO) : minimo).toFixed(2) : '';
+        if (on && aprendiz && minimo) {
+            const hora = minimo / JORNADA_MENSAL_PADRAO;
+            salHint.innerHTML = `Salário mínimo-<strong>hora</strong> (art. 428 §2º CLT): ${fmtBRL(minimo)} ÷ ${JORNADA_MENSAL_PADRAO}h = <strong>${fmtBRL(hora)}/h</strong>. O valor mensal sai da jornada de cada aprendiz — ${APRENDIZ_JORNADA_MES_MAX}h/mês dá ${fmtBRL(hora * APRENDIZ_JORNADA_MES_MAX)}.`;
+            return;
+        }
         salHint.innerHTML = on
             ? minimo
                 ? `Acompanha o salário mínimo dos Parâmetros (<strong>${fmtBRL(minimo)}</strong>). Muda lá, muda aqui — sem reeditar o cargo.`
                 : `<span class="txt-danger">Salário mínimo não configurado em Parâmetros.</span> Defina-o antes de usar esta opção.`
-            : 'Sugestão na folha de pagamento.';
+            : aprendiz
+                ? `Valor mensal fixo. O piso legal é o mínimo-hora × jornada (art. 428 §2º) — marque a opção acima para acompanhá-lo sozinho.`
+                : 'Sugestão na folha de pagamento.';
     };
     minEl.onchange = syncMinimo;
+
+    // Aviso (não bloqueio): um cargo de aprendizagem PODE ser insalubre/perigoso — só não pode
+    // receber menor de 18. Quem barra é a ficha, que é onde a idade existe; aqui só se antecipa
+    // a consequência, para o RH não descobrir na hora de alocar.
+    const riscoEl = m.body.querySelector('#fcRiscoAprendiz');
+    const insalEl = m.body.querySelector('#fcInsal');
+    const periculEl = m.body.querySelector('#fcPericul');
+    const syncRisco = () => {
+        riscoEl.hidden = !(btnPerfil.dataset.perfil === 'aprendiz'
+            && ((Number(insalEl.value) || 0) > 0 || periculEl.checked));
+    };
+    insalEl.onchange = syncRisco;
+    periculEl.onchange = syncRisco;
 
     const syncPerfil = () => {
         const p = btnPerfil.dataset.perfil;
@@ -732,6 +769,7 @@ function formCargo(c) {
             el.hidden = !def.campos.includes(el.dataset.verba);
         });
         syncMinimo();
+        syncRisco();
     };
     btnPerfil.onclick = () => openPopover(btnPerfil, CARGO_PERFIS.map(p => ({
         label: `${p.label} — ${p.desc}`,
@@ -1078,7 +1116,8 @@ const PARAM_INFO = {
         title: 'FGTS (%)',
         html: `<p><strong>O que é:</strong> a alíquota do FGTS (Lei 8.036, art. 15 — padrão legal 8%).</p>
                <p><strong>Onde afeta:</strong> Folha de pagamento e 13º salário (inclusive a 1ª parcela).</p>
-               <p><strong>Como afeta:</strong> é aplicada sobre a base de cálculo de cada lançamento para estimar o depósito de FGTS devido, custo da empresa. É calculada separada do INSS porque incide em toda parcela do 13º, inclusive na 1ª, o que o INSS não faz.</p>`
+               <p><strong>Como afeta:</strong> é aplicada sobre a base de cálculo de cada lançamento para estimar o depósito de FGTS devido, custo da empresa. É calculada separada do INSS porque incide em toda parcela do 13º, inclusive na 1ª, o que o INSS não faz.</p>
+               <p><strong>Exceção:</strong> cargos com perfil <em>Jovem Aprendiz</em> recolhem ${FGTS_PCT_APRENDIZ}% fixos (art. 15 §7º da Lei 8.036/90) e ignoram este parâmetro — é alíquota de lei, não escolha.</p>`
     },
     inssFaixas: {
         title: 'INSS (%) — tabela progressiva',
@@ -1305,7 +1344,7 @@ async function renderCfgParametros() {
                     <div class="field">
                         ${pLabel('FGTS (%)', 'fgtsPct')}
                         <input class="input" id="fpFgts" type="number" min="0" max="100" step="0.1" value="${params.fgtsPct ?? 8}">
-                        <div class="field-hint">Alíquota do FGTS (Lei 8.036 art. 15: 8%), custo da empresa. Separado do INSS porque incide em toda parcela do 13º, inclusive na 1ª.</div>
+                        <div class="field-hint">Alíquota do FGTS (Lei 8.036 art. 15: 8%), custo da empresa. Separado do INSS porque incide em toda parcela do 13º, inclusive na 1ª. Cargos de Jovem Aprendiz usam ${FGTS_PCT_APRENDIZ}% fixos por lei e não seguem este campo.</div>
                     </div>
                     <div class="field" style="margin-bottom:0">
                         ${pLabel('Dias do período de experiência', 'diasExperiencia')}

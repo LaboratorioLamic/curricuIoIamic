@@ -502,14 +502,23 @@ const destinoQuitacao = q => q?.destino || BH_DESTINO_PAGO;
 // Ordem de urgência. `sem_ciclo` fica por ÚLTIMO — inversão deliberada em relação ao
 // ASO_ORDEM, onde sem_historico é o primeiro: lá a ausência de dado é a pior notícia; aqui
 // é a melhor. Mesmo motor, semântica oposta.
-const BH_ORDEM = { vencido: 0, critico: 1, atencao: 2, em_dia: 3, sem_ciclo: 4 };
+// `vedado` acompanha `sem_ciclo` no fim: também não é pendência — é a ausência de banco por
+// imposição legal, e ninguém precisa agir.
+const BH_ORDEM = { vencido: 0, critico: 1, atencao: 2, em_dia: 3, sem_ciclo: 4, vedado: 5 };
 const BH_STATUS = {
     vencido:   { cls: 'badge-danger',  dot: 'st-vencida', txt: 'Ciclo vencido' },
     critico:   { cls: 'badge-warning', dot: 'st-critica', txt: 'Fecha em breve' },
     atencao:   { cls: 'badge-warning', dot: 'st-critica', txt: 'Saldo alto' },
     em_dia:    { cls: 'badge-neutral', dot: 'st-ok',      txt: 'Em dia' },
-    sem_ciclo: { cls: 'badge-neutral', dot: 'st-ok',      txt: 'Sem banco' }
+    sem_ciclo: { cls: 'badge-neutral', dot: 'st-ok',      txt: 'Sem banco' },
+    vedado:    { cls: 'badge-neutral', dot: 'st-ok',      txt: 'Vedado (aprendiz)' }
 };
+
+// "Não tem banco de horas" — por não ter lançamento ou por vedação legal. Existe para que as
+// listagens não precisem repetir a disjunção: todas elas querem a mesma coisa (quem NÃO entra
+// na fila), e um filtro que testasse só `sem_ciclo` deixaria o aprendiz aparecer com um ciclo
+// zerado depois que a vedação passou a existir.
+const bhSemCiclo = sit => !sit || sit.status === 'sem_ciclo' || sit.status === 'vedado';
 
 // ---- Aritmética de mês ('AAAA-MM') ----
 // O banco é indexado por mês, não por dia (rh_banco_horas/{ano-mes}/{funcionarioId}), então
@@ -581,10 +590,29 @@ const mesBhQuitado = (fid, mesKey, quitacoes) => mesesQuitadosBh(fid, quitacoes)
 // ({ status, dias, label, desc, ... }) para reusar fila, badges e dots sem adaptador.
 //
 // `dias` > 0 = ainda tem prazo; < 0 = fechou há N dias. Mesma convenção de férias/ASO.
-function cicloBhFunc(f, banco, fechamentos, ref, quitacoes) {
+// `cargo` é opcional: sem ele o comportamento é o de sempre. Só existe para vedar o banco ao
+// aprendiz — quem não tem o cargo à mão (código legado) continua funcionando igual.
+function cicloBhFunc(f, banco, fechamentos, ref, quitacoes, cargo) {
     if (!f?.admissao) return null;
     const h = ref || hoje();
     const mesRef = mesDe(h);
+
+    // Aprendiz não tem banco de horas: o art. 432 da CLT veda prorrogação E compensação da
+    // jornada do contrato de aprendizagem. Sai ANTES de ler lançamentos porque o veto não
+    // depende de haver saldo — se houver saldo lançado (importação, cargo trocado depois),
+    // ele é irregular e o ciclo não pode ser fechado como compensação de qualquer forma.
+    // Contrato de retorno idêntico ao de `sem_ciclo`: a UI lê essas chaves sem saber a origem.
+    if (ehAprendiz(cargo)) return {
+        status: 'vedado', dias: null, inicio: null, fim: null, indice: 0,
+        acumuladoMin: 0, extraMin: 0, atrasoMin: 0, meses: [], lancados: 0, fechados: 0,
+        abertos: [], quitados: [], quitacoes: [], quitadoMin: 0, quitadoValor: 0, quitadoDescontado: 0,
+        fechado: null, desligado: !!f.demissao && f.demissao <= h,
+        podeFechar: false,
+        motivoNaoFechar: 'Banco de horas vedado ao contrato de aprendizagem (art. 432 CLT).',
+        label: 'Vedado (aprendiz)',
+        desc: 'O art. 432 da CLT veda prorrogação e compensação de jornada do aprendiz. Hora excedente, se houver, é hora extra paga — não vai para banco.'
+    };
+
     const lancs = bhLancamentosFunc(f.id, banco, mesRef);
 
     // Sem nenhum lançamento = sem acordo de compensação em vigor. Não é pendência.
@@ -861,19 +889,29 @@ function historicoCiclosBh(f, banco, fechamentos, ref, quitacoes) {
 //   Estagiário → bolsa (Lei 11.788: bolsa não é salário, não gera encargos)
 //   Funcionário → salário base
 //   Diretor    → salário base + pró-labore (pode ter os dois: é sócio e empregado)
+//   Aprendiz   → salário base, mas resolvido por HORA (art. 428 §2º CLT)
 //
 // Antes existia UM campo `salario` que mudava de significado conforme o tipo — o mesmo número
 // virava bolsa, pró-labore ou salário. Por isso um diretor não conseguia ter as duas verbas.
+//
+// Aprendiz usa o mesmo campo `salarioBase` do funcionário porque é EMPREGADO CLT: a verba é
+// salário de verdade (com 13º, férias, INSS e FGTS). O que muda não é a verba, é como o valor
+// é resolvido (salarioBaseCargo) e a alíquota de FGTS (fgtsPctDe).
 const CARGO_PERFIS = [
     { id: 'funcionario', label: 'Funcionário', desc: 'Salário base', campos: ['salarioBase'] },
     { id: 'estagiario', label: 'Estagiário', desc: 'Bolsa estágio', campos: ['bolsa'] },
+    { id: 'aprendiz', label: 'Jovem Aprendiz', desc: 'Salário-hora mínimo · FGTS 2%', campos: ['salarioBase'] },
     { id: 'diretor', label: 'Diretor', desc: 'Salário base + pró-labore', campos: ['salarioBase', 'prolabore'] }
 ];
 
 // Perfil de um cargo, com migração dos dados antigos: `tipo` era o que decidia a verba, então
 // cargos já cadastrados continuam caindo no perfil equivalente sem ninguém reeditá-los.
 const perfilCargo = c => c?.perfil
-    || (c?.tipo === 'Estágio' ? 'estagiario' : c?.tipo === 'Diretoria' ? 'diretor' : 'funcionario');
+    || (c?.tipo === 'Estágio' ? 'estagiario'
+        : c?.tipo === 'Aprendizagem' ? 'aprendiz'
+        : c?.tipo === 'Diretoria' ? 'diretor' : 'funcionario');
+
+const ehAprendiz = c => perfilCargo(c) === 'aprendiz';
 
 const cargoTemCampo = (c, campo) =>
     (CARGO_PERFIS.find(p => p.id === perfilCargo(c))?.campos || []).includes(campo);
@@ -885,20 +923,146 @@ const cargoTemCampo = (c, campo) =>
 // reajuste do mínimo exigir reabrir e salvar cargo por cargo — e nada avisaria os defasados.
 //
 // Aceita `salarioBase` (novo) e `salario` (legado) — metade do código lia um, metade o outro.
-function salarioBaseCargo(c, params) {
+// `f` é opcional e só importa para o aprendiz, cuja jornada é individual (ver abaixo).
+function salarioBaseCargo(c, params, f) {
     if (!c) return 0;
-    if (c.usaSalarioMinimo) return Number(params?.salarioMinimo) || 0;
+    if (c.usaSalarioMinimo) {
+        // Aprendiz recebe o salário mínimo-HORA (art. 428 §2º CLT), não o mínimo mensal: o
+        // contrato é de jornada reduzida, e pagar o mínimo cheio por 6h/dia não é "mais
+        // favorável", é confundir a base de cálculo. O divisor 220 é a jornada mensal integral
+        // de referência (44h/semana) — quem trabalha 180h recebe 180/220 do mínimo.
+        if (ehAprendiz(c)) return salarioAprendiz(params, jornadaDe(f));
+        return Number(params?.salarioMinimo) || 0;
+    }
     return Number(c.salarioBase ?? c.salario) || 0;
+}
+
+// Salário mínimo por hora e o salário do aprendiz para uma jornada. Separados porque a folha,
+// o form de cargo e a listagem precisam mostrar o valor-hora ao RH, não só o total.
+const salarioHoraMinimo = params => (Number(params?.salarioMinimo) || 0) / JORNADA_MENSAL_PADRAO;
+const salarioAprendiz = (params, jornadaMes) =>
+    Number((salarioHoraMinimo(params) * (Number(jornadaMes) || JORNADA_MENSAL_PADRAO)).toFixed(2));
+
+// FGTS do cargo. Aprendiz recolhe 2% (art. 15 §7º da Lei 8.036/90) contra os 8% de todo mundo —
+// é alíquota de lei, não escolha do RH, por isso não vira parâmetro configurável. Ponto único:
+// todo lugar que multiplica base por FGTS passa por aqui.
+const FGTS_PCT_APRENDIZ = 2;
+const fgtsPctDe = (cargo, params) =>
+    ehAprendiz(cargo) ? FGTS_PCT_APRENDIZ : (Number(params?.fgtsPct) || 0);
+
+// ---- Limites legais do contrato de aprendizagem ----
+// Idade: art. 428 (14 a 24 anos). Aprendiz com deficiência não tem teto (§5º).
+const APRENDIZ_IDADE_MIN = 14;
+const APRENDIZ_IDADE_MAX = 24;
+// Prazo determinado: art. 428 §3º — máximo 2 anos, salvo aprendiz com deficiência (§8º).
+const APRENDIZ_CONTRATO_MESES_MAX = 24;
+// Jornada: art. 432 — 6h/dia (36h/semana → 180h/mês). Sobe para 8h/dia (220h/mês) apenas para
+// quem já concluiu o ensino fundamental, e desde que as horas incluam a aprendizagem teórica.
+const APRENDIZ_JORNADA_MES_MAX = 180;
+const APRENDIZ_JORNADA_MES_MAX_FUND = 220;
+// Cota de aprendizes: art. 429 — 5% a 15% dos trabalhadores em funções que demandam formação.
+const COTA_APRENDIZ_MIN_PCT = 5;
+const COTA_APRENDIZ_MAX_PCT = 15;
+// Antecedência do alerta de término. 60 dias porque a decisão que o RH precisa tomar (efetivar,
+// encerrar ou contratar substituto) não cabe em duas semanas.
+const APRENDIZ_ALERTA_DIAS = 60;
+
+// Teto de jornada do aprendiz. Depende da escolaridade: 8h/dia só para quem já concluiu o
+// ensino fundamental (art. 432 §1º).
+//
+// A regra é por EXCLUSÃO, não por match de "completo": todo nível acima do fundamental já
+// pressupõe o fundamental concluído — quem está com o médio incompleto terminou o fundamental.
+// Testar `includes('completo')` reprovaria "Médio incompleto" e "Superior incompleto", que são
+// exatamente os casos mais comuns num aprendiz.
+const APRENDIZ_ESCOLARIDADE_SEM_FUNDAMENTAL = ['Fundamental incompleto'];
+const aprendizConcluiuFundamental = f =>
+    !!f?.escolaridade && !APRENDIZ_ESCOLARIDADE_SEM_FUNDAMENTAL.includes(f.escolaridade);
+const aprendizJornadaMax = f =>
+    aprendizConcluiuFundamental(f) ? APRENDIZ_JORNADA_MES_MAX_FUND : APRENDIZ_JORNADA_MES_MAX;
+
+// Aprendiz com deficiência: sem teto de idade (art. 428 §5º) e sem o limite de 2 anos (§8º).
+const aprendizSemLimite = f => !!f?.pcd;
+
+// Termo final do contrato. Gravado na ficha (`contratoFim`); sem ele, projeta admissão + 24
+// meses — o teto legal. Projetar em vez de calar segue a mesma escolha do ASO: um contrato por
+// prazo determinado sem termo registrado é justamente o caso que vira vínculo indeterminado por
+// descuido, e silêncio aqui esconderia o pior estado possível.
+const APRENDIZ_ORDEM = { vencido: 0, critico: 1, em_dia: 2 };
+const APRENDIZ_STATUS = {
+    vencido: { cls: 'badge-danger',  dot: 'st-vencida', txt: 'Contrato vencido' },
+    critico: { cls: 'badge-warning', dot: 'st-critica', txt: 'Termina em breve' },
+    em_dia:  { cls: 'badge-neutral', dot: 'st-ok',      txt: 'Em vigor' }
+};
+const contratoAprendizFim = f =>
+    f?.contratoFim || (f?.admissao ? addMeses(f.admissao, APRENDIZ_CONTRATO_MESES_MAX) : null);
+
+// Situação do contrato de aprendizagem. Mesmo contrato de retorno de situacaoAsoFunc
+// ({ status, dias, label, desc }) para reusar fila, badges e dots sem adaptador.
+// `dias` > 0 = ainda em vigor; < 0 = venceu há N dias.
+function situacaoAprendizFunc(f, cargo, ref) {
+    if (!ehAprendiz(cargo)) return null;
+    if (!f?.admissao || f.demissao) return null;
+    const h = ref || hoje();
+    if (f.admissao > h) return null;                  // admissão futura: nada a calcular
+
+    const fim = contratoAprendizFim(f);
+    // Aprendiz com deficiência sem termo gravado: o contrato pode legitimamente passar de 2
+    // anos, então projetar um vencimento seria inventar uma pendência que a lei não cria.
+    if (!f.contratoFim && aprendizSemLimite(f)) return null;
+
+    const dias = diasEntre(h, fim);
+    const derivado = !f.contratoFim;
+    const origem = derivado
+        ? `Termo não informado na ficha — projetado em ${APRENDIZ_CONTRATO_MESES_MAX} meses a partir da admissão (${fmtDate(f.admissao)}), o teto do art. 428 §3º da CLT.`
+        : `Termo registrado na ficha.`;
+    const comum = { fim, vencimento: fim, derivado };
+
+    if (dias < 0) return {
+        ...comum, status: 'vencido', dias,
+        label: `Vencido há ${prazoTexto(dias)}`,
+        desc: `O contrato de aprendizagem terminou em ${fmtDate(fim)}. Sem registro do desligamento ou da efetivação, o vínculo corre o risco de ser tratado como prazo indeterminado. ${origem}`
+    };
+    if (dias <= APRENDIZ_ALERTA_DIAS) return {
+        ...comum, status: 'critico', dias,
+        label: dias === 0 ? 'Termina hoje' : `Termina em ${prazoTexto(dias)}`,
+        desc: `O contrato termina em ${fmtDate(fim)}. Decidir entre efetivação e desligamento antes da data. ${origem}`
+    };
+    return {
+        ...comum, status: 'em_dia', dias,
+        label: `Termina em ${prazoTexto(dias)}`,
+        desc: `Contrato em vigor até ${fmtDate(fim)}. ${origem}`
+    };
+}
+
+// Diagnóstico de contratos de aprendizagem por UNIDADE, para o sino.
+// Mesmo contrato de diagnosticoAso: retorna null quando não há nada a cobrar.
+function diagnosticoAprendiz(un, funcionarios, cargos, ref) {
+    const ativos = funcionarios.filter(f => f.unidadeId === un.id && !f.demissao);
+    const cargoDoFunc = f => (cargos || []).find(c => c.id === f.cargoId);
+    const itens = ativos
+        .map(f => ({ f, sit: situacaoAprendizFunc(f, cargoDoFunc(f), ref) }))
+        .filter(x => x.sit && (x.sit.status === 'vencido' || x.sit.status === 'critico'));
+    if (!itens.length) return null;
+
+    const conta = st => itens.filter(x => x.sit.status === st).length;
+    return {
+        nome: un.nome,
+        vencidos: conta('vencido'),
+        criticos: conta('critico'),
+        pessoas: itens
+            .sort((a, b) => (APRENDIZ_ORDEM[a.sit.status] - APRENDIZ_ORDEM[b.sit.status]) || (a.sit.dias - b.sit.dias))
+            .map(x => ({ funcionarioId: x.f.id, nome: x.f.nome, status: x.sit.status, label: x.sit.label, vencimento: x.sit.fim, derivado: x.sit.derivado }))
+    };
 }
 
 // Verbas do cargo resolvidas, respeitando o perfil: um cargo de estagiário não tem salário
 // base mesmo que o campo tenha sobrado gravado de uma troca de perfil.
-function remuneracaoCargo(c, params) {
+function remuneracaoCargo(c, params, f) {
     const p = perfilCargo(c);
     const campos = CARGO_PERFIS.find(x => x.id === p)?.campos || [];
     return {
         perfil: p,
-        salarioBase: campos.includes('salarioBase') ? salarioBaseCargo(c, params) : 0,
+        salarioBase: campos.includes('salarioBase') ? salarioBaseCargo(c, params, f) : 0,
         bolsa: campos.includes('bolsa') ? (Number(c?.bolsa ?? c?.salario) || 0) : 0,
         prolabore: campos.includes('prolabore') ? (Number(c?.prolabore) || 0) : 0,
         usaSalarioMinimo: !!c?.usaSalarioMinimo
@@ -909,7 +1073,7 @@ function remuneracaoCargo(c, params) {
 // senão o do cargo. Ponto único — antes cada arquivo resolvia isso à sua maneira, e dois deles
 // liam `salarioBase` num cargo que só gravava `salario`.
 const salarioDe = (f, cargo, params) =>
-    Number(f?.salario) || salarioBaseCargo(cargo, params) || 0;
+    Number(f?.salario) || salarioBaseCargo(cargo, params, f) || 0;
 
 // ============ CÁLCULO DE FÉRIAS (CF art. 7º XVII, CLT arts. 129-145) ============
 //
@@ -1321,7 +1485,8 @@ function calculo13(f, cargo, params, avos, opts) {
     // dinheiro que realmente saiu naquele mês, e somar os dois depósitos (1ª + 2ª) fecha no
     // mesmo total de "FGTS sobre o integral" sem exigir recolhimento antecipado sobre o que
     // ainda não foi pago.
-    const pctFgts = Number(params?.fgtsPct) || 0;
+    // Alíquota vem do cargo, não do parâmetro global: o aprendiz recolhe 2% também no 13º.
+    const pctFgts = fgtsPctDe(cargo, params);
     const fgts = Number((bruto * pctFgts / 100).toFixed(2));
 
     // INSS (desconto do EMPREGADO, por faixa progressiva): só nas parcelas que o têm — a 1ª
@@ -1672,10 +1837,13 @@ const EXTRA_MOTIVOS = [
 ];
 
 // Diagnóstico por UNIDADE para o sino de notificações — mesmo formato de diagnosticoAso.
-function diagnosticoBh(un, funcionarios, banco, fechamentos, ref, quitacoes) {
+// `cargos` é opcional e serve só para o veto do aprendiz (art. 432) — sem ele o diagnóstico é
+// o de sempre.
+function diagnosticoBh(un, funcionarios, banco, fechamentos, ref, quitacoes, cargos) {
     const doSetor = funcionarios.filter(f => f.unidadeId === un.id);
+    const cargoDoFunc = f => (cargos || []).find(c => c.id === f.cargoId);
     const itens = doSetor
-        .map(f => ({ f, sit: cicloBhFunc(f, banco, fechamentos, ref, quitacoes) }))
+        .map(f => ({ f, sit: cicloBhFunc(f, banco, fechamentos, ref, quitacoes, cargoDoFunc(f)) }))
         .filter(x => x.sit && (x.sit.status === 'vencido' || x.sit.status === 'critico' || x.sit.status === 'atencao'));
     if (!itens.length) return null;
 
@@ -2048,8 +2216,15 @@ function tempoEmpresa(admissao, demissao) {
 }
 
 function idade(nascimento) {
+    return idadeEm(nascimento, null);
+}
+
+// Idade numa data QUALQUER, não só hoje. Existe porque a faixa etária do aprendiz (art. 428:
+// 14 a 24 anos) é requisito da CONTRATAÇÃO: quem entrou aos 23 e hoje tem 25 continua num
+// contrato válido, e validar pela idade de hoje recusaria a edição de uma ficha correta.
+function idadeEm(nascimento, ref) {
     if (!nascimento) return null;
-    const n = dataLocal(nascimento), h = new Date();
+    const n = dataLocal(nascimento), h = ref ? dataLocal(ref) : new Date();
     let a = h.getFullYear() - n.getFullYear();
     if (h.getMonth() < n.getMonth() || (h.getMonth() === n.getMonth() && h.getDate() < n.getDate())) a--;
     return a;

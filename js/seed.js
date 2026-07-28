@@ -41,7 +41,11 @@ async function gerarDadosExemplo() {
         { nome: 'Analista Administrativo', tipo: 'Administrativo', salario: 3200, insalubridade: 0, periculosidade: false, asoPeriodicidadeMeses: 12 },
         { nome: 'Coordenador de Equipe', tipo: 'Gestão', salario: 5600, insalubridade: 0, periculosidade: false, asoPeriodicidadeMeses: 12 },
         { nome: 'Estagiário', tipo: 'Estágio', salario: 1100, insalubridade: 0, periculosidade: false, asoPeriodicidadeMeses: 12 },
-        { nome: 'Diretor de Operações', tipo: 'Diretoria', salario: 12000, insalubridade: 0, periculosidade: false, asoPeriodicidadeMeses: 24 }
+        { nome: 'Diretor de Operações', tipo: 'Diretoria', salario: 12000, insalubridade: 0, periculosidade: false, asoPeriodicidadeMeses: 24 },
+        // Aprendiz não tem valor fixo: o salário é o mínimo-HORA × jornada da ficha (art. 428
+        // §2º), por isso `usaSalarioMinimo` e nenhum `salario` semeado. Grava `perfil` explícito
+        // — os demais cargos de exemplo ainda dependem da migração por `tipo` em perfilCargo.
+        { nome: 'Jovem Aprendiz', tipo: 'Aprendizagem', perfil: 'aprendiz', usaSalarioMinimo: true, salario: 0, insalubridade: 0, periculosidade: false, asoPeriodicidadeMeses: 12 }
     ];
     const cargoIds = [];
     for (const c of cargosDef) { const id = await DB.save(PATHS.cargos, null, c); cargoIds.push(id); seed.cargos.push(id); }
@@ -69,7 +73,8 @@ async function gerarDadosExemplo() {
     const funcs = [];
     for (let i = 0; i < SEED_NOMES.length; i++) {
         const nome = SEED_NOMES[i];
-        const cargoIdx = i < 8 ? 0 : i < 11 ? 1 : i < 15 ? 2 : i < 17 ? 3 : i < 19 ? 4 : 5;
+        const cargoIdx = i < 8 ? 0 : i < 11 ? 1 : i < 14 ? 2 : i < 16 ? 3 : i < 18 ? 4 : i < 19 ? 6 : 5;
+        const aprendizSeed = cargoIdx === 6;
         // Admissão sempre no passado: no ano/mês corrente o sorteio precisa parar em hoje,
         // senão gera admitidos "no futuro" e contamina tempo de casa, turnover,
         // permanência e aprovação de experiência.
@@ -85,8 +90,12 @@ async function gerarDadosExemplo() {
         const f = {
             nome,
             sexo: i % 2 === 0 ? 'Feminino' : 'Masculino',
-            nascimento: _dataIso(anoAtual - _rnd(20, 58), _rnd(0, 11), _rnd(1, 28)),
-            escolaridade: _pick(ESCOLARIDADES.slice(2)),
+            // Aprendiz tem faixa etária própria (art. 428: 14 a 24) — o sorteio geral começa em
+            // 20 anos e geraria um "aprendiz" de 50 que a ficha recusaria ao ser reeditado.
+            nascimento: aprendizSeed
+                ? _dataIso(anoAtual - _rnd(APRENDIZ_IDADE_MIN + 2, APRENDIZ_IDADE_MAX - 3), _rnd(0, 11), _rnd(1, 28))
+                : _dataIso(anoAtual - _rnd(20, 58), _rnd(0, 11), _rnd(1, 28)),
+            escolaridade: aprendizSeed ? 'Médio incompleto' : _pick(ESCOLARIDADES.slice(2)),
             cargoId: cargoIds[cargoIdx],
             unidadeId: unidadeIds[i % 2],
             telefone: `(11) 9${_rnd(1000, 9999)}-${_rnd(1000, 9999)}`,
@@ -94,7 +103,14 @@ async function gerarDadosExemplo() {
             vestimenta: _pick(VESTIMENTAS),
             admissao,
             demissao: null,
-            beneficios
+            beneficios,
+            // Contrato de aprendizagem: jornada de 6h/dia e termo final dentro dos 2 anos
+            // (arts. 432 e 428 §3º). Sem a jornada gravada, salarioBaseCargo cairia nas 220h
+            // padrão e pagaria o mínimo cheio a quem trabalha 180h.
+            ...(aprendizSeed ? {
+                jornadaMensal: APRENDIZ_JORNADA_MES_MAX,
+                contratoFim: addMeses(admissao, APRENDIZ_CONTRATO_MESES_MAX)
+            } : {})
         };
         const id = await DB.save(PATHS.funcionarios, null, f);
         f.id = id;
@@ -236,20 +252,26 @@ async function gerarDadosExemplo() {
         const obj = {};
         funcs.filter(f => f.admissao <= fimMes && (!f.demissao || f.demissao >= iniMes)).forEach(f => {
             const cargo = cargosDef[cargoIds.indexOf(f.cargoId)];
-            const sal = f.salario ?? cargo.salario;
+            // Ramifica por PERFIL, não por `tipo`: é o perfil que decide as verbas desde que
+            // ele existe, e o seed continuava decidindo pelo nome do tipo — um cargo de
+            // aprendizagem cairia no ramo genérico com o FGTS errado.
+            const perfil = perfilCargo(cargo);
+            // `salarioBaseCargo` resolve o mínimo (e o mínimo-hora do aprendiz, que depende da
+            // jornada da ficha) — o seed não pode reimplementar essa conta.
+            const sal = f.salario ?? salarioBaseCargo(cargo, paramsNow, f);
             const linha = {};
             FOLHA_COLS.forEach(([k]) => linha[k] = 0);
             linha[FOLHA_DESC] = 0;
             linha[FOLHA_INSS] = 0;
-            if (cargo.tipo === 'Estágio') linha.bolsa = sal;
-            else if (cargo.tipo === 'Diretoria') linha.prolabore = sal;
+            if (perfil === 'estagiario') linha.bolsa = sal;
+            else if (perfil === 'diretor') linha.prolabore = sal;
             else {
                 linha.salario = sal;
                 const base = (paramsNow.insalubridadeBase || 'salario') === 'minimo' ? (paramsNow.salarioMinimo || 0) : sal;
                 linha.insalubridade = Number(((cargo.insalubridade || 0) / 100 * base).toFixed(2));
                 linha.periculosidade = cargo.periculosidade ? Number((sal * PERICULOSIDADE_PCT / 100).toFixed(2)) : 0;
                 const baseEncSeed = sal + linha.insalubridade + linha.periculosidade;
-                linha.encargos = Number((baseEncSeed * (paramsNow.fgtsPct || 0) / 100).toFixed(2));
+                linha.encargos = Number((baseEncSeed * fgtsPctDe(cargo, paramsNow) / 100).toFixed(2));
                 linha[FOLHA_INSS] = calculoInss(baseEncSeed, paramsNow.inssFaixas);
             }
             // Hora extra não é semeada na folha: a coluna manual foi aposentada pelo banco de
