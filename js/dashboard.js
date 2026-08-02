@@ -461,7 +461,7 @@ function bindDashFuncFiltros() {
         btnC.innerHTML = `${icon('briefcase')}<span>${escapeHtml(cSel ? cSel.nome : 'Todos os cargos')}</span>${icon('chevronDown')}`;
         btnC.classList.toggle('active', !!dashFuncState.cargo);
         btnC.onclick = () => openFilterPopover(btnC, {
-            options: [{ value: '', label: 'Todos os cargos' }, ...opcoesCargo.map(c => ({ value: c.id, label: c.nome }))],
+            options: [{ value: '', label: 'Todos os cargos' }, ...cargoOpcoes(opcoesCargo)],
             value: dashFuncState.cargo, searchable: opcoesCargo.length > 6,
             onPick: v => { dashFuncState.cargo = v; sync(); renderDashTab(); }
         });

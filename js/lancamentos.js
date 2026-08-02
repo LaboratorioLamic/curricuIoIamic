@@ -85,7 +85,7 @@ function feriasBindFiltros(idUni, idCargo, rerender) {
     const bCargo = document.getElementById(idCargo);
     if (bCargo) bCargo.onclick = () => openFilterPopover(bCargo, {
         allLabel: 'Todos os cargos',
-        options: cargos.map(c => ({ value: c.id, label: c.nome })),
+        options: cargoOpcoes(cargos),
         value: feriasFiltroCargo,
         searchable: cargos.length > 6,
         onPick: v => { feriasFiltroCargo = v; rerender(); }
@@ -124,7 +124,7 @@ function folhaBindFiltros(idUni, idCargo, rerender) {
     const bCargo = document.getElementById(idCargo);
     if (bCargo) bCargo.onclick = () => openFilterPopover(bCargo, {
         allLabel: 'Todos os cargos',
-        options: cargos.map(c => ({ value: c.id, label: c.nome })),
+        options: cargoOpcoes(cargos),
         value: folhaFiltroCargo,
         searchable: cargos.length > 6,
         onPick: v => { folhaFiltroCargo = v; rerender(); }
@@ -1725,7 +1725,7 @@ function formTreinamento(t) {
     const cargoBtn = m.body.querySelector('#ftCargoFiltro');
     cargoBtn.onclick = () => openFilterPopover(cargoBtn, {
         allLabel: 'Todos os cargos',
-        options: lancState.cargos.map(c => ({ value: c.id, label: c.nome })),
+        options: cargoOpcoes(lancState.cargos),
         value: ftFiltroCargo,
         searchable: lancState.cargos.length > 6,
         onPick: v => {
@@ -2633,7 +2633,7 @@ function formPromocao(promocoes) {
             </div>
             <div class="form-row">
                 <div class="field"><label>Cargo novo <span class="req">*</span></label>
-                    <select class="select" id="fpCargoNovo">${lancState.cargos.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join('')}</select>
+                    <button type="button" class="picker-btn" id="fpCargoNovo"></button>
                     <div class="field-hint">Mesmo cargo = ajuste salarial</div>
                 </div>
                 <div class="field"><label>Salário novo (R$) <span class="req">*</span></label>
@@ -2651,15 +2651,23 @@ function formPromocao(promocoes) {
     const cargoNovoSel = m.body.querySelector('#fpCargoNovo');
     const salNovoEl = m.body.querySelector('#fpSalNovo');
     const pctEl = m.body.querySelector('#fpPct');
+    // Cargo novo em popover (nome + CBO): promover para o homônimo de CBO errado trocaria
+    // a ocupação da ficha sem ninguém perceber.
+    const cargoNovoPicker = initPickerField(cargoNovoSel, {
+        options: cargoOpcoes(lancState.cargos),
+        placeholder: 'Selecione o cargo',
+        icon: 'briefcase'
+    });
 
     let salarioAntigo = 0, cargoAnterior = null;
     const carregaAtual = () => {
         const f = lancState.funcionarios.find(x => x.id === funcSel.value);
         cargoAnterior = lancState.cargos.find(c => c.id === f?.cargoId) || null;
         salarioAntigo = f?.salario ?? cargoAnterior?.salario ?? 0;
-        cargoAntEl.value = cargoAnterior?.nome || '—';
+        const cboAnt = cargoAnterior ? cargoCboTexto(cargoAnterior) : '';
+        cargoAntEl.value = cargoAnterior ? (cboAnt ? `${cargoAnterior.nome} — ${cboAnt}` : cargoAnterior.nome) : '—';
         salAntEl.value = fin ? fmtBRL(salarioAntigo) : '•••';
-        if (cargoAnterior) cargoNovoSel.value = cargoAnterior.id;
+        if (cargoAnterior) cargoNovoPicker.set(cargoAnterior.id);
         calcPct();
     };
     const calcPct = () => {
@@ -2692,6 +2700,7 @@ function formPromocao(promocoes) {
 
         const funcionarioId = funcSel.value;
         const cargoNovo = lancState.cargos.find(c => c.id === cargoNovoSel.value);
+        if (!cargoNovo) return toast('Selecione o cargo novo.', 'error');
         const pctAumento = salarioAntigo > 0 ? (salarioNovo - salarioAntigo) / salarioAntigo * 100 : 0;
 
         await DB.save(PATHS.promocoes, null, {

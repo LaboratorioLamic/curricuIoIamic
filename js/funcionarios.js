@@ -144,7 +144,7 @@ registerPage({
             [{ value: '', label: 'Todas as unidades' }, ...unidades.map(u => ({ value: u.id, label: u.nome }))],
             'Todas as unidades', v => !v);
         bindFilter('funcFCargo', 'briefcase', 'cargo',
-            [{ value: '', label: 'Todos os cargos' }, ...cargos.map(c => ({ value: c.id, label: c.nome }))],
+            [{ value: '', label: 'Todos os cargos' }, ...cargoOpcoes(cargos)],
             'Todos os cargos', v => !v);
         bindFilter('funcFStatus', 'user', 'status', STATUS, 'Ativos', v => v === 'ativos');
         renderFuncGrid();
@@ -1785,7 +1785,7 @@ function formFuncionario(f) {
                 <div class="form-section-title">Contrato</div>
                 <div class="form-row">
                     <div class="field"><label>Cargo <span class="req">*</span></label>
-                        <select class="select" id="ffCargo">${funcState.cargos.map(c => `<option value="${c.id}" ${f?.cargoId === c.id ? 'selected' : ''}>${escapeHtml(c.nome)}</option>`).join('')}</select>
+                        <button type="button" class="picker-btn" id="ffCargo"></button>
                     </div>
                     <div class="field"><label>Unidade <span class="req">*</span></label>
                         <select class="select" id="ffUnidade">${funcState.unidades.map(u => `<option value="${u.id}" ${f?.unidadeId === u.id ? 'selected' : ''}>${escapeHtml(u.nome)}</option>`).join('')}</select>
@@ -1861,6 +1861,13 @@ function formFuncionario(f) {
     // e sem a data gravada nada avisa o RH antes de o vínculo virar indeterminado por descuido.
     // O campo aparece/some conforme o cargo escolhido, mesmo padrão de `data-verba` no cargo.
     const cargoInput = m.body.querySelector('#ffCargo');
+    // Cargo em popover (nome + CBO): dois cargos podem se chamar igual e ter CBO diferente.
+    initPickerField(cargoInput, {
+        options: cargoOpcoes(funcState.cargos),
+        value: f?.cargoId || '',
+        placeholder: funcState.cargos.length ? 'Selecione o cargo' : 'Nenhum cargo cadastrado',
+        icon: 'briefcase'
+    });
     const pcdInput = m.body.querySelector('#ffPcd');
     const jornadaInput = m.body.querySelector('#ffJornada');
     const escInput = m.body.querySelector('#ffEsc');
@@ -1958,6 +1965,8 @@ function formFuncionario(f) {
         const nascimento = m.body.querySelector('#ffNasc').value;
         const admissao = m.body.querySelector('#ffAdm').value;
         if (!nome || !nascimento || !admissao) return toast('Preencha nome, nascimento e admissão.', 'error');
+        // O picker começa vazio (não há mais "primeira opção" implícita do select).
+        if (!cargoInput.value) return toast('Selecione o cargo.', 'error');
         if (nascimento >= admissao) return toast('Data de nascimento deve ser anterior à admissão.', 'error');
         // Barra o defeito na entrada: admissão futura zera a base de tempo de casa, férias
         // e experiência. Corrigir aqui é mais barato do que sinalizar em toda tela derivada.

@@ -972,7 +972,7 @@ async function formUnidade(un) {
                 <div class="field-hint" style="margin:-4px 0 12px">Defina quantos funcionários cada cargo deve ter nesta unidade. Só os cargos adicionados geram alerta de equipe incompleta no Dashboard.</div>
                 <div id="fnRecList"></div>
                 <div class="rec-add">
-                    <select class="select" id="fnRecCargo"></select>
+                    <button type="button" class="picker-btn" id="fnRecCargo"></button>
                     <input class="input" id="fnRecQtd" type="number" min="1" step="1" placeholder="Qtd" style="width:90px">
                     <button type="button" class="btn btn-secondary btn-sm" id="fnRecAdd">${icon('plus')} Adicionar</button>
                 </div>
@@ -983,26 +983,32 @@ async function formUnidade(un) {
     const cnpjInput = m.body.querySelector('#fnCnpj');
     cnpjInput.addEventListener('input', () => cnpjInput.value = maskCNPJ(cnpjInput.value));
 
-    const cargoNome = id => cargos.find(c => c.id === id)?.nome || '(cargo removido)';
+    const cargoObj = id => cargos.find(c => c.id === id);
+    const cargoNome = id => cargoObj(id)?.nome || '(cargo removido)';
     const recList = m.body.querySelector('#fnRecList');
     const recCargoSel = m.body.querySelector('#fnRecCargo');
     const recQtd = m.body.querySelector('#fnRecQtd');
+    // Cargo em popover (nome + CBO): a meta é por cargo, e homônimos de CBO diferente são
+    // linhas distintas do quadro — sem o CBO na lista não dá para saber qual foi adicionado.
+    const recPicker = initPickerField(recCargoSel, { options: [], placeholder: 'Selecione o cargo', icon: 'briefcase' });
 
     const renderRecs = () => {
-        recList.innerHTML = recs.length ? recs.map((r, i) => `
+        recList.innerHTML = recs.length ? recs.map((r, i) => {
+            const cbo = cargoCboTexto(cargoObj(r.cargoId));
+            return `
             <div class="rec-item">
-                <span class="rec-nome">${icon('briefcase')} ${escapeHtml(cargoNome(r.cargoId))}</span>
+                <span class="rec-nome">${icon('briefcase')} ${escapeHtml(cargoNome(r.cargoId))}${cbo ? `<span class="rec-cbo">${escapeHtml(cbo)}</span>` : ''}</span>
                 <span class="rec-qtd">${fmtNum(r.qtd)} recomendado${r.qtd > 1 ? 's' : ''}</span>
                 <button type="button" class="btn-icon danger" data-rec-del="${i}" title="Remover">${icon('trash')}</button>
-            </div>`).join('')
+            </div>`;
+        }).join('')
             : '<div class="rec-empty">Nenhum cargo definido. A unidade não gera alerta de equipe incompleta.</div>';
         // Opções de cargo ainda não adicionados
         const usados = new Set(recs.map(r => r.cargoId));
         const disp = cargos.filter(c => !usados.has(c.id));
-        recCargoSel.innerHTML = disp.length
-            ? disp.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join('')
-            : '<option value="">Todos os cargos já adicionados</option>';
+        recPicker.setOptions(cargoOpcoes(disp), '');
         recCargoSel.disabled = !disp.length;
+        if (!disp.length) recCargoSel.querySelector('.picker-lbl').textContent = 'Todos os cargos já adicionados';
         recList.querySelectorAll('[data-rec-del]').forEach(b =>
             b.onclick = () => { recs.splice(Number(b.dataset.recDel), 1); renderRecs(); });
     };

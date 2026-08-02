@@ -137,6 +137,30 @@ function initCboAutocomplete(inputEl, codigoEl) {
     });
 }
 
+// ---- Cargo + CBO na escolha ----
+// Nome de cargo não é chave: a empresa pode ter "Analista" com CBO de sistemas e outro com
+// CBO administrativo. Quem escolhe o cargo precisa ver o CBO junto, senão marca o errado e o
+// eSocial/RAIS sai com a ocupação trocada. Estes helpers dão a segunda linha da opção.
+
+// "2124-05 · Analista de sistemas" — o que estiver preenchido; '' quando não há CBO.
+function cargoCboTexto(c) {
+    const cod = cboFmtCodigo(c?.cboCodigo || '');
+    const tit = (c?.cbo || '').trim();
+    return cod && tit ? `${cod} · ${tit}` : (cod || tit || '');
+}
+
+// Segunda linha da opção: sem CBO, avisa — é o caso em que dois homônimos se confundem.
+function cargoCboSub(c) {
+    return cargoCboTexto(c) || 'Sem CBO';
+}
+
+// Opções prontas para initPickerField/openFilterPopover, em ordem alfabética.
+function cargoOpcoes(cargos) {
+    return (cargos || []).slice()
+        .sort((a, b) => (a.nome || '').localeCompare(b.nome || '') || cargoCboTexto(a).localeCompare(cargoCboTexto(b)))
+        .map(c => ({ value: c.id, label: c.nome || '(sem nome)', sub: cargoCboSub(c) }));
+}
+
 // Valor gravado: 6 dígitos crus, ou '' quando o RH digitou algo que não é código.
 function cboCodigoValor(codigoEl) {
     const d = (codigoEl.value || '').replace(/\D/g, '');

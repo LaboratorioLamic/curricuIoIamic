@@ -62,7 +62,7 @@ function bhBindFiltros(idUni, idCargo, rerender) {
     const bCargo = document.getElementById(idCargo);
     if (bCargo) bCargo.onclick = () => openFilterPopover(bCargo, {
         allLabel: 'Todos os cargos',
-        options: cargos.map(c => ({ value: c.id, label: c.nome })),
+        options: cargoOpcoes(cargos),
         value: bhFiltroCargo,
         searchable: cargos.length > 6,
         onPick: v => { bhFiltroCargo = v; rerender(); }

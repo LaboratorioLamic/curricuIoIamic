@@ -115,20 +115,27 @@ function openPopover(anchorEl, items) {
 }
 
 // ---- Filtro em popover (substitui selects de filtro) ----
-// btnEl: botão âncora; options: [{value, label}]; valorAtual; onPick(value)
+// btnEl: botão âncora; options: [{value, label, sub}]; valorAtual; onPick(value)
+// `sub` é a segunda linha da opção (ex.: o CBO do cargo) — entra também na busca,
+// porque é ela que distingue dois itens de mesmo nome.
 // Fecha ao escolher; mostra busca quando há muitas opções.
-function openFilterPopover(btnEl, { options, value, onPick, searchable = true, allLabel }) {
+// matchWidth: popover no mínimo tão largo quanto a âncora (usado em campo de formulário).
+function openFilterPopover(btnEl, { options, value, onPick, searchable = true, allLabel, matchWidth = false }) {
     closePopover();
     const pop = document.createElement('div');
     pop.className = 'popover pop-filter';
     const list = allLabel != null ? [{ value: '', label: allLabel }, ...options] : options.slice();
     const showSearch = searchable && list.length > 6;
+    if (matchWidth) pop.style.minWidth = `${btnEl.getBoundingClientRect().width}px`;
 
     pop.innerHTML = `
         ${showSearch ? `<div class="pop-search">${icon('search')}<input class="input" placeholder="Buscar..." data-pop-q></div>` : ''}
         <div class="pop-list" data-pop-list>${list.map(o => `
-            <div class="pop-item${o.value === value ? ' selected' : ''}" data-val="${escapeHtml(o.value)}" data-search="${escapeHtml((o.label || '').toLowerCase())}">
-                <span class="grow">${escapeHtml(o.label)}</span>
+            <div class="pop-item${o.sub ? ' pop-item-2l' : ''}${o.value === value ? ' selected' : ''}" data-val="${escapeHtml(o.value)}" data-search="${escapeHtml(`${o.label || ''} ${o.sub || ''}`.toLowerCase())}">
+                <span class="grow">
+                    <span class="pop-lbl">${escapeHtml(o.label)}</span>
+                    ${o.sub ? `<span class="pop-sub">${escapeHtml(o.sub)}</span>` : ''}
+                </span>
                 ${o.value === value ? icon('check') : ''}
             </div>`).join('')}</div>`;
     document.body.appendChild(pop);
@@ -159,6 +166,53 @@ function openFilterPopover(btnEl, { options, value, onPick, searchable = true, a
             }
         });
     });
+}
+
+// ---- Campo seletor em popover (substitui <select> quando a opção precisa de 2 linhas) ----
+// O <option> nativo não aceita marcação: cargos homônimos com CBO diferente ficariam
+// indistinguíveis na lista. Aqui a âncora é um <button>, que tem `value` próprio e aceita
+// evento 'change' — quem usa continua lendo `el.value` e ouvindo 'change' como num select.
+// options: [{value, label, sub}]. Retorna { set(v), sync(), options }.
+function initPickerField(btnEl, { options = [], value = '', placeholder = 'Selecione', icon: ic = '', onPick } = {}) {
+    const ctl = { options: options.slice() };
+
+    ctl.sync = () => {
+        const sel = ctl.options.find(o => o.value === btnEl.value);
+        btnEl.disabled = !ctl.options.length;
+        btnEl.innerHTML = `
+            ${ic ? icon(ic) : ''}
+            <span class="picker-val">
+                <span class="picker-lbl${sel ? '' : ' placeholder'}">${escapeHtml(sel ? sel.label : placeholder)}</span>
+                ${sel?.sub ? `<span class="picker-sub">${escapeHtml(sel.sub)}</span>` : ''}
+            </span>
+            ${icon('chevronDown')}`;
+    };
+    // Sem disparar 'change': quem chama set() já sabe o que mudou (evita laço de re-render).
+    ctl.set = v => { btnEl.value = v || ''; ctl.sync(); };
+    ctl.setOptions = (opts, v) => {
+        ctl.options = opts.slice();
+        if (v !== undefined) btnEl.value = v || '';
+        if (!ctl.options.some(o => o.value === btnEl.value)) btnEl.value = '';
+        ctl.sync();
+    };
+
+    btnEl.type = 'button';
+    btnEl.classList.add('picker-btn');
+    btnEl.value = value || '';
+    btnEl.onclick = () => openFilterPopover(btnEl, {
+        options: ctl.options,
+        value: btnEl.value,
+        searchable: true,
+        matchWidth: true,
+        onPick: v => {
+            btnEl.value = v;
+            ctl.sync();
+            btnEl.dispatchEvent(new Event('change', { bubbles: true }));
+            onPick && onPick(v);
+        }
+    });
+    ctl.sync();
+    return ctl;
 }
 
 // ---- Popover de multisseleção (legenda de gráfico como filtro) ----

@@ -236,10 +236,24 @@ function feriasBaseSugerida(admissao, ref) {
 // Periodicidade do exame vem do CARGO (asoPeriodicidadeMeses), não da insalubridade:
 // insalubridade é critério trabalhista/salarial, periodicidade de ASO é critério
 // médico-ocupacional (PCMSO). São definidos por gente diferente e podem divergir.
-const ASO_PERIODICIDADES = [6, 12, 24];
+// 0 = "Não se aplica": cargo fora do controle de ASO (ex.: estágio, vínculo sem CLT ou
+// função sem PCMSO). Não é "periodicidade zero" — é ausência de obrigação: o cargo some
+// da fila, da agenda e dos alertas, em vez de aparecer sempre vencido.
+const ASO_NAO_SE_APLICA = 0;
+const ASO_PERIODICIDADES = [6, 12, 24, ASO_NAO_SE_APLICA];
 const ASO_PERIODICIDADE_PADRAO = 12;
 // Cargo sem o campo (cadastro anterior a este recurso) assume o padrão legal geral.
-const asoPeriodicidadeDe = cargo => Number(cargo?.asoPeriodicidadeMeses) || ASO_PERIODICIDADE_PADRAO;
+// Só o 0 explícito isenta — null/''/ausente continuam caindo no padrão, senão um campo
+// vazio no banco desligaria o controle de ASO da empresa inteira sem ninguém pedir.
+const asoPeriodicidadeDe = cargo => {
+    const bruto = cargo?.asoPeriodicidadeMeses;
+    if (bruto === ASO_NAO_SE_APLICA || bruto === '0') return ASO_NAO_SE_APLICA;
+    return Number(bruto) || ASO_PERIODICIDADE_PADRAO;
+};
+const asoIsento = cargo => asoPeriodicidadeDe(cargo) === ASO_NAO_SE_APLICA;
+// Rótulo único para tabela, select e textos de ajuda.
+const asoPeriodicidadeLabel = meses =>
+    Number(meses) === ASO_NAO_SE_APLICA ? 'Não se aplica' : `A cada ${meses} meses`;
 
 // 90 dias: exame ocupacional depende de agenda de clínica e do PCMSO — avisar com 30 dias
 // deixa pouca margem para marcar, remarcar e o colaborador comparecer. Configurável em
@@ -284,6 +298,9 @@ function situacaoAsoFunc(f, asos, cargo, ref) {
     if (!f?.admissao || f.demissao) return null;
     const h = ref || hoje();
     if (f.admissao > h) return null;                  // admissão futura: nada a calcular
+    // Cargo marcado como "Não se aplica" no cadastro: sem obrigação de exame, não há
+    // situação a calcular. Mesmo `null` do desligado — todas as telas já o filtram.
+    if (asoIsento(cargo)) return null;
 
     const meses = asoPeriodicidadeDe(cargo);
     const feitos = asosDoFunc(f.id, asos, h);
@@ -333,8 +350,11 @@ function situacaoAsoFunc(f, asos, cargo, ref) {
 const ASO_RETORNO_DIAS_MIN = 30;   // NR-7: afastamento ≥ 30 dias exige exame de retorno
 const ASO_TIPOS_AFASTAMENTO = ['Licença médica', 'Licença maternidade/paternidade'];
 
-function asosPendentesPorEvento(f, asos, dados, ref) {
+// `cargo` opcional: cargo isento ("Não se aplica") não gera pendência de nenhum tipo —
+// admissional e demissional também são exigências do PCMSO, não só o periódico.
+function asosPendentesPorEvento(f, asos, dados, ref, cargo) {
     const h = ref || hoje();
+    if (asoIsento(cargo)) return [];
     const { demissoes = [], ausencias = [], promocoes = [], transferencias = [] } = dados || {};
     const feitos = (asos || []).filter(a => a.funcionarioId === f.id);
     const temApos = (tipo, dataEvento) => feitos.some(a => a.tipo === tipo && a.data >= dataEvento);
