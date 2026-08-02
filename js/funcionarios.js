@@ -1031,7 +1031,16 @@ function fdDocAso(f, box, _id, asos) {
 
     // Cabeçalho de situação: é o que a ficha precisa responder — este colaborador pode
     // exercer a função hoje? Some para desligado/admissão futura (sit = null).
-    const cab = sit ? `
+    // Cargo isento tem cabeçalho próprio: aqui o silêncio seria lido como "sem dados",
+    // quando na verdade é "não há exigência".
+    const cab = !sit && asoIsento(cargo) ? `
+        <div class="fd-aso-sit">
+            <span class="prog-dot st-ok"></span>
+            <div class="grow">
+                <strong>ASO não se aplica a este cargo</strong>
+                <div class="muted" style="font-size:11.5px">O cargo ${escapeHtml(cargo?.nome || '')} está marcado como "Não se aplica" em Configurações → Cargos: sem exame periódico obrigatório, sem alerta de vencimento. Exames lançados aqui continuam registrados.</div>
+            </div>
+        </div>` : sit ? `
         <div class="fd-aso-sit fd-aso-${sit.status}">
             <span class="prog-dot ${ASO_STATUS[sit.status].dot}"></span>
             <div class="grow">

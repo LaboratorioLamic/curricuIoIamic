@@ -613,7 +613,9 @@ async function renderCfgCargos() {
                 <td class="num">${verbas.length ? verbas.join('<br>') : '—'}</td>
                 <td class="num">${c.insalubridade ? `<span class="badge badge-warning">${c.insalubridade}%</span>` : '—'}</td>
                 <td class="num">${c.periculosidade ? `<span class="badge badge-danger">${PERICULOSIDADE_PCT}%</span>` : '—'}</td>
-                <td class="num text-2">${asoPeriodicidadeDe(c)} meses</td>
+                <td class="num text-2">${asoIsento(c)
+                    ? '<span class="badge badge-neutral" title="Cargo fora do controle de ASO: não entra na programação nem nos alertas">Não se aplica</span>'
+                    : `${asoPeriodicidadeDe(c)} meses`}</td>
                 <td><button class="btn-icon" data-menu>${icon('dots')}</button></td>
             </tr>`; }).join(''),
         onNew: () => formCargo(null)
@@ -712,9 +714,9 @@ function formCargo(c) {
                 <div class="field"><label>Periodicidade do ASO</label>
                     <select class="select" id="fcAsoPer">
                         ${ASO_PERIODICIDADES.map(v =>
-                            `<option value="${v}" ${asoPeriodicidadeDe(c) === v ? 'selected' : ''}>A cada ${v} meses</option>`).join('')}
+                            `<option value="${v}" ${asoPeriodicidadeDe(c) === v ? 'selected' : ''}>${asoPeriodicidadeLabel(v)}</option>`).join('')}
                     </select>
-                    <div class="field-hint">Exame periódico (NR-7/PCMSO). Definida pelo médico do trabalho — independe do grau de insalubridade.</div>
+                    <div class="field-hint" id="fcAsoPerHint"></div>
                 </div>
             </div>`,
         footer: ''
@@ -730,6 +732,18 @@ function formCargo(c) {
     const cboEl = m.body.querySelector('#fcCbo');
     const cboCodEl = m.body.querySelector('#fcCboCodigo');
     initCboAutocomplete(cboEl, cboCodEl);
+
+    // "Não se aplica" tira o cargo do controle de ASO por inteiro — o hint diz a consequência
+    // antes de salvar, porque de fora a diferença aparece como "sumiu da fila".
+    const asoPerEl = m.body.querySelector('#fcAsoPer');
+    const asoPerHint = m.body.querySelector('#fcAsoPerHint');
+    const syncAsoPer = () => {
+        asoPerHint.innerHTML = asoPerEl.value === String(ASO_NAO_SE_APLICA)
+            ? 'Cargo <strong>fora do controle de ASO</strong>: não entra na programação, na agenda nem nos alertas do sino. Use quando não há exigência de exame ocupacional (ex.: vínculo sem CLT). Exames lançados manualmente continuam guardados no histórico.'
+            : 'Exame periódico (NR-7/PCMSO). Definida pelo médico do trabalho — independe do grau de insalubridade.';
+    };
+    asoPerEl.onchange = syncAsoPer;
+    syncAsoPer();
 
     const btnPerfil = m.body.querySelector('#fcPerfil');
     const lblPerfil = m.body.querySelector('#fcPerfilLbl');
@@ -835,7 +849,11 @@ function formCargo(c) {
             salario: perfil === 'estagiario' ? bolsa : salarioBase,
             insalubridade: Number(m.body.querySelector('#fcInsal').value) || 0,
             periculosidade: m.body.querySelector('#fcPericul').checked,
-            asoPeriodicidadeMeses: Number(m.body.querySelector('#fcAsoPer').value) || ASO_PERIODICIDADE_PADRAO
+            // 0 ("Não se aplica") é escolha válida, não valor vazio — por isso não cai no
+            // `|| PADRÃO`, que o transformaria de volta em 12 meses.
+            asoPeriodicidadeMeses: asoPerEl.value === String(ASO_NAO_SE_APLICA)
+                ? ASO_NAO_SE_APLICA
+                : Number(asoPerEl.value) || ASO_PERIODICIDADE_PADRAO
         });
         toast(isEdit ? 'Cargo atualizado.' : 'Cargo criado.');
         m.close();
@@ -1188,7 +1206,7 @@ const PARAM_INFO = {
         title: 'Alerta de vencimento do ASO (dias)',
         html: `<p><strong>O que é:</strong> antecedência do alerta antes do vencimento do exame periódico (ASO).</p>
                <p><strong>Onde afeta:</strong> Sino de notificações e aba de ASO.</p>
-               <p><strong>Como afeta:</strong> conta regressivamente a partir da data de vencimento calculada com a periodicidade (6/12/24 meses) definida por cargo, no cadastro de Cargos.</p>`
+               <p><strong>Como afeta:</strong> conta regressivamente a partir da data de vencimento calculada com a periodicidade (6/12/24 meses) definida por cargo, no cadastro de Cargos. Cargos marcados como <strong>"Não se aplica"</strong> ficam fora do controle e não geram alerta.</p>`
     },
     bhCicloMeses: {
         title: 'Duração do ciclo do banco de horas (meses)',
@@ -1416,7 +1434,7 @@ async function renderCfgParametros() {
                     <input class="input" id="fpAsoAlerta" type="number" min="1" max="365" step="1" value="${params.asoAlertaDias ?? ASO_PARAMS_PADRAO.alertaDias}">
                     <div class="field-hint">
                         Antecedência do alerta antes do vencimento do exame periódico. A <strong>periodicidade</strong>
-                        (6/12/24 meses) é definida por cargo, no cadastro de Cargos.
+                        (6/12/24 meses, ou "Não se aplica") é definida por cargo, no cadastro de Cargos.
                     </div>
                 </div>
             </div>

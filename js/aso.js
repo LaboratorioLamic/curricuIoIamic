@@ -130,6 +130,9 @@ function asoProgramacao() {
         .sort((a, b) => (ASO_ORDEM[a.sit.status] - ASO_ORDEM[b.sit.status]) || (a.sit.dias - b.sit.dias));
 
     const n = st => linhas.filter(x => x.sit.status === st).length;
+    // Quem está em cargo "Não se aplica" não some em silêncio: uma fila mais curta sem
+    // explicação parece dado faltando. O número é dito, o motivo também.
+    const isentos = lancAtivos().filter(f => asoPassaFiltro(f) && asoIsento(cargoDoFunc(f))).length;
 
     box.innerHTML = `
         <div class="prog-resumo">
@@ -140,6 +143,7 @@ function asoProgramacao() {
                     <span class="prog-lbl">${txt}</span>
                 </div>`).join('')}
         </div>
+        ${isentos ? `<div class="aso-isentos">${icon('info')} <span><strong>${fmtNum(isentos)}</strong> ${isentos > 1 ? 'funcionários ficam' : 'funcionário fica'} fora desta fila — cargo com ASO marcado como <strong>"Não se aplica"</strong> em Configurações → Cargos.</span></div>` : ''}
         <div class="table-wrap">
             <div class="table-toolbar">
                 <div class="search-box">${icon('search')}<input class="input" id="lancSearch" placeholder="Buscar por funcionário..."></div>
@@ -493,7 +497,9 @@ function formAso(a, sugerido, onDone) {
         title: isEdit ? 'Editar ASO' : 'Lançar ASO',
         body: `
             ${sugerido?.desc ? `<div class="form-note form-note-${sugerido.status === 'em_dia' ? 'info' : 'alert'}">${icon('alert')} <span>${escapeHtml(sugerido.desc)}</span></div>` : ''}
-            <div class="field"><label>Funcionário <span class="req">*</span></label>${selFunc}</div>
+            <div class="field"><label>Funcionário <span class="req">*</span></label>${selFunc}
+                <div class="field-hint" id="fasIsentoHint" hidden></div>
+            </div>
             <div class="form-row">
                 <div class="field"><label>Tipo de exame <span class="req">*</span></label>
                     <select class="select" id="fasTipo">${ASO_TIPOS.map(t =>
@@ -541,6 +547,21 @@ function formAso(a, sugerido, onDone) {
         'Mudança de risco': 'Exame pontual — não reinicia o periódico.'
     };
     const applyTipo = () => { hintEl.textContent = HINTS[tipoEl.value] || ''; };
+
+    // Lançar continua permitido para cargo isento (um exame feito é um fato, e o histórico
+    // deve guardá-lo) — mas o aviso evita a expectativa de que ele vá gerar próximo
+    // vencimento: sem periodicidade, não há próximo periódico a calcular.
+    const isentoHint = m.body.querySelector('#fasIsentoHint');
+    const funcEl = m.body.querySelector('#fasFunc');
+    const syncIsento = () => {
+        const f = lancFuncObj(funcEl.value);
+        const cargo = f && (lancState.cargos.find(c => c.id === f.cargoId) || funcState.cargos.find(c => c.id === f.cargoId));
+        const isento = !!f && asoIsento(cargo);
+        isentoHint.hidden = !isento;
+        if (isento) isentoHint.innerHTML = `O cargo <strong>${escapeHtml(cargo?.nome || '')}</strong> está marcado como "ASO — Não se aplica": o exame fica registrado no histórico, mas não gera vencimento nem alerta.`;
+    };
+    funcEl.addEventListener('change', syncIsento);
+    syncIsento();
     const applyResultado = () => { restrBox.style.display = resEl.value === 'Apto com restrições' ? '' : 'none'; };
     tipoEl.onchange = applyTipo;
     resEl.onchange = applyResultado;

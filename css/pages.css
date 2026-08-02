@@ -795,6 +795,16 @@
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
 }
 
+/* Nota dos cargos "Não se aplica" na Programação: informa quem ficou de fora da fila.
+   Neutra de propósito — é informação, não pendência. */
+.aso-isentos {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 14px; padding: 9px 14px;
+    font-size: 12.5px; color: var(--text-2);
+    background: var(--surface-2); border: 1px dashed var(--border-strong); border-radius: var(--radius);
+}
+.aso-isentos svg.icon { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; }
+
 /* ---- Agenda de férias: linha do tempo anual (1 linha por colaborador) ---- */
 /* A identificação está no rótulo da linha, então a cor codifica ESTADO, não pessoa. */
 .gt-scroll { overflow-x: auto; padding-bottom: 4px; }
