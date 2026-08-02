@@ -494,6 +494,42 @@ table.table td.num, table.table th.num { text-align: right; font-variant-numeric
 .popover .pop-item svg.icon { width: 15px; height: 15px; }
 .popover .pop-sep { height: 1px; background: var(--border); margin: 5px 8px; }
 
+/* ---- Autocomplete CBO (ver js/cbo.js) ---- */
+.cbo-ac { position: relative; }
+.cbo-ac-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    max-height: 260px;
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    padding: 4px;
+    z-index: 95;
+}
+.cbo-ac-item {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-2);
+    cursor: pointer;
+}
+.cbo-ac-item:hover, .cbo-ac-item.active { background: var(--accent-soft); color: var(--accent-strong); }
+.cbo-ac-cod { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 12px; color: var(--muted); flex: none; }
+.cbo-ac-item:hover .cbo-ac-cod, .cbo-ac-item.active .cbo-ac-cod { color: var(--accent-strong); }
+.cbo-ac-tit { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Célula CBO na listagem de cargos: título em cima, código embaixo */
+.cbo-cell { max-width: 240px; }
+.cbo-cell-tit { font-size: 12.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cbo-cell-cod { font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--muted); }
+
 /* Botão-filtro (abre popover) — substitui select de filtro */
 .filter-btn {
     display: inline-flex;

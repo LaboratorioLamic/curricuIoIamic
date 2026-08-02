@@ -583,7 +583,7 @@ async function renderCfgCargos() {
         searchPh: 'Buscar cargo...',
         btnLabel: 'Novo cargo',
         emptyText: 'Nenhum cargo cadastrado.',
-        thead: '<th>Cargo</th><th>Tipo</th><th>Perfil</th><th class="num">Remuneração</th><th class="num">Insalubridade</th><th class="num">Periculosidade</th><th class="num" title="Periodicidade do exame periódico (NR-7)">ASO</th><th style="width:48px"></th>',
+        thead: '<th>Cargo</th><th title="Classificação Brasileira de Ocupações">CBO</th><th>Tipo</th><th>Perfil</th><th class="num">Remuneração</th><th class="num">Insalubridade</th><th class="num">Periculosidade</th><th class="num" title="Periodicidade do exame periódico (NR-7)">ASO</th><th style="width:48px"></th>',
         rowsHtml: cargos.map(c => {
             const r = remuneracaoCargo(c, cfgParams);
             const def = CARGO_PERFIS.find(p => p.id === r.perfil);
@@ -602,8 +602,12 @@ async function renderCfgCargos() {
                 r.prolabore ? `${fmtBRL(r.prolabore)} <span class="text-2">pró-labore</span>` : ''
             ].filter(Boolean);
             return `
-            <tr data-id="${c.id}" data-search="${escapeHtml((c.nome + ' ' + c.tipo + ' ' + def.label).toLowerCase())}">
+            <tr data-id="${c.id}" data-search="${escapeHtml((c.nome + ' ' + c.tipo + ' ' + def.label + ' ' + (c.cbo || '') + ' ' + (c.cboCodigo || '')).toLowerCase())}">
                 <td><strong>${escapeHtml(c.nome)}</strong></td>
+                <td class="cbo-cell">${c.cbo || c.cboCodigo ? `
+                    ${c.cbo ? `<div class="cbo-cell-tit" title="${escapeHtml(c.cbo)}">${escapeHtml(c.cbo)}</div>` : ''}
+                    ${c.cboCodigo ? `<div class="cbo-cell-cod">${cboFmtCodigo(c.cboCodigo)}</div>` : ''}`
+                    : '<span class="text-2">—</span>'}</td>
                 <td><span class="badge badge-accent">${escapeHtml(c.tipo || '—')}</span></td>
                 <td><span class="badge badge-neutral">${escapeHtml(def.label)}</span></td>
                 <td class="num">${verbas.length ? verbas.join('<br>') : '—'}</td>
@@ -642,6 +646,16 @@ function formCargo(c) {
         title: isEdit ? 'Editar cargo' : 'Novo cargo',
         body: `
             <div class="field"><label>Nome do cargo <span class="req">*</span></label><input class="input" id="fcNome" placeholder="Ex: Analista de Sistemas" value="${escapeHtml(c?.nome || '')}"></div>
+            <div class="form-row">
+                <div class="field"><label>CBO (Classificação Brasileira de Ocupações)</label>
+                    <input class="input" id="fcCbo" placeholder="Digite para buscar. Ex: analista de sistemas" value="${escapeHtml(c?.cbo || '')}">
+                    <div class="field-hint">Ocupação oficial (CBO 2002). Não achou? Digite o texto livremente.</div>
+                </div>
+                <div class="field"><label>Código CBO</label>
+                    <input class="input" id="fcCboCodigo" placeholder="0000-00" value="${escapeHtml(cboFmtCodigo(c?.cboCodigo || ''))}">
+                    <div class="field-hint">Preenchido ao escolher a ocupação — ou digite o código para achá-la.</div>
+                </div>
+            </div>
             <div class="form-row">
                 <div class="field"><label>Tipo de cargo <span class="req">*</span></label>
                     <select class="select" id="fcTipo">${TIPOS_CARGO.map(t => `<option ${c?.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
@@ -712,6 +726,10 @@ function formCargo(c) {
         minimo = Number((await DB.getObj(PATHS.parametros))?.salarioMinimo) || 0;
         syncMinimo();
     })();
+
+    const cboEl = m.body.querySelector('#fcCbo');
+    const cboCodEl = m.body.querySelector('#fcCboCodigo');
+    initCboAutocomplete(cboEl, cboCodEl);
 
     const btnPerfil = m.body.querySelector('#fcPerfil');
     const lblPerfil = m.body.querySelector('#fcPerfilLbl');
@@ -805,6 +823,10 @@ function formCargo(c) {
 
         await DB.save(PATHS.cargos, c?.id || null, {
             nome, tipo, perfil,
+            // CBO é informativo (eSocial/RAIS): guarda o título como foi escrito e o
+            // código só quando são 6 dígitos reais — texto solto não vira código.
+            cbo: cboEl.value.trim(),
+            cboCodigo: cboCodigoValor(cboCodEl),
             // `salarioBase` substitui `salario`, que mudava de significado conforme o tipo.
             // O legado continua gravado para não quebrar folhas já lançadas que o leem.
             salarioBase, bolsa, prolabore,
