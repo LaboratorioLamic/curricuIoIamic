@@ -156,7 +156,19 @@
 .param-info-btn:hover { color: var(--accent); border-color: var(--accent); }
 
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-row[hidden] { display: none; }
 @media (max-width: 640px) { .form-row { grid-template-columns: 1fr; } }
+
+/* Balão informativo suave dentro de formulário — quando um campo some por causa de outra
+   escolha (ex.: CBO some para Aprendiz), avisa o motivo sem parecer um erro. */
+.fc-info-balao {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 10px 12px; border-radius: var(--radius);
+    background: var(--accent-soft); color: var(--accent-strong, var(--accent));
+    font-size: 12.5px; line-height: 1.45;
+}
+.fc-info-balao svg.icon { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; }
+.fc-info-balao[hidden] { display: none; }
 
 /* Seções de formulário (agrupamento visual em modais densos) */
 .form-section { margin-bottom: 20px; }

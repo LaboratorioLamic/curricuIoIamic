@@ -604,7 +604,8 @@ async function renderCfgCargos() {
             return `
             <tr data-id="${c.id}" data-search="${escapeHtml((c.nome + ' ' + c.tipo + ' ' + def.label + ' ' + (c.cbo || '') + ' ' + (c.cboCodigo || '')).toLowerCase())}">
                 <td><strong>${escapeHtml(c.nome)}</strong></td>
-                <td class="cbo-cell">${c.cbo || c.cboCodigo ? `
+                <td class="cbo-cell">${ehAprendiz(c) ? `<div class="cbo-cell-tit">Jovem Aprendiz</div>`
+                    : c.cbo || c.cboCodigo ? `
                     ${c.cbo ? `<div class="cbo-cell-tit" title="${escapeHtml(c.cbo)}">${escapeHtml(c.cbo)}</div>` : ''}
                     ${c.cboCodigo ? `<div class="cbo-cell-cod">${cboFmtCodigo(c.cboCodigo)}</div>` : ''}`
                     : '<span class="text-2">—</span>'}</td>
@@ -648,7 +649,7 @@ function formCargo(c) {
         title: isEdit ? 'Editar cargo' : 'Novo cargo',
         body: `
             <div class="field"><label>Nome do cargo <span class="req">*</span></label><input class="input" id="fcNome" placeholder="Ex: Analista de Sistemas" value="${escapeHtml(c?.nome || '')}"></div>
-            <div class="form-row">
+            <div class="form-row" id="fcCboRow">
                 <div class="field"><label>CBO (Classificação Brasileira de Ocupações)</label>
                     <input class="input" id="fcCbo" placeholder="Digite para buscar. Ex: analista de sistemas" value="${escapeHtml(c?.cbo || '')}">
                     <div class="field-hint">Ocupação oficial (CBO 2002). Não achou? Digite o texto livremente.</div>
@@ -657,6 +658,9 @@ function formCargo(c) {
                     <input class="input" id="fcCboCodigo" placeholder="0000-00" value="${escapeHtml(cboFmtCodigo(c?.cboCodigo || ''))}">
                     <div class="field-hint">Preenchido ao escolher a ocupação — ou digite o código para achá-la.</div>
                 </div>
+            </div>
+            <div class="fc-info-balao" id="fcCboAprendizHint" hidden>
+                ${icon('info')} <span>Aprendiz não tem CBO próprio: o vínculo é de aprendizagem (art. 428 CLT), não uma ocupação da Classificação Brasileira de Ocupações.</span>
             </div>
             <div class="form-row">
                 <div class="field"><label>Tipo de cargo <span class="req">*</span></label>
@@ -793,6 +797,8 @@ function formCargo(c) {
     insalEl.onchange = syncRisco;
     periculEl.onchange = syncRisco;
 
+    const cboRow = m.body.querySelector('#fcCboRow');
+    const cboAprendizHint = m.body.querySelector('#fcCboAprendizHint');
     const syncPerfil = () => {
         const p = btnPerfil.dataset.perfil;
         const def = CARGO_PERFIS.find(x => x.id === p);
@@ -800,6 +806,11 @@ function formCargo(c) {
         m.body.querySelectorAll('[data-verba]').forEach(el => {
             el.hidden = !def.campos.includes(el.dataset.verba);
         });
+        // Aprendiz não tem CBO próprio: o vínculo em si já é a classificação (art. 428 CLT).
+        // Esconde os campos em vez de só desabilitar — evitar que o RH busque um CBO à toa.
+        const aprendiz = p === 'aprendiz';
+        cboRow.hidden = aprendiz;
+        cboAprendizHint.hidden = !aprendiz;
         syncMinimo();
         syncRisco();
     };
@@ -839,8 +850,9 @@ function formCargo(c) {
             nome, tipo, perfil,
             // CBO é informativo (eSocial/RAIS): guarda o título como foi escrito e o
             // código só quando são 6 dígitos reais — texto solto não vira código.
-            cbo: cboEl.value.trim(),
-            cboCodigo: cboCodigoValor(cboCodEl),
+            // Aprendiz não usa CBO (campo escondido) — não grava resíduo de um perfil anterior.
+            cbo: perfil === 'aprendiz' ? '' : cboEl.value.trim(),
+            cboCodigo: perfil === 'aprendiz' ? '' : cboCodigoValor(cboCodEl),
             // `salarioBase` substitui `salario`, que mudava de significado conforme o tipo.
             // O legado continua gravado para não quebrar folhas já lançadas que o leem.
             salarioBase, bolsa, prolabore,

@@ -150,7 +150,10 @@ function cargoCboTexto(c) {
 }
 
 // Segunda linha da opção: sem CBO, avisa — é o caso em que dois homônimos se confundem.
+// Aprendiz não tem CBO próprio (o vínculo é de aprendizagem, não de uma ocupação CBO) —
+// mostra o perfil em vez de "Sem CBO", que pareceria cadastro incompleto.
 function cargoCboSub(c) {
+    if (ehAprendiz(c)) return 'Jovem Aprendiz';
     return cargoCboTexto(c) || 'Sem CBO';
 }
 

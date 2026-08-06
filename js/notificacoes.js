@@ -145,23 +145,64 @@ function abrirNotificacoes() {
         aso: 'ASO', ferias: 'Férias', decimo: '13º salário', banco: 'Banco de horas',
         aprendiz: 'Aprendizagem', alerta: 'Quadro', cobertura: 'Cobertura'
     };
+    const tipoIco = tipo => tipo === 'cobertura' || tipo === 'ferias' ? 'sun'
+        : tipo === 'aso' ? 'medical' : tipo === 'banco' ? 'clock' : tipo === 'decimo' ? 'gift'
+        : tipo === 'aprendiz' ? 'briefcase' : 'alert';
+    const tipoIcoCls = tipo => `alert-ico-sm${['cobertura', 'ferias'].includes(tipo) ? ' alert-ico-sm-ferias' : ''}${tipo === 'aso' ? ' alert-ico-sm-aso' : ''}${tipo === 'banco' ? ' alert-ico-sm-bh' : ''}${tipo === 'decimo' ? ' alert-ico-sm-decimo' : ''}${tipo === 'aprendiz' ? ' alert-ico-sm-aprendiz' : ''}`;
+
+    // Agrupa por categoria — muitas unidades com ASO vencido antes viravam muitas linhas
+    // idênticas na primeira leitura; agora é um card por categoria, e a lista de unidades
+    // só aparece se o RH pedir (clique), igual ao motivo de o detalhe já ser sob demanda.
+    // Quantidade "de pessoas/itens" por categoria — a unidade sozinha não diz o tamanho do
+    // problema (1 unidade com 30 ASOs vencidos é bem diferente de 1 com 2). Cada diagnóstico
+    // já lista os afetados em `pessoas`; alerta/cobertura não têm pessoa (são vaga de cargo),
+    // usa o que tiverem de mais próximo.
+    const QTD_LABEL = { aso: 'pendências', ferias: 'pendências', decimo: 'pendências', banco: 'pendências', aprendiz: 'pendências', alerta: 'pendências', cobertura: 'pendências' };
+    const itemQtd = l => l.item.pessoas ? l.item.pessoas.length
+        : l.tipo === 'alerta' ? (l.item.modo === 'cargo' ? l.item.cargos.reduce((s, x) => s + x.faltam, 0) : l.item.faltam)
+        : l.tipo === 'cobertura' ? l.item.cargos.reduce((s, x) => s + x.gap, 0)
+        : 0;
+
+    const grupos = [];
+    const porTipo = new Map();
+    linhas.forEach((l, i) => {
+        if (!porTipo.has(l.tipo)) { porTipo.set(l.tipo, grupos.length); grupos.push({ tipo: l.tipo, itens: [] }); }
+        grupos[porTipo.get(l.tipo)].itens.push({ ...l, i });
+    });
 
     const pop = document.createElement('div');
     pop.className = 'popover pop-notif';
     pop.innerHTML = !linhas.length
         ? `<div class="pop-notif-empty">${icon('check')}<span>Tudo em dia</span></div>`
-        : `<div class="pop-list" data-pop-list>${linhas.map((l, i) => `
-            <div class="pop-item pop-notif-row" data-i="${i}">
-                <span class="alert-ico-sm${l.tipo === 'cobertura' ? ' alert-ico-sm-ferias' : ''}${l.tipo === 'ferias' ? ' alert-ico-sm-ferias' : ''}${l.tipo === 'aso' ? ' alert-ico-sm-aso' : ''}${l.tipo === 'banco' ? ' alert-ico-sm-bh' : ''}${l.tipo === 'decimo' ? ' alert-ico-sm-decimo' : ''}${l.tipo === 'aprendiz' ? ' alert-ico-sm-aprendiz' : ''}">${icon(l.tipo === 'cobertura' || l.tipo === 'ferias' ? 'sun' : l.tipo === 'aso' ? 'medical' : l.tipo === 'banco' ? 'clock' : l.tipo === 'decimo' ? 'gift' : l.tipo === 'aprendiz' ? 'briefcase' : 'alert')}</span>
-                <div class="grow">
-                    <div class="pop-notif-tipo">${escapeHtml(NOTIF_TIPO_LABEL[l.tipo] || '')}</div>
-                    <strong>${escapeHtml(l.item.nome)}</strong>
-                    <div class="muted">${escapeHtml(l.resumo)}</div>
+        : `<div class="pop-list" data-pop-list>${grupos.map((g, gi) => `
+            <div class="pop-notif-group" data-g="${gi}">
+                <div class="pop-item pop-notif-row" data-gtoggle="${gi}">
+                    <span class="${tipoIcoCls(g.tipo)}">${icon(tipoIco(g.tipo))}</span>
+                    <div class="grow">
+                        <div class="pop-notif-tipo">${escapeHtml(NOTIF_TIPO_LABEL[g.tipo] || '')}</div>
+                        <strong>${g.itens.length} unidade${g.itens.length > 1 ? 's' : ''} <span class="pop-notif-qtd">(${g.itens.reduce((s, l) => s + itemQtd(l), 0)} ${QTD_LABEL[g.tipo] || ''})</span></strong>
+                        <div class="muted">Clique para ver quais</div>
+                    </div>
+                    <span class="pop-notif-chevron">${icon('chevronDown')}</span>
                 </div>
-                ${icon('chevronRight')}
+                <div class="pop-notif-sub" hidden>${g.itens.map(l => `
+                    <div class="pop-item pop-notif-row pop-notif-subrow" data-i="${l.i}">
+                        <span class="grow">
+                            <strong>${escapeHtml(l.item.nome)}</strong>
+                            <div class="muted">${escapeHtml(l.resumo)}</div>
+                        </span>
+                        ${icon('chevronRight')}
+                    </div>`).join('')}</div>
             </div>`).join('')}</div>`;
     document.body.appendChild(pop);
 
+    // Todo grupo começa fechado — mesmo quando é o único: o card já mostra unidades e
+    // quantidade, a lista nominal é sob demanda como o resto do sino.
+    pop.querySelectorAll('[data-gtoggle]').forEach(el => el.onclick = () => {
+        const sub = el.closest('.pop-notif-group').querySelector('.pop-notif-sub');
+        sub.hidden = !sub.hidden;
+        el.querySelector('.pop-notif-chevron').classList.toggle('open', !sub.hidden);
+    });
     pop.querySelectorAll('[data-i]').forEach(el => el.onclick = () => {
         closePopover();
         abrirDetalheNotificacao(linhas[Number(el.dataset.i)]);

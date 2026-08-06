@@ -740,8 +740,16 @@
 }
 .pop-notif-tipo { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
 .pop-notif-row .grow strong { display: block; font-size: 13px; }
+.pop-notif-qtd { font-weight: 400; color: var(--muted); font-size: 12px; }
 .pop-notif-row .grow .muted { font-size: 11.5px; margin-top: 1px; }
 .pop-notif-row svg.icon:last-child { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; }
+.pop-notif-chevron { display: flex; flex-shrink: 0; transition: transform .15s ease; }
+.pop-notif-chevron svg.icon { width: 15px; height: 15px; color: var(--muted); }
+.pop-notif-chevron.open { transform: rotate(180deg); }
+.pop-notif-sub { padding-left: 6px; border-left: 2px solid var(--border); margin: 0 0 4px 23px; }
+.pop-notif-subrow { padding: 7px 8px; }
+.pop-notif-subrow .grow strong { font-size: 12.5px; }
+.pop-notif-subrow .grow .muted { font-size: 11px; }
 .pop-notif-empty {
     display: flex; align-items: center; gap: 8px;
     padding: 14px 10px; font-size: 13px; color: var(--muted);
