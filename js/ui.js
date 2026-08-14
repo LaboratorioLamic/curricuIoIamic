@@ -115,7 +115,9 @@ function openPopover(anchorEl, items) {
 }
 
 // ---- Filtro em popover (substitui selects de filtro) ----
-// btnEl: botão âncora; options: [{value, label, sub}]; valorAtual; onPick(value)
+// btnEl: botão âncora; options: [{value, label, sub, icon}]; valorAtual; onPick(value)
+// `icon` é opcional (nome de ICONS) e entra à esquerda do rótulo — usado onde a lista é
+// curta e fixa, para o item ser reconhecível antes de se ler o texto.
 // `sub` é a segunda linha da opção (ex.: o CBO do cargo) — entra também na busca,
 // porque é ela que distingue dois itens de mesmo nome.
 // Fecha ao escolher; mostra busca quando há muitas opções.
@@ -132,6 +134,7 @@ function openFilterPopover(btnEl, { options, value, onPick, searchable = true, a
         ${showSearch ? `<div class="pop-search">${icon('search')}<input class="input" placeholder="Buscar..." data-pop-q></div>` : ''}
         <div class="pop-list" data-pop-list>${list.map(o => `
             <div class="pop-item${o.sub ? ' pop-item-2l' : ''}${o.value === value ? ' selected' : ''}" data-val="${escapeHtml(o.value)}" data-search="${escapeHtml(`${o.label || ''} ${o.sub || ''}`.toLowerCase())}">
+                ${o.icon ? `<span class="pop-ico">${icon(o.icon)}</span>` : ''}
                 <span class="grow">
                     <span class="pop-lbl">${escapeHtml(o.label)}</span>
                     ${o.sub ? `<span class="pop-sub">${escapeHtml(o.sub)}</span>` : ''}

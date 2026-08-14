@@ -179,6 +179,37 @@
 }
 .form-section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
+/* Formas de pagamento no formulário do funcionário: lista de cartões, um por forma
+   adicionada. O cartão delimita a que forma cada campo pertence — sem ele, dois blocos de
+   agência/conta seguidos ficariam indistinguíveis. */
+.pag-card {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface-2); margin-bottom: 12px; overflow: hidden;
+}
+.pag-card-head {
+    display: flex; align-items: center; gap: 9px;
+    padding: 10px 14px; background: var(--surface);
+    border-bottom: 1px solid var(--border); font-size: 13.5px;
+}
+/* Forma sem campos (dinheiro, cheque): o cartão é só o cabeçalho, sem linha divisória
+   apontando para um corpo que não existe. */
+.pag-card.is-simples .pag-card-head { border-bottom: none; }
+.pag-card-ico { display: flex; flex-shrink: 0; }
+.pag-card-ico svg.icon { width: 16px; height: 16px; color: var(--accent); }
+.pag-card-head .grow { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pag-card-rm { color: var(--muted); padding: 4px 6px; }
+.pag-card-rm:hover { color: var(--danger); }
+.pag-card-body { padding: 14px 14px 2px; }
+.pag-card-body .field { margin-bottom: 12px; }
+/* Vazio: diz o que falta em vez de deixar a seção com só um botão solto. */
+.pag-vazio {
+    display: flex; align-items: center; gap: 9px;
+    padding: 12px 14px; margin-bottom: 12px;
+    border: 1px dashed var(--border); border-radius: var(--radius);
+    color: var(--muted); font-size: 12.5px; line-height: 1.45;
+}
+.pag-vazio svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
+
 /* Cartões de toggle (switch com título e descrição) */
 .toggle-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 560px) { .toggle-cards { grid-template-columns: 1fr; } }
@@ -632,6 +663,12 @@ table.table td.num, table.table th.num { text-align: right; font-variant-numeric
 }
 .pop-filter .pop-item.selected .pop-sub { color: var(--accent-strong); opacity: .8; }
 .pop-filter .pop-item-2l > svg.icon { margin-top: 2px; flex-shrink: 0; }
+/* Ícone à esquerda do rótulo (opção com `icon`). Fica esmaecido enquanto não selecionado:
+   é apoio de reconhecimento, não deve competir com o texto nem com o check da direita. */
+.pop-filter .pop-ico { display: flex; flex-shrink: 0; color: var(--muted); }
+.pop-filter .pop-item:hover .pop-ico,
+.pop-filter .pop-item.selected .pop-ico { color: inherit; }
+.pop-filter .pop-ico svg.icon { width: 15px; height: 15px; color: inherit; }
 
 /* Popover "Ver participantes" — cada linha é a célula rica (foto + nome + cargo/idade/
    contato), não texto simples; precisa de mais largura que o pop-filter padrão. */

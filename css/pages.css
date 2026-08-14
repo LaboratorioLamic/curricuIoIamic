@@ -204,6 +204,26 @@
 .fd-row .fd-k { font-size: 13px; color: var(--muted); font-weight: 500; flex-shrink: 0; }
 .fd-row .fd-v { font-size: 13.5px; font-weight: 600; text-align: right; }
 
+/* Formas de pagamento na ficha: cada uma é um grupo com cabeçalho próprio, porque a mesma
+   pessoa pode ter mais de um destino e as linhas de duas formas não podem se misturar. */
+.fd-pag { padding: 4px 0 2px; border-bottom: 1px solid var(--border); }
+.fd-pag:last-child { border-bottom: none; }
+.fd-pag-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 0 6px; font-size: 13.5px; min-width: 0;
+}
+.fd-pag-ico { display: flex; flex-shrink: 0; }
+.fd-pag-ico svg.icon { width: 15px; height: 15px; color: var(--accent); }
+.fd-pag-head strong { flex-shrink: 0; }
+/* Resumo do destino (chave Pix, banco/agência): recuado à direita e discreto — serve para
+   distinguir duas formas de relance, os dados completos vêm nas linhas abaixo. */
+.fd-pag-resumo {
+    margin-left: auto; font-size: 12px; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fd-pag .fd-row { padding: 7px 0; }
+.fd-pag .fd-row:last-child { border-bottom: none; }
+
 /* Benefícios do funcionário */
 .benef-item {
     border: 1px solid var(--border);

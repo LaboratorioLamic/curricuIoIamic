@@ -7,13 +7,52 @@ const VESTIMENTAS = ['PP', 'P', 'M', 'G', 'GG'];
 // ---- Pagamento ----
 // Forma de pagamento e dados bancários ficam na ficha porque quem paga a folha precisa do
 // destino junto do valor — sem isso o dado vive numa planilha paralela, que é onde erro de
-// conta acontece. Só "Pix" e "Transferência bancária" pedem conta; boleto/dinheiro/cheque não.
-const FORMAS_PAGAMENTO = ['Pix', 'Transferência bancária', 'Boleto', 'Dinheiro', 'Cheque'];
-const PAGAMENTO_COM_BANCO = ['Pix', 'Transferência bancária'];
+// conta acontece.
+//
+// É uma LISTA, não um campo único: a mesma pessoa costuma ter mais de um destino cadastrado
+// (Pix do dia a dia + conta para o depósito do 13º, por exemplo). Com um campo só, o segundo
+// destino vira observação solta ou sobrescreve o primeiro.
+//
+// `campos` diz o que cada forma pede: as que não pedem nada (dinheiro, cheque) entram na
+// lista só como registro do combinado. `titular` é comum às que têm destino identificável.
+const FORMAS_PAGAMENTO = [
+    { id: 'pix', label: 'Pix', icon: 'key', campos: ['pix', 'titular'] },
+    { id: 'transferencia', label: 'Transferência bancária', icon: 'building', campos: ['conta', 'titular'] },
+    { id: 'boleto', label: 'Boleto', icon: 'paperclip', campos: [] },
+    { id: 'dinheiro', label: 'Dinheiro', icon: 'money', campos: [] },
+    { id: 'cheque', label: 'Cheque', icon: 'table', campos: [] }
+];
+const formaPagDe = id => FORMAS_PAGAMENTO.find(fp => fp.id === id);
 const TIPOS_CONTA = ['Conta corrente', 'Conta poupança', 'Conta salário', 'Conta pagamento'];
 // Tipo da chave define a máscara/validação do campo Chave Pix — a chave aleatória e o e-mail
 // não têm formato numérico, então mascarar tudo como CPF corromperia a chave gravada.
 const TIPOS_CHAVE_PIX = ['CPF', 'CNPJ', 'Telefone', 'E-mail', 'Chave aleatória'];
+const PIX_PLACEHOLDER = {
+    CPF: '000.000.000-00', CNPJ: '00.000.000/0000-00', Telefone: '(00) 00000-0000',
+    'E-mail': 'nome@email.com', 'Chave aleatória': '00000000-0000-0000-0000-000000000000'
+};
+
+// Ficha antiga guardava uma forma só (`formaPagamento` + `banco`). Convertida na leitura para
+// a lista nova: sem isto, quem já tinha dado cadastrado veria a seção vazia depois do deploy.
+// A gravação só escreve `pagamentos`, então o formato antigo some no primeiro save da ficha.
+function pagamentosDe(f) {
+    if (Array.isArray(f?.pagamentos)) return f.pagamentos;
+    if (!f?.formaPagamento) return [];
+    const b = f.banco || {};
+    const forma = FORMAS_PAGAMENTO.find(fp => fp.label === f.formaPagamento);
+    return forma ? [{ forma: forma.id, ...b }] : [];
+}
+
+// Resumo de uma linha de pagamento para leitura rápida (chip da visualização e subtítulo do
+// card no formulário): o destino em si, não a lista de campos.
+function pagamentoResumo(p) {
+    if (p.forma === 'pix') return p.pixChave || 'Chave não informada';
+    if (p.forma === 'transferencia') {
+        const partes = [p.nome, p.agencia && `Ag. ${p.agencia}`, p.conta && `C/C ${p.conta}`].filter(Boolean);
+        return partes.length ? partes.join(' · ') : 'Conta não informada';
+    }
+    return '';
+}
 
 const funcState = {
     funcionarios: [], cargos: [], unidades: [], beneficios: [], treinamentos: [], ausencias: [],
@@ -391,38 +430,57 @@ function fdInformacoes(f, cont) {
         ['Salário', `${fmtBRL(funcSalarioDe(f))}${f.salario == null ? ' · base do cargo' : ''}`]
     ]});
 
-    // Pagamento: mesmo gate do salário (ver_financeiro). Só as linhas que a forma escolhida
-    // usa — para quem recebe em dinheiro, uma lista de "Agência —, Conta —" seria ruído.
-    if (fin) {
-        const b = f.banco || {};
-        const itens = [['Forma de pagamento', f.formaPagamento || '—']];
-        if (f.formaPagamento === 'Pix') {
-            itens.push(
-                ['Tipo da chave', b.pixTipo || '—'],
-                ['Chave Pix', b.pixChave || '—']
-            );
-        }
-        if (f.formaPagamento === 'Transferência bancária') {
-            itens.push(
-                ['Banco', b.nome ? `${b.codigo ? `${b.codigo} · ` : ''}${b.nome}` : '—'],
-                ['Tipo de conta', b.tipoConta || '—'],
-                ['Agência', b.agencia || '—'],
-                ['Conta', b.conta || '—'],
-                ...(b.titularDoc ? [['CPF/CNPJ do titular', b.titularDoc]] : [])
-            );
-        }
-        // Titular só aparece quando é de terceiro: em branco significa o próprio funcionário,
-        // e repetir o nome dele em toda ficha não informa nada.
-        if (b.titular) itens.push(['Titular da conta', b.titular]);
-        secoes.push({ titulo: 'Pagamento', icon: 'money', itens });
-    }
+    // Pagamento: mesmo gate do salário (ver_financeiro). Fora de `secoes` porque não é
+    // chave/valor — são N formas, cada uma com o próprio bloco de dados. Só as linhas que a
+    // forma usa: para quem recebe em dinheiro, uma lista de "Agência —, Conta —" seria ruído.
+    const pagsHtml = !fin ? '' : (() => {
+        const lista = pagamentosDe(f);
+        const linhasDe = p => {
+            if (p.forma === 'pix') return [
+                ['Tipo da chave', p.pixTipo || '—'],
+                ['Chave Pix', p.pixChave || '—']
+            ];
+            if (p.forma === 'transferencia') return [
+                ['Banco', p.nome ? `${p.codigo ? `${p.codigo} · ` : ''}${p.nome}` : '—'],
+                ['Tipo de conta', p.tipoConta || '—'],
+                ['Agência', p.agencia || '—'],
+                ['Conta', p.conta || '—'],
+                ...(p.titularDoc ? [['CPF/CNPJ do titular', p.titularDoc]] : [])
+            ];
+            return [];
+        };
+        return `
+        <div class="fd-section">
+            <div class="fd-section-head">${icon('money')}<span>Pagamento</span></div>
+            <div class="fd-section-body">
+                ${!lista.length ? `<div class="fd-row"><span class="fd-k">Forma de pagamento</span><span class="fd-v">—</span></div>` : lista.map((p, i) => {
+                    const forma = formaPagDe(p.forma);
+                    const resumo = pagamentoResumo(p);
+                    // Titular só aparece quando é de terceiro: em branco significa o próprio
+                    // funcionário, e repetir o nome dele em toda ficha não informa nada.
+                    const linhas = [...linhasDe(p), ...(p.titular ? [['Titular da conta', p.titular]] : [])];
+                    return `
+                    <div class="fd-pag">
+                        <div class="fd-pag-head">
+                            <span class="fd-pag-ico">${icon(forma?.icon || 'money')}</span>
+                            <strong>${escapeHtml(forma?.label || p.forma)}</strong>
+                            ${i === 0 && lista.length > 1 ? '<span class="badge badge-info">Principal</span>' : ''}
+                            ${resumo ? `<span class="fd-pag-resumo">${escapeHtml(resumo)}</span>` : ''}
+                        </div>
+                        ${linhas.map(([l, v]) => `
+                            <div class="fd-row"><span class="fd-k">${l}</span><span class="fd-v">${escapeHtml(v)}</span></div>`).join('')}
+                    </div>`;
+                }).join('')}
+            </div>
+        </div>`;
+    })();
 
     cont.innerHTML = secoes.map(s => `
         <div class="fd-section">
             <div class="fd-section-head">${icon(s.icon)}<span>${s.titulo}</span></div>
             <div class="fd-section-body">${s.itens.map(([l, v]) => `
                 <div class="fd-row"><span class="fd-k">${l}</span><span class="fd-v">${escapeHtml(v)}</span></div>`).join('')}</div>
-        </div>`).join('');
+        </div>`).join('') + pagsHtml;
 }
 
 // ---- Pagamentos (histórico da folha) ----
@@ -1876,64 +1934,8 @@ function formFuncionario(f) {
 
             <div class="form-section" style="margin-bottom:0">
                 <div class="form-section-title">Pagamento</div>
-                <div class="form-row">
-                    <div class="field"><label>Forma de pagamento</label>
-                        <select class="select" id="ffFormaPag">
-                            <option value="">—</option>
-                            ${FORMAS_PAGAMENTO.map(fp => `<option ${f?.formaPagamento === fp ? 'selected' : ''}>${fp}</option>`).join('')}
-                        </select>
-                        <div class="field-hint" id="ffFormaPagHint"></div>
-                    </div>
-                    <div></div>
-                </div>
-                <div id="ffPixBox" hidden>
-                    <div class="form-row">
-                        <div class="field"><label>Tipo da chave Pix</label>
-                            <select class="select" id="ffPixTipo">
-                                <option value="">—</option>
-                                ${TIPOS_CHAVE_PIX.map(t => `<option ${f?.banco?.pixTipo === t ? 'selected' : ''}>${t}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div class="field"><label>Chave Pix</label>
-                            <input class="input" id="ffPixChave" placeholder="Chave" value="${escapeHtml(f?.banco?.pixChave || '')}">
-                        </div>
-                    </div>
-                </div>
-                <div id="ffBancoBox" hidden>
-                    <div class="form-row">
-                        <div class="field"><label>Banco</label>
-                            <input class="input" id="ffBancoNome" placeholder="Ex.: Banco do Brasil" value="${escapeHtml(f?.banco?.nome || '')}">
-                        </div>
-                        <div class="field"><label>Código do banco</label>
-                            <input class="input" id="ffBancoCodigo" inputmode="numeric" maxlength="3" placeholder="001" value="${escapeHtml(f?.banco?.codigo || '')}">
-                            <div class="field-hint">Código de compensação (3 dígitos).</div>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="field"><label>Tipo de conta</label>
-                            <select class="select" id="ffContaTipo">
-                                <option value="">—</option>
-                                ${TIPOS_CONTA.map(t => `<option ${f?.banco?.tipoConta === t ? 'selected' : ''}>${t}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div class="field"><label>Agência</label>
-                            <input class="input" id="ffAgencia" placeholder="0000" value="${escapeHtml(f?.banco?.agencia || '')}">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="field"><label>Conta (com dígito)</label>
-                            <input class="input" id="ffConta" placeholder="00000-0" value="${escapeHtml(f?.banco?.conta || '')}">
-                        </div>
-                        <div class="field"><label>CPF/CNPJ do titular</label>
-                            <input class="input" id="ffTitularDoc" inputmode="numeric" placeholder="000.000.000-00" value="${escapeHtml(f?.banco?.titularDoc || '')}">
-                        </div>
-                    </div>
-                </div>
-                <div class="field" style="margin-bottom:0" id="ffTitularBox" hidden>
-                    <label>Nome do titular da conta</label>
-                    <input class="input" id="ffTitular" placeholder="Deixe vazio se for o próprio funcionário" value="${escapeHtml(f?.banco?.titular || '')}">
-                    <div class="field-hint">Preencha apenas quando a conta for de terceiro.</div>
-                </div>
+                <div id="ffPagLista"></div>
+                <button type="button" class="btn btn-secondary btn-sm" id="ffPagAdd">${icon('plus')} Adicionar forma de pagamento</button>
             </div>` : ''}`,
         footer: ''
     });
@@ -2010,59 +2012,148 @@ function formFuncionario(f) {
     atualizaAprendiz();
 
     // ---- Pagamento ----
-    // Os blocos aparecem conforme a forma escolhida: Pix pede chave; transferência pede conta;
-    // boleto/dinheiro/cheque não pedem nada. Esconder o que não se aplica evita conta bancária
-    // gravada em ficha paga em dinheiro — dado errado que ninguém revisa depois.
-    // Só existe quando o formulário tem a seção Financeiro (gate ver_financeiro).
-    const formaPagInput = m.body.querySelector('#ffFormaPag');
-    if (formaPagInput) {
-        const pixBox = m.body.querySelector('#ffPixBox');
-        const bancoBox = m.body.querySelector('#ffBancoBox');
-        const formaPagHint = m.body.querySelector('#ffFormaPagHint');
-        const pixTipoInput = m.body.querySelector('#ffPixTipo');
-        const pixChaveInput = m.body.querySelector('#ffPixChave');
-        const titularDocInput = m.body.querySelector('#ffTitularDoc');
-        const bancoCodInput = m.body.querySelector('#ffBancoCodigo');
+    // Lista editável: cada item é uma forma com os campos que ela pede (Pix → chave;
+    // transferência → conta; dinheiro/boleto/cheque → nada). Só existe quando o formulário
+    // tem a seção Financeiro (gate ver_financeiro).
+    //
+    // O estado vive no array `pags`, não no DOM: como um item pode ser removido do meio da
+    // lista, ler os campos só no salvar exigiria casar índice do DOM com índice do array a
+    // cada remoção. Aqui cada input grava direto no seu objeto, e o array é a única verdade.
+    const pagListaEl = m.body.querySelector('#ffPagLista');
+    const pags = pagListaEl ? pagamentosDe(f).map(p => ({ ...p })) : [];
+    if (pagListaEl) {
+        const btnAdd = m.body.querySelector('#ffPagAdd');
 
-        const titularBox = m.body.querySelector('#ffTitularBox');
-        const atualizaPagamento = () => {
-            const forma = formaPagInput.value;
-            pixBox.hidden = forma !== 'Pix';
-            // Pix não pede agência/conta: a chave já é o destino. Pedir a conta junto seria
-            // dado duplicado que ninguém mantém atualizado.
-            bancoBox.hidden = forma !== 'Transferência bancária';
-            // O titular vale para os dois: identifica de quem é a chave ou a conta.
-            titularBox.hidden = !PAGAMENTO_COM_BANCO.includes(forma);
-            formaPagHint.textContent = !forma
-                ? 'Defina como este funcionário recebe o salário.'
-                : forma === 'Pix'
-                ? 'A chave Pix abaixo é o destino do pagamento da folha.'
-                : forma === 'Transferência bancária'
-                ? 'Os dados bancários abaixo são usados no pagamento da folha.'
-                : 'Esta forma não usa chave Pix nem conta bancária.';
+        // Campo de texto de um item: devolve o HTML e registra o binding que escreve no objeto.
+        // `mask` é aplicada a cada tecla — o valor gravado é o já formatado, igual ao telefone
+        // da ficha, para o que se lê na visualização ser o que está no banco.
+        const bindings = [];
+        const campo = (p, key, label, { placeholder = '', hint = '', mask = null, attrs = '' } = {}) => {
+            const id = `ffPag${bindings.length}`;
+            bindings.push({ id, p, key, mask });
+            return `
+                <div class="field"><label>${label}</label>
+                    <input class="input" id="${id}" placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(p[key] || '')}" ${attrs}>
+                    ${hint ? `<div class="field-hint">${hint}</div>` : ''}
+                </div>`;
         };
-        formaPagInput.addEventListener('change', atualizaPagamento);
-        atualizaPagamento();
-
-        // A máscara segue o tipo da chave: CPF e CNPJ têm formato fixo, telefone usa maskFone,
-        // e-mail e chave aleatória vão crus (mascarar corromperia o valor).
-        const aplicaMascaraPix = () => {
-            const t = pixTipoInput.value;
-            if (t === 'CPF') pixChaveInput.value = maskCPF(pixChaveInput.value);
-            else if (t === 'CNPJ') pixChaveInput.value = maskCNPJ(pixChaveInput.value);
-            else if (t === 'Telefone') pixChaveInput.value = maskFone(pixChaveInput.value);
-            pixChaveInput.placeholder = { CPF: '000.000.000-00', CNPJ: '00.000.000/0000-00', Telefone: '(00) 00000-0000', 'E-mail': 'nome@email.com', 'Chave aleatória': '00000000-0000-0000-0000-000000000000' }[t] || 'Chave';
+        const combo = (p, key, label, opcoes) => {
+            const id = `ffPag${bindings.length}`;
+            bindings.push({ id, p, key, mask: null });
+            return `
+                <div class="field"><label>${label}</label>
+                    <select class="select" id="${id}">
+                        <option value="">—</option>
+                        ${opcoes.map(o => `<option ${p[key] === o ? 'selected' : ''}>${o}</option>`).join('')}
+                    </select>
+                </div>`;
         };
-        pixChaveInput.addEventListener('input', aplicaMascaraPix);
-        pixTipoInput.addEventListener('change', aplicaMascaraPix);
-        aplicaMascaraPix();
 
-        // O titular pode ser PF (CPF) ou PJ (CNPJ) — a máscara acompanha o tamanho digitado.
-        titularDocInput.addEventListener('input', () => {
-            const dig = titularDocInput.value.replace(/\D/g, '');
-            titularDocInput.value = dig.length > 11 ? maskCNPJ(dig) : maskCPF(dig);
+        // O titular só é pedido a quem tem destino identificável (Pix, conta): em dinheiro não
+        // existe "titular", e o campo em branco só ocuparia espaço.
+        const camposTitular = p => campo(p, 'titular', 'Nome do titular da conta', {
+            placeholder: 'Deixe vazio se for o próprio funcionário',
+            hint: 'Preencha apenas quando a conta for de terceiro.'
         });
-        bancoCodInput.addEventListener('input', () => bancoCodInput.value = bancoCodInput.value.replace(/\D/g, '').slice(0, 3));
+
+        const corpoDe = p => {
+            const forma = formaPagDe(p.forma);
+            if (!forma?.campos.length) return '';
+            if (p.forma === 'pix') return `
+                <div class="form-row">
+                    ${combo(p, 'pixTipo', 'Tipo da chave Pix', TIPOS_CHAVE_PIX)}
+                    ${campo(p, 'pixChave', 'Chave Pix', { placeholder: PIX_PLACEHOLDER[p.pixTipo] || 'Chave', mask: 'pix' })}
+                </div>
+                ${camposTitular(p)}`;
+            return `
+                <div class="form-row">
+                    ${campo(p, 'nome', 'Banco', { placeholder: 'Ex.: Banco do Brasil' })}
+                    ${campo(p, 'codigo', 'Código do banco', { placeholder: '001', hint: 'Código de compensação (3 dígitos).', mask: 'cod', attrs: 'inputmode="numeric" maxlength="3"' })}
+                </div>
+                <div class="form-row">
+                    ${combo(p, 'tipoConta', 'Tipo de conta', TIPOS_CONTA)}
+                    ${campo(p, 'agencia', 'Agência', { placeholder: '0000' })}
+                </div>
+                <div class="form-row">
+                    ${campo(p, 'conta', 'Conta (com dígito)', { placeholder: '00000-0' })}
+                    ${campo(p, 'titularDoc', 'CPF/CNPJ do titular', { placeholder: '000.000.000-00', mask: 'doc', attrs: 'inputmode="numeric"' })}
+                </div>
+                ${camposTitular(p)}`;
+        };
+
+        const renderPags = () => {
+            bindings.length = 0;
+            pagListaEl.innerHTML = !pags.length
+                ? `<div class="pag-vazio">${icon('money')} Nenhuma forma de pagamento cadastrada. Adicione ao menos uma para saber como este funcionário recebe.</div>`
+                : pags.map((p, i) => {
+                    const forma = formaPagDe(p.forma);
+                    const corpo = corpoDe(p);
+                    return `
+                    <div class="pag-card${corpo ? '' : ' is-simples'}">
+                        <div class="pag-card-head">
+                            <span class="pag-card-ico">${icon(forma?.icon || 'money')}</span>
+                            <div class="grow">
+                                <strong>${escapeHtml(forma?.label || p.forma)}</strong>
+                                ${i === 0 && pags.length > 1 ? '<span class="badge badge-info">Principal</span>' : ''}
+                            </div>
+                            <button type="button" class="btn btn-ghost btn-sm pag-card-rm" data-rm="${i}" title="Remover forma de pagamento">${icon('trash')}</button>
+                        </div>
+                        ${corpo ? `<div class="pag-card-body">${corpo}</div>` : ''}
+                    </div>`;
+                }).join('');
+
+            // Cópia: um handler pode disparar renderPags() (troca do tipo da chave), que zera
+            // `bindings` — iterar o array vivo abortaria o registro dos campos restantes.
+            bindings.slice().forEach(({ id, p, key, mask }) => {
+                const el = pagListaEl.querySelector(`#${id}`);
+                if (!el) return;
+                const grava = () => { p[key] = el.value.trim(); };
+                if (el.tagName === 'SELECT') {
+                    el.addEventListener('change', () => {
+                        grava();
+                        // Trocar o tipo da chave muda máscara e placeholder do campo ao lado —
+                        // redesenhar é mais simples do que sincronizar os dois à mão.
+                        if (key === 'pixTipo') renderPags();
+                    });
+                    return;
+                }
+                el.addEventListener('input', () => {
+                    // A máscara da chave Pix segue o tipo: CPF/CNPJ/telefone têm formato fixo;
+                    // e-mail e chave aleatória vão crus (mascarar corromperia o valor).
+                    if (mask === 'pix') {
+                        if (p.pixTipo === 'CPF') el.value = maskCPF(el.value);
+                        else if (p.pixTipo === 'CNPJ') el.value = maskCNPJ(el.value);
+                        else if (p.pixTipo === 'Telefone') el.value = maskFone(el.value);
+                    } else if (mask === 'doc') {
+                        // Titular pode ser PF ou PJ — a máscara acompanha o tamanho digitado.
+                        const dig = el.value.replace(/\D/g, '');
+                        el.value = dig.length > 11 ? maskCNPJ(dig) : maskCPF(dig);
+                    } else if (mask === 'cod') {
+                        el.value = el.value.replace(/\D/g, '').slice(0, 3);
+                    }
+                    grava();
+                });
+            });
+
+            pagListaEl.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
+                pags.splice(Number(b.dataset.rm), 1);
+                renderPags();
+            });
+        };
+        renderPags();
+
+        // Formas já adicionadas saem do popover: repetir "Pix" duas vezes na mesma ficha seria
+        // dois destinos concorrentes para a mesma forma, sem nada que diga qual vale.
+        btnAdd.onclick = () => {
+            const disp = FORMAS_PAGAMENTO.filter(fp => !pags.some(p => p.forma === fp.id));
+            if (!disp.length) return toast('Todas as formas de pagamento já foram adicionadas.', 'info');
+            openFilterPopover(btnAdd, {
+                options: disp.map(fp => ({ value: fp.id, label: fp.label, icon: fp.icon })),
+                value: '',
+                searchable: false,
+                onPick: id => { pags.push({ forma: id }); renderPags(); }
+            });
+        };
     }
 
     // ---- Foto: comprime (256x256) e só sobe ao banco no salvar — evita gravar upload de
@@ -2216,38 +2307,32 @@ function formFuncionario(f) {
         if (salInput) data.salario = salInput.value === '' ? null : Number(salInput.value);
 
         // Pagamento: só grava se a seção existe no formulário. Quem não tem `ver_financeiro`
-        // não vê os campos — sem esta guarda, salvar por esse perfil apagaria o dado bancário
-        // de quem tem. Campos do bloco escondido também não são gravados: forma sem conta
-        // (dinheiro/boleto) limpa o banco, senão sobraria conta órfã de uma forma anterior.
-        if (formaPagInput) {
-            const formaPagamento = formaPagInput.value || null;
-            data.formaPagamento = formaPagamento;
-            const val = id => (m.body.querySelector(id)?.value || '').trim();
-            const ehPix = formaPagamento === 'Pix';
-            const usaConta = formaPagamento === 'Transferência bancária';
-            const banco = {
-                pixTipo: ehPix ? (val('#ffPixTipo') || null) : null,
-                pixChave: ehPix ? (val('#ffPixChave') || null) : null,
-                nome: usaConta ? (val('#ffBancoNome') || null) : null,
-                codigo: usaConta ? (val('#ffBancoCodigo') || null) : null,
-                tipoConta: usaConta ? (val('#ffContaTipo') || null) : null,
-                agencia: usaConta ? (val('#ffAgencia') || null) : null,
-                conta: usaConta ? (val('#ffConta') || null) : null,
-                titularDoc: usaConta ? (val('#ffTitularDoc') || null) : null,
-                titular: PAGAMENTO_COM_BANCO.includes(formaPagamento) ? (val('#ffTitular') || null) : null
-            };
-            // Objeto todo vazio vira null: melhor a ficha não ter o campo do que ter um bloco
-            // de nulos que a visualização teria de filtrar item a item.
-            data.banco = Object.values(banco).some(Boolean) ? banco : null;
-
-            if (data.banco?.titularDoc) {
-                const dig = data.banco.titularDoc.replace(/\D/g, '');
-                if (dig.length === 11 && !validaCPF(dig))
-                    return toast('CPF do titular da conta inválido.', 'error');
+        // não vê os campos — sem esta guarda, salvar por esse perfil apagaria os dados
+        // bancários de quem tem.
+        if (pagListaEl) {
+            for (const p of pags) {
+                const forma = formaPagDe(p.forma);
+                if (p.forma === 'pix') {
+                    if (!p.pixChave) return toast(`Informe a chave Pix.`, 'error');
+                    if (p.pixTipo === 'CPF' && !validaCPF((p.pixChave || '').replace(/\D/g, '')))
+                        return toast('Chave Pix do tipo CPF inválida.', 'error');
+                }
+                if (p.forma === 'transferencia' && !p.conta)
+                    return toast(`Informe a conta da ${forma.label.toLowerCase()}.`, 'error');
+                if (p.titularDoc) {
+                    const dig = p.titularDoc.replace(/\D/g, '');
+                    if (dig.length === 11 && !validaCPF(dig))
+                        return toast('CPF do titular da conta inválido.', 'error');
+                }
             }
-            if (formaPagamento === 'Pix' && banco.pixChave && banco.pixTipo === 'CPF'
-                && !validaCPF(banco.pixChave.replace(/\D/g, '')))
-                return toast('Chave Pix do tipo CPF inválida.', 'error');
+            // Campos vazios saem do objeto: melhor a linha não ter a chave do que carregar
+            // strings vazias que a visualização teria de filtrar item a item.
+            data.pagamentos = pags.map(p => Object.fromEntries(
+                Object.entries(p).filter(([, v]) => v !== '' && v != null)));
+            // Formato antigo (uma forma só) fica explicitamente nulo depois de migrado — sem
+            // isto, `pagamentosDe` continuaria com dois candidatos a verdade na mesma ficha.
+            data.formaPagamento = null;
+            data.banco = null;
         }
 
         // Só mexe no fotoKey se algo mudou: nova foto (sobe e substitui a antiga) ou remoção
