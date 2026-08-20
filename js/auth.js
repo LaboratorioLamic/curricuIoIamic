@@ -24,6 +24,7 @@ const PERM_ACOES = {
 const PERM_LANC_SUBS = [
     { id: 'ferias', label: 'Férias' },
     { id: 'ausencias', label: 'Faltas e Licenças' },
+    { id: 'cat', label: 'CAT' },
     { id: 'aso', label: 'ASO' },
     { id: 'demissoes', label: 'Demissões' },
     { id: 'treinamentos', label: 'Treinamentos' },

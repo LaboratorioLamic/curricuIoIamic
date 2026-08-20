@@ -28,6 +28,11 @@ const PATHS = {
     beneficios: 'rh_beneficios',
     ausencias: 'rh_ausencias',
     asos: 'rh_asos',
+    // CAT — Comunicação de Acidente de Trabalho. Registro próprio, não é "documento" nem
+    // "ausência": o acidente é o fato; o afastamento que ele possa gerar continua sendo
+    // lançado em Faltas e Licenças e é só REFERENCIADO aqui (ausenciaId). Assim os dias
+    // perdidos têm uma fonte só — senão a ficha e a folha contariam coisas diferentes.
+    cats: 'rh_cats',
     demissoes: 'rh_demissoes',
     treinamentos: 'rh_treinamentos',
     promocoes: 'rh_promocoes',

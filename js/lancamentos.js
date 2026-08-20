@@ -35,6 +35,7 @@ const MOTIVOS_TRANSFERENCIA = [
 const LANC_TABS = [
     { id: 'ferias', label: 'Férias' },
     { id: 'ausencias', label: 'Faltas e Licenças' },
+    { id: 'cat', label: 'CAT' },
     { id: 'aso', label: 'ASO' },
     { id: 'demissoes', label: 'Demissões' },
     { id: 'treinamentos', label: 'Treinamentos' },
@@ -261,6 +262,7 @@ function renderLancTab() {
     ({
         ferias: renderFerias,
         ausencias: renderAusencias,
+        cat: renderCat,
         aso: renderAso,
         demissoes: renderDemissoes,
         treinamentos: renderTreinamentos,

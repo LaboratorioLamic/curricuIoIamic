@@ -1580,15 +1580,22 @@ function fdVoltarHistorico(f, sub) {
 
 async function fdHistorico(f, cont) {
     cont.innerHTML = '<div class="loading-center"><div class="spinner-dark"></div></div>';
-    const [ausencias, demissoes, treinamentos, promocoes, transferencias] = await Promise.all([
+    const [ausencias, demissoes, treinamentos, promocoes, transferencias, cats] = await Promise.all([
         DB.getAll(PATHS.ausencias), DB.getAll(PATHS.demissoes),
-        DB.getAll(PATHS.treinamentos), DB.getAll(PATHS.promocoes), DB.getAll(PATHS.transferencias)
+        DB.getAll(PATHS.treinamentos), DB.getAll(PATHS.promocoes), DB.getAll(PATHS.transferencias),
+        DB.getAll(PATHS.cats)
     ]);
+    // detalheCat/catDiasAfastado leem o vínculo com o afastamento de catState — a ficha pode
+    // ser aberta sem a página Lançamentos ter renderizado, então abastece aqui.
+    catState.cats = cats;
+    catState.ausencias = ausencias;
 
     const ausF = ausencias.filter(a => a.funcionarioId === f.id)
         .sort((a, b) => (b.inicio || '').localeCompare(a.inicio || ''));
     const treF = treinamentos.filter(t => (t.participantes || []).includes(f.id))
         .sort((a, b) => (b.inicio || '').localeCompare(a.inicio || ''));
+    const catsF = cats.filter(c => c.funcionarioId === f.id)
+        .sort((a, b) => (b.data || '').localeCompare(a.data || ''));
     const porTipo = tipos => ausF.filter(a => tipos.includes(a.tipo));
     const faltas = porTipo(FD_HIST_FALTAS), afast = porTipo(FD_HIST_AFAST);
 
@@ -1635,6 +1642,14 @@ async function fdHistorico(f, cont) {
             desc: `${t.cargaHoraria || 0}h · ${t.tipo || ''}${t.responsavel ? ` · Resp.: ${t.responsavel}` : ''}`,
             abrir: () => detalheTreinamento(t, null, () => fdVoltarHistorico(f, 'timeline'))
         }));
+    // O acidente é o evento mais grave da trajetória: omiti-lo da linha do tempo faria a
+    // sequência mentir justamente onde ela mais importa (acidente → afastamento → retorno).
+    catsF.forEach(c =>
+        eventos.push({
+            data: c.data, tipo: 'danger', titulo: 'Acidente de trabalho (CAT)',
+            desc: `${c.natureza || ''}${c.houveAfastamento ? ` · ${fmtNum(catDiasAfastado(c))} dia(s) de afastamento` : ' · sem afastamento'}`,
+            abrir: () => detalheCat(c, () => fdVoltarHistorico(f, 'cat'))
+        }));
     demissoes.filter(dm => dm.funcionarioId === f.id).forEach(dm =>
         eventos.push({
             data: dm.data, tipo: 'danger', titulo: 'Desligamento', desc: dm.motivo || '',
@@ -1647,6 +1662,7 @@ async function fdHistorico(f, cont) {
         { id: 'timeline', label: 'Linha do tempo', n: eventos.length },
         { id: 'faltas', label: 'Faltas', n: faltas.length },
         { id: 'afastamentos', label: 'Afastamentos', n: afast.length },
+        { id: 'cat', label: 'CAT', n: catsF.length },
         { id: 'treinamentos', label: 'Treinamentos', n: treF.length }
     ];
 
@@ -1794,6 +1810,24 @@ async function fdHistorico(f, cont) {
                 listaHtml(afast, 'Nenhum afastamento registrado.', a => linhaAus(a, 'badge-warning', x => x.tipo || '—'));
             montarChart();
             bindLinhas(afast, a => detalheAusencia(a, null, () => fdVoltarHistorico(f, 'afastamentos')));
+        },
+
+        cat: () => {
+            const medico = can('ver_medico');
+            box.innerHTML = listaHtml(catsF, 'Nenhum acidente de trabalho registrado.', c => `
+                <div class="hist-main">
+                    <div class="hist-top">
+                        <span class="hist-per">${fmtDate(c.data)}${c.hora ? ` · ${escapeHtml(c.hora)}` : ''}</span>
+                        <span class="hist-dias">${c.houveAfastamento ? `${fmtNum(catDiasAfastado(c))}d` : '—'}</span>
+                    </div>
+                    <div class="hist-sub">
+                        <span class="badge ${CAT_NATUREZA_CLS[c.natureza] || 'badge-neutral'}">${escapeHtml(c.natureza || '—')}</span>
+                        ${c.tipo === CAT_TIPO_OBITO ? `<span class="badge badge-danger">${escapeHtml(c.tipo)}</span>` : ''}
+                        <span class="hist-meta">${escapeHtml(c.local || '')}</span>${medico && anexosDe(c).length ? `<span class="hist-clip" title="CAT/laudo anexado">${icon('paperclip')}</span>` : ''}
+                    </div>
+                </div>
+                ${seta}`);
+            bindLinhas(catsF, c => detalheCat(c, () => fdVoltarHistorico(f, 'cat')));
         },
 
         treinamentos: () => {
