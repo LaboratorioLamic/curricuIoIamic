@@ -218,6 +218,162 @@ function initPickerField(btnEl, { options = [], value = '', placeholder = 'Selec
     return ctl;
 }
 
+// ---- Campo de multisseleção em popover (grupos + busca + chips) ----
+// Um <select multiple> nativo obriga a segurar Ctrl e não cabe lista longa com categorias;
+// aqui a âncora é um <button> que guarda o escolhido em `btnEl.value` (texto separado por
+// vírgula, como o dado é gravado) e dispara 'change' — quem usa lê igual a um select.
+// groups: [{ grupo, itens: [string | {value, label, sub}] }] ou options: [...] sem grupo.
+// Retorna { get(), set(v), sync() }.
+function initMultiPickerField(btnEl, { groups = [], options = [], value = [], placeholder = 'Selecione', maxChips = 6, onChange } = {}) {
+    const norm = o => typeof o === 'string' ? { value: o, label: o } : o;
+    const secoes = (groups.length ? groups : [{ grupo: '', itens: options }])
+        .map(g => ({ grupo: g.grupo || '', itens: (g.itens || []).map(norm) }));
+    const todos = secoes.flatMap(s => s.itens);
+    const rotulo = v => (todos.find(o => o.value === v) || { label: v }).label;
+
+    const ctl = { options: todos };
+    const parse = v => (Array.isArray(v) ? v : String(v || '').split(',')).map(s => s.trim()).filter(Boolean);
+    let sel = parse(value);
+
+    ctl.get = () => sel.slice();
+
+    ctl.sync = () => {
+        btnEl.value = sel.join(', ');
+        const extra = sel.length - maxChips;
+        btnEl.innerHTML = sel.length
+            ? `<span class="mpick-chips">
+                    ${sel.slice(0, maxChips).map(v => `
+                        <span class="mpick-chip">${escapeHtml(rotulo(v))}
+                            <span class="mpick-chip-x" data-del="${escapeHtml(v)}" title="Remover">${icon('x')}</span>
+                        </span>`).join('')}
+                    ${extra > 0 ? `<span class="mpick-chip mpick-chip-more">+${extra}</span>` : ''}
+               </span>${icon('chevronDown')}`
+            : `<span class="picker-lbl placeholder">${escapeHtml(placeholder)}</span>${icon('chevronDown')}`;
+        // O X do chip remove sem abrir o popover.
+        btnEl.querySelectorAll('[data-del]').forEach(b => b.onclick = e => {
+            e.stopPropagation();
+            sel = sel.filter(v => v !== b.dataset.del);
+            ctl.sync();
+            btnEl.dispatchEvent(new Event('change', { bubbles: true }));
+            onChange && onChange(ctl.get());
+        });
+    };
+
+    ctl.set = v => { sel = parse(v); ctl.sync(); };
+
+    btnEl.type = 'button';
+    btnEl.classList.add('picker-btn', 'mpick-btn');
+    btnEl.onclick = () => openMultiSelectPopover(btnEl, {
+        secoes,
+        selected: sel,
+        onChange: arr => {
+            sel = arr;
+            ctl.sync();
+            btnEl.dispatchEvent(new Event('change', { bubbles: true }));
+            onChange && onChange(ctl.get());
+        }
+    });
+
+    ctl.sync();
+    return ctl;
+}
+
+// Popover da multisseleção: não fecha ao marcar (escolher 3 partes do corpo são 3 cliques,
+// não 3 aberturas), busca ignorando acento e some com o cabeçalho do grupo sem resultado.
+function openMultiSelectPopover(anchorEl, { secoes, selected, onChange }) {
+    closePopover();
+    const sel = new Set(selected);
+    const pop = document.createElement('div');
+    pop.className = 'popover pop-filter pop-mselect';
+    pop.style.minWidth = `${Math.max(280, anchorEl.getBoundingClientRect().width)}px`;
+
+    const chave = s => (s || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+
+    pop.innerHTML = `
+        <div class="pop-search">${icon('search')}<input class="input" placeholder="Buscar..." data-pop-q></div>
+        <div class="pop-list" data-pop-list>${secoes.map(s => `
+            <div class="pop-group" data-group>
+                ${s.grupo ? `<div class="pop-group-lbl">${escapeHtml(s.grupo)}</div>` : ''}
+                ${s.itens.map(o => `
+                    <div class="pop-item pop-check${sel.has(o.value) ? ' selected' : ''}"
+                         data-val="${escapeHtml(o.value)}"
+                         data-search="${escapeHtml(chave(`${o.label} ${o.sub || ''} ${s.grupo}`))}">
+                        <span class="mpick-box">${icon('check')}</span>
+                        <span class="grow">
+                            <span class="pop-lbl">${escapeHtml(o.label)}</span>
+                            ${o.sub ? `<span class="pop-sub">${escapeHtml(o.sub)}</span>` : ''}
+                        </span>
+                    </div>`).join('')}
+            </div>`).join('')}
+            <div class="pop-empty" data-empty hidden>Nada encontrado.</div>
+        </div>
+        <div class="pop-foot">
+            <span class="pop-count" data-count></span>
+            <button type="button" class="link-inline" data-clear>Limpar</button>
+        </div>`;
+    document.body.appendChild(pop);
+
+    const countEl = pop.querySelector('[data-count]');
+    const emit = () => {
+        countEl.textContent = sel.size ? `${sel.size} selecionada${sel.size > 1 ? 's' : ''}` : 'Nenhuma selecionada';
+        onChange([...sel]);
+    };
+
+    pop.querySelectorAll('.pop-check').forEach(el => el.onclick = () => {
+        const v = el.dataset.val;
+        if (sel.has(v)) sel.delete(v); else sel.add(v);
+        el.classList.toggle('selected', sel.has(v));
+        emit();
+    });
+    pop.querySelector('[data-clear]').onclick = () => {
+        sel.clear();
+        pop.querySelectorAll('.pop-check').forEach(el => el.classList.remove('selected'));
+        emit();
+    };
+    emit();
+
+    const q = pop.querySelector('[data-pop-q]');
+    q.addEventListener('input', () => {
+        const v = chave(q.value);
+        let achou = 0;
+        pop.querySelectorAll('[data-group]').forEach(g => {
+            let vis = 0;
+            g.querySelectorAll('.pop-check').forEach(it => {
+                const ok = it.dataset.search.includes(v);
+                it.style.display = ok ? '' : 'none';
+                if (ok) vis++;
+            });
+            g.hidden = !vis;
+            achou += vis;
+        });
+        pop.querySelector('[data-empty]').hidden = !!achou;
+    });
+    // Enter marca a única linha que sobrou da busca — atalho de quem digitou o nome inteiro.
+    q.addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const vis = [...pop.querySelectorAll('.pop-check')].filter(it => it.style.display !== 'none');
+        if (vis.length === 1) { vis[0].click(); q.value = ''; q.dispatchEvent(new Event('input')); }
+    });
+    setTimeout(() => q.focus(), 30);
+
+    const r = anchorEl.getBoundingClientRect();
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    let x = r.left, y = r.bottom + 6;
+    if (x + pw > window.innerWidth - 8) x = r.right - pw;
+    if (y + ph > window.innerHeight - 8) y = Math.max(8, r.top - ph - 6);
+    pop.style.left = `${Math.max(8, x)}px`;
+    pop.style.top = `${y}px`;
+    _popover = pop;
+    setTimeout(() => {
+        document.addEventListener('mousedown', function h(e) {
+            if (_popover && !_popover.contains(e.target) && e.target !== anchorEl && !anchorEl.contains(e.target)) {
+                closePopover(); document.removeEventListener('mousedown', h);
+            }
+        });
+    });
+}
+
 // ---- Popover de multisseleção (legenda de gráfico como filtro) ----
 // Diferente de openFilterPopover: NÃO fecha ao clicar, marca/desmarca vários e tem
 // "Restaurar". items: [{key, label, cor}]; selected: Set; onChange(Set); onReset().

@@ -578,6 +578,58 @@ table.table td.num, table.table th.num { text-align: right; font-variant-numeric
 .popover .pop-item svg.icon { width: 15px; height: 15px; }
 .popover .pop-sep { height: 1px; background: var(--border); margin: 5px 8px; }
 
+/* ---- Campo de multisseleção (ver initMultiPickerField em js/ui.js) ---- */
+.mpick-btn { min-height: 42px; height: auto; flex-wrap: nowrap; align-items: center; text-align: left; }
+.mpick-btn > svg.icon:last-child { margin-left: auto; flex-shrink: 0; }
+.mpick-chips { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; flex: 1; padding: 3px 0; }
+.mpick-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 4px 2px 9px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent-strong);
+    border: 1px solid transparent;
+    font-size: 12px; font-weight: 600; line-height: 1.6;
+    max-width: 100%;
+}
+.mpick-chip-more { padding: 2px 9px; background: var(--surface-2); color: var(--text-2); border-color: var(--border); }
+.mpick-chip-x {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 50%;
+    cursor: pointer; opacity: .6; transition: opacity .12s, background .12s;
+}
+.mpick-chip-x:hover { opacity: 1; background: rgba(0, 0, 0, .08); }
+.mpick-chip-x svg.icon { width: 11px; height: 11px; stroke-width: 3; }
+
+/* Popover: grupos, caixinha de marcação e rodapé com contagem */
+.popover.pop-mselect { max-width: 380px; padding: 6px 6px 0; }
+.pop-mselect .pop-list { max-height: 320px; }
+.pop-mselect .pop-group + .pop-group { margin-top: 4px; }
+.pop-mselect .pop-group-lbl {
+    padding: 8px 12px 4px;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted);
+    position: sticky; top: 0; background: var(--surface); z-index: 1;
+}
+.pop-mselect .pop-item { justify-content: flex-start; gap: 9px; padding: 7px 12px; }
+.pop-mselect .mpick-box {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; flex-shrink: 0;
+    border: 1.5px solid var(--border); border-radius: 5px;
+    background: var(--surface);
+    transition: background .12s, border-color .12s;
+}
+.pop-mselect .mpick-box svg.icon { width: 11px; height: 11px; stroke-width: 3.5; color: #fff; opacity: 0; }
+.pop-mselect .pop-item.selected .mpick-box { background: var(--accent); border-color: var(--accent); }
+.pop-mselect .pop-item.selected .mpick-box svg.icon { opacity: 1; }
+.pop-mselect .pop-item:hover .mpick-box { border-color: var(--accent); }
+.pop-mselect .pop-empty { padding: 16px 12px; text-align: center; font-size: 12.5px; color: var(--muted); }
+.pop-mselect .pop-foot {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin-top: 4px; padding: 9px 10px;
+    border-top: 1px solid var(--border);
+    position: sticky; bottom: 0; background: var(--surface);
+}
+.pop-mselect .pop-count { font-size: 12px; color: var(--muted); font-weight: 600; }
+
 /* ---- Autocomplete CBO (ver js/cbo.js) ---- */
 .cbo-ac { position: relative; }
 .cbo-ac-menu {

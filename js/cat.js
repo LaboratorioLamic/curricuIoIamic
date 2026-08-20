@@ -18,12 +18,85 @@ const CAT_TIPO_OBITO = 'Comunicação de óbito';
 // (trajeto não se previne com a mesma medida que o típico).
 const CAT_NATUREZAS = ['Típico', 'Trajeto', 'Doença ocupacional'];
 
-const CAT_PARTES = [
-    'Cabeça', 'Olhos', 'Face', 'Pescoço', 'Tórax', 'Abdômen', 'Coluna',
-    'Ombro', 'Braço', 'Cotovelo', 'Antebraço', 'Punho', 'Mão', 'Dedos da mão',
-    'Quadril', 'Coxa', 'Joelho', 'Perna', 'Tornozelo', 'Pé', 'Dedos do pé',
-    'Múltiplas partes', 'Outra'
+// Parte do corpo atingida. Um acidente costuma atingir mais de um ponto (queda pega punho e
+// joelho), então o campo é multisseleção e o dado é gravado como texto separado por vírgula —
+// o que já estava gravado no formato antigo (uma parte só) continua válido sem migração.
+// A lateralidade entra na própria opção porque é isso que o laudo e o CID pedem: "olho
+// direito" e "olho esquerdo" são lesões diferentes, com consequências diferentes.
+const CAT_PARTES_GRUPOS = [
+    {
+        grupo: 'Cabeça e face', itens: [
+            'Cabeça', 'Couro cabeludo', 'Crânio', 'Testa', 'Face',
+            'Olho direito', 'Olho esquerdo', 'Ambos os olhos',
+            'Pálpebra direita', 'Pálpebra esquerda',
+            'Cílios direitos', 'Cílios esquerdos',
+            'Sobrancelha direita', 'Sobrancelha esquerda',
+            'Orelha direita', 'Orelha esquerda',
+            'Nariz', 'Narina direita', 'Narina esquerda',
+            'Bochecha direita', 'Bochecha esquerda',
+            'Boca / lábios', 'Língua', 'Dentes', 'Mandíbula', 'Queixo'
+        ]
+    },
+    {
+        grupo: 'Pescoço e tronco', itens: [
+            'Pescoço', 'Garganta', 'Ombro direito', 'Ombro esquerdo',
+            'Tórax', 'Costelas direitas', 'Costelas esquerdas',
+            'Abdômen', 'Região lombar', 'Coluna cervical', 'Coluna torácica', 'Coluna lombar',
+            'Quadril direito', 'Quadril esquerdo', 'Região pélvica', 'Região genital', 'Nádegas'
+        ]
+    },
+    {
+        grupo: 'Membro superior direito', itens: [
+            'Braço direito', 'Cotovelo direito', 'Antebraço direito', 'Punho direito', 'Mão direita',
+            'Palma da mão direita', 'Dorso da mão direita',
+            'Polegar direito', 'Indicador direito', 'Dedo médio direito', 'Anelar direito', 'Mínimo direito',
+            'Unha da mão direita'
+        ]
+    },
+    {
+        grupo: 'Membro superior esquerdo', itens: [
+            'Braço esquerdo', 'Cotovelo esquerdo', 'Antebraço esquerdo', 'Punho esquerdo', 'Mão esquerda',
+            'Palma da mão esquerda', 'Dorso da mão esquerda',
+            'Polegar esquerdo', 'Indicador esquerdo', 'Dedo médio esquerdo', 'Anelar esquerdo', 'Mínimo esquerdo',
+            'Unha da mão esquerda'
+        ]
+    },
+    {
+        grupo: 'Membro inferior direito', itens: [
+            'Coxa direita', 'Joelho direito', 'Perna direita', 'Panturrilha direita',
+            'Tornozelo direito', 'Pé direito', 'Calcanhar direito', 'Planta do pé direito',
+            'Dedos do pé direito', 'Hálux direito', 'Unha do pé direito'
+        ]
+    },
+    {
+        grupo: 'Membro inferior esquerdo', itens: [
+            'Coxa esquerda', 'Joelho esquerdo', 'Perna esquerda', 'Panturrilha esquerda',
+            'Tornozelo esquerdo', 'Pé esquerdo', 'Calcanhar esquerdo', 'Planta do pé esquerdo',
+            'Dedos do pé esquerdo', 'Hálux esquerdo', 'Unha do pé esquerdo'
+        ]
+    },
+    {
+        grupo: 'Interno e sistêmico', itens: [
+            'Aparelho respiratório', 'Aparelho digestivo', 'Sistema circulatório', 'Sistema nervoso',
+            'Audição', 'Visão', 'Pele (área extensa)', 'Múltiplas partes', 'Parte não especificada', 'Outra'
+        ]
+    }
 ];
+
+// Genéricas mantidas para não invalidar CAT antiga que gravou "Olhos", "Mão", "Braço": a
+// lista nova é lateralizada, mas o valor histórico continua aparecendo como chip.
+const CAT_PARTES = CAT_PARTES_GRUPOS.flatMap(g => g.itens);
+
+// Texto ↔ lista: o banco guarda "Punho direito, Joelho esquerdo".
+const catPartesLista = v => String(v || '').split(',').map(s => s.trim()).filter(Boolean);
+
+// Na ficha as partes viram chips: lista longa em texto corrido vira parede de vírgula.
+const catPartesChips = v => {
+    const l = catPartesLista(v);
+    return l.length
+        ? `<span class="chip-wrap">${l.map(x => `<span class="chip">${escapeHtml(x)}</span>`).join('')}</span>`
+        : '<span class="muted">—</span>';
+};
 
 const CAT_AGENTES = [
     'Máquina ou equipamento', 'Ferramenta manual', 'Queda de mesmo nível', 'Queda de altura',
@@ -244,7 +317,7 @@ function detalheCat(c, onClose) {
             ['Natureza', escapeHtml(c.natureza || '—')],
             ['Local / setor', escapeHtml(c.local || '—')],
             ['Descrição', medico ? escapeHtml(c.descricao || '—') : restritoHtml()],
-            ['Parte do corpo atingida', medico ? escapeHtml(c.parteCorpo || '—') : restritoHtml()],
+            ['Parte do corpo atingida', medico ? catPartesChips(c.parteCorpo) : restritoHtml()],
             ['Agente causador', escapeHtml(c.agente || '—')],
             ['CID', medico ? escapeHtml(c.cid || '—') : restritoHtml()],
             ['Afastamento', linhaAfast],
@@ -329,7 +402,8 @@ function formCat(c, _sugerido, onDone) {
             </div>
             <div class="form-row">
                 <div class="field"><label>Parte do corpo atingida</label>
-                    <select class="select" id="fcatParte">${opts(CAT_PARTES, c?.parteCorpo, '—')}</select>
+                    <button type="button" class="input" id="fcatParte"></button>
+                    <div class="field-hint">Pode marcar mais de uma — use a busca para achar o lado.</div>
                 </div>
                 <div class="field"><label>Agente causador</label>
                     <select class="select" id="fcatAgente">${opts(CAT_AGENTES, c?.agente, '—')}</select>
@@ -393,6 +467,11 @@ function formCat(c, _sugerido, onDone) {
     });
 
     bindSelectFuncionario(m.body, 'fcatFunc', c?.funcionarioId);
+    const parteCtl = initMultiPickerField(m.body.querySelector('#fcatParte'), {
+        groups: CAT_PARTES_GRUPOS,
+        value: catPartesLista(c?.parteCorpo),
+        placeholder: 'Selecione as partes atingidas'
+    });
     const anexoCtl = initAnexoField(m.body.querySelector('#fcatAnexo'), anexosDe(c));
 
     const el = id => m.body.querySelector('#' + id);
@@ -507,7 +586,7 @@ function formCat(c, _sugerido, onDone) {
                 hora: el('fcatHora').value || '',
                 local: el('fcatLocal').value.trim(),
                 descricao,
-                parteCorpo: el('fcatParte').value,
+                parteCorpo: parteCtl.get().join(', '),
                 agente: el('fcatAgente').value,
                 cid: el('fcatCid').value.trim(),
                 obito: obitoEl.checked,
