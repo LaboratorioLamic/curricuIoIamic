@@ -228,12 +228,12 @@ function abrirFotoAmpliada(anchorEl, fotoKey, nome) {
 async function abrirAnexo(anexo) {
     if (!anexo) return;
     if (anexo.tipo === 'imagem') {
-        const m = openModal({ title: anexo.titulo || 'Imagem', size: 'modal-lg', body: '<div class="loading-center"><div class="spinner-dark"></div></div>', footer: null });
         try {
             const data = await obterImagem(anexo.imgKey);
-            m.body.innerHTML = `<img src="${data}" alt="${escapeHtml(anexo.titulo || '')}" style="max-width:100%;border-radius:10px;display:block;margin:0 auto">`;
+            if (!data) return toast('Imagem não encontrada.', 'error');
+            abrirVisualizadorImagem({ src: data, titulo: anexo.titulo || 'Imagem', legenda: anexo.titulo || '' });
         } catch (e) {
-            m.body.innerHTML = `<p class="muted">Erro ao carregar a imagem: ${escapeHtml(e.message)}</p>`;
+            toast(`Erro ao carregar a imagem: ${e.message}`, 'error');
         }
         return;
     }

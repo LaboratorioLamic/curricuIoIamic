@@ -1096,3 +1096,88 @@ table.table td.num, table.table th.num { text-align: right; font-variant-numeric
 .chart-card-stats .cc-total { font-size: 15px; font-weight: 700; color: var(--text); }
 .chart-card-stats .cc-media { font-size: 11px; color: var(--muted); }
 .chart-box { height: 190px; position: relative; }
+
+/* ---- Visualizador de imagens em tela cheia ---- */
+.img-viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(11, 12, 28, .93);
+    backdrop-filter: blur(3px);
+    display: flex;
+    flex-direction: column;
+    animation: fadeIn .15s ease;
+    user-select: none;
+}
+.imgv-bar {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .06);
+    border: 1px solid rgba(255, 255, 255, .1);
+}
+.imgv-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: rgba(255, 255, 255, .8);
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+}
+.imgv-btn:hover { background: rgba(255, 255, 255, .14); color: #fff; }
+.imgv-btn .icon { width: 18px; height: 18px; }
+.imgv-close:hover { background: var(--danger, #e5484d); color: #fff; }
+.imgv-pct {
+    min-width: 52px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 650;
+    color: rgba(255, 255, 255, .85);
+    cursor: pointer;
+}
+.imgv-palco {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    cursor: zoom-out;
+}
+.imgv-img {
+    max-width: min(92vw, 1100px);
+    max-height: 82vh;
+    border-radius: 8px;
+    box-shadow: 0 18px 60px rgba(0, 0, 0, .55);
+    transform-origin: center center;
+    transition: transform .18s ease;
+    cursor: zoom-in;
+    animation: popIn .2s ease;
+}
+.imgv-img.is-ampliada { cursor: grab; }
+.imgv-img.is-ampliada:active { cursor: grabbing; }
+.imgv-legenda {
+    padding: 14px 16px 22px;
+    text-align: center;
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: .4px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, .82);
+}
+@media (max-width: 640px) {
+    .imgv-bar { top: 10px; right: 10px; }
+    .imgv-btn { width: 30px; height: 30px; }
+    .imgv-img { max-width: 96vw; }
+}

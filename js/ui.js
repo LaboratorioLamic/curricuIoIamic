@@ -468,3 +468,105 @@ function emptyState({ icon: ic = 'tool', title = 'Em construção', text = '' })
             <p>${escapeHtml(text)}</p>
         </div>`;
 }
+
+// ---- Visualizador de imagens (tela cheia) ----
+// Barra de zoom/rotação no canto superior direito; clique na imagem aproxima,
+// arrastar move quando ampliada, roda do mouse dá zoom, Esc fecha.
+function abrirVisualizadorImagem({ src, titulo = '', legenda = '' } = {}) {
+    document.querySelectorAll('.img-viewer').forEach(x => x.remove());
+    const MIN = 0.25, MAX = 8, PASSO = 1.25;
+    const st = { escala: 1, giro: 0, x: 0, y: 0, arrastando: false, moveu: false, px: 0, py: 0 };
+
+    const el = document.createElement('div');
+    el.className = 'img-viewer';
+    el.innerHTML = `
+        <div class="imgv-bar">
+            <button class="imgv-btn" data-zout title="Reduzir">${icon('zoomOut')}</button>
+            <span class="imgv-pct" data-pct>100%</span>
+            <button class="imgv-btn" data-zin title="Ampliar">${icon('zoomIn')}</button>
+            <button class="imgv-btn" data-rleft title="Girar à esquerda">${icon('rotateLeft')}</button>
+            <button class="imgv-btn" data-rright title="Girar à direita">${icon('rotateRight')}</button>
+            <button class="imgv-btn imgv-close" data-close title="Fechar (Esc)">${icon('x')}</button>
+        </div>
+        <div class="imgv-palco" data-palco>
+            <img class="imgv-img" src="${escapeHtml(src)}" alt="${escapeHtml(titulo)}" draggable="false">
+        </div>
+        ${legenda || titulo ? `<div class="imgv-legenda">${escapeHtml(legenda || titulo)}</div>` : ''}`;
+
+    const img = el.querySelector('.imgv-img');
+    const palco = el.querySelector('[data-palco]');
+    const pct = el.querySelector('[data-pct]');
+
+    const aplicar = () => {
+        img.style.transform = `translate(${st.x}px, ${st.y}px) scale(${st.escala}) rotate(${st.giro}deg)`;
+        pct.textContent = `${Math.round(st.escala * 100)}%`;
+        img.classList.toggle('is-ampliada', st.escala > 1);
+    };
+    const zoom = (fator, alvo) => {
+        const nova = Math.min(MAX, Math.max(MIN, st.escala * fator));
+        if (nova === st.escala) return;
+        if (alvo) {
+            // Mantém o ponto clicado/apontado sob o cursor ao mudar a escala.
+            const r = palco.getBoundingClientRect();
+            const cx = alvo.clientX - (r.left + r.width / 2);
+            const cy = alvo.clientY - (r.top + r.height / 2);
+            const k = nova / st.escala;
+            st.x = cx - (cx - st.x) * k;
+            st.y = cy - (cy - st.y) * k;
+        }
+        st.escala = nova;
+        if (st.escala === 1) { st.x = 0; st.y = 0; }
+        aplicar();
+    };
+    const resetar = () => { st.escala = 1; st.x = 0; st.y = 0; aplicar(); };
+
+    const fechar = () => { el.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = e => {
+        if (e.key === 'Escape') fechar();
+        else if (e.key === '+' || e.key === '=') zoom(PASSO);
+        else if (e.key === '-') zoom(1 / PASSO);
+        else if (e.key === '0') resetar();
+    };
+
+    el.querySelector('[data-zin]').onclick = () => zoom(PASSO);
+    el.querySelector('[data-zout]').onclick = () => zoom(1 / PASSO);
+    el.querySelector('[data-rleft]').onclick = () => { st.giro -= 90; aplicar(); };
+    el.querySelector('[data-rright]').onclick = () => { st.giro += 90; aplicar(); };
+    el.querySelector('[data-close]').onclick = fechar;
+    pct.onclick = resetar;
+
+    // Clique no vazio fecha; clique na imagem aproxima (e volta ao 100% no limite).
+    palco.onclick = e => {
+        if (e.target !== img) return fechar();
+        if (st.moveu) { st.moveu = false; return; }
+        if (st.escala >= MAX - 0.001) resetar(); else zoom(2, e);
+    };
+    palco.onwheel = e => { e.preventDefault(); zoom(e.deltaY < 0 ? PASSO : 1 / PASSO, e); };
+
+    // Arrastar para mover a imagem ampliada
+    img.onpointerdown = e => {
+        if (st.escala <= 1) return;
+        st.arrastando = true; st.moveu = false;
+        st.px = e.clientX; st.py = e.clientY;
+        img.style.transition = 'none';
+        img.setPointerCapture(e.pointerId);
+    };
+    img.onpointermove = e => {
+        if (!st.arrastando) return;
+        const dx = e.clientX - st.px, dy = e.clientY - st.py;
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) st.moveu = true;
+        st.x += dx; st.y += dy;
+        st.px = e.clientX; st.py = e.clientY;
+        aplicar();
+    };
+    img.onpointerup = img.onpointercancel = e => {
+        st.arrastando = false;
+        img.style.transition = '';
+        try { img.releasePointerCapture(e.pointerId); } catch (_) { }
+    };
+
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(el);
+    aplicar();
+    return { el, fechar };
+}
